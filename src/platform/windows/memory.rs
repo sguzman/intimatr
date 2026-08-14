@@ -116,7 +116,10 @@ impl MemorySource for CurrentProcessMemory {
             address = next;
         }
 
-        debug!(region_count = regions.len(), "enumerated current process memory map");
+        debug!(
+            region_count = regions.len(),
+            "enumerated current process memory map"
+        );
         Ok(regions)
     }
 
@@ -222,11 +225,7 @@ impl MemoryTarget for CurrentProcessMemory {
 
         if region.executable {
             let flushed = unsafe {
-                FlushInstructionCache(
-                    GetCurrentProcess(),
-                    address as *const c_void,
-                    bytes.len(),
-                )
+                FlushInstructionCache(GetCurrentProcess(), address as *const c_void, bytes.len())
             };
             if flushed == 0 {
                 return Err(platform_error("FlushInstructionCache"));
@@ -305,6 +304,10 @@ mod tests {
             .regions()
             .expect("process memory map should enumerate");
 
-        assert!(regions.iter().any(|region| region.contains_range(address, 8)));
+        assert!(
+            regions
+                .iter()
+                .any(|region| region.contains_range(address, 8))
+        );
     }
 }

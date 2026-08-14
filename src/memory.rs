@@ -127,11 +127,10 @@ pub fn write_scalar<T: MemoryTarget + ?Sized>(
 #[derive(Debug, Error)]
 pub enum MemoryError {
     #[error("Windows/platform memory operation {operation} failed with error code {code}")]
-    Platform {
-        operation: &'static str,
-        code: u32,
-    },
-    #[error("memory operation at 0x{address:X} requested {requested} bytes but transferred {actual}")]
+    Platform { operation: &'static str, code: u32 },
+    #[error(
+        "memory operation at 0x{address:X} requested {requested} bytes but transferred {actual}"
+    )]
     PartialTransfer {
         address: usize,
         requested: usize,

@@ -178,7 +178,10 @@ impl ScanSession {
         });
 
         if stats.read_failures > 0 {
-            warn!(read_failures = stats.read_failures, "next scan skipped unreadable candidates");
+            warn!(
+                read_failures = stats.read_failures,
+                "next scan skipped unreadable candidates"
+            );
         }
         info!(
             results = candidates.len(),
@@ -275,7 +278,9 @@ where
         .iter()
         .copied()
         .filter(|region| region.is_scannable(filter))
-        .fold(0_u64, |total, region| total.saturating_add(region.size as u64));
+        .fold(0_u64, |total, region| {
+            total.saturating_add(region.size as u64)
+        });
     let mut stats = ScanStats {
         regions_considered: regions.len() as u64,
         ..ScanStats::default()
@@ -294,7 +299,11 @@ where
 
     'regions: for region in regions {
         if !region.is_scannable(filter) {
-            trace!(base = region.base, size = region.size, "skipping memory region due to scan filter");
+            trace!(
+                base = region.base,
+                size = region.size,
+                "skipping memory region due to scan filter"
+            );
             continue;
         }
 
@@ -311,7 +320,10 @@ where
         );
 
         let mut cursor = region.base;
-        while cursor.checked_add(width).is_some_and(|end| end <= region_end) {
+        while cursor
+            .checked_add(width)
+            .is_some_and(|end| end <= region_end)
+        {
             if cancellation.is_cancelled() {
                 stats.cancelled = true;
                 break 'regions;
@@ -405,7 +417,9 @@ where
 
 fn validate_options(options: ScanOptions) -> Result<(), ScanError> {
     if options.chunk_size_bytes == 0 {
-        return Err(ScanError::InvalidOptions("chunk_size_bytes must be non-zero"));
+        return Err(ScanError::InvalidOptions(
+            "chunk_size_bytes must be non-zero",
+        ));
     }
     if options.alignment == 0 {
         return Err(ScanError::InvalidOptions("alignment must be non-zero"));

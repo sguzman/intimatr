@@ -88,7 +88,11 @@ fn first_scan_finds_exact_values_across_chunk_boundaries() {
     )
     .expect("scan should succeed");
 
-    let addresses: Vec<_> = session.candidates.iter().map(|result| result.address).collect();
+    let addresses: Vec<_> = session
+        .candidates
+        .iter()
+        .map(|result| result.address)
+        .collect();
     assert_eq!(addresses, vec![BASE + 4, BASE + 20]);
     assert_eq!(session.stats.read_failures, 0);
 }
@@ -116,7 +120,10 @@ fn unknown_initial_value_can_be_refined_by_changed_and_decreased() {
         )
         .expect("changed scan should succeed");
     assert_eq!(changed.candidates.len(), 2);
-    assert_eq!(changed.candidates[0].previous, Some(ScalarValue::Signed(20)));
+    assert_eq!(
+        changed.candidates[0].previous,
+        Some(ScalarValue::Signed(20))
+    );
     assert_eq!(changed.candidates[0].current, ScalarValue::Signed(15));
 
     let decreased = initial_session
