@@ -1,0 +1,39 @@
+[target]
+executable = "ExampleGame.exe"
+
+[logging]
+filter = "intimatr=trace"
+directory = "logs"
+file_name = "intimatr.log"
+console = false
+
+[rpc]
+enabled = true
+transport = "tcp"
+bind = "127.0.0.1:31337"
+max_clients = 4
+max_request_bytes = 1048576
+
+[scanner]
+chunk_size_bytes = 1048576
+alignment = 1
+max_results = 2000000
+float_epsilon = 0.000001
+require_readable = true
+include_guard_pages = false
+
+[debugger]
+enabled = true
+break_on_start = false
+prefer_hardware_breakpoints = true
+
+[ui]
+enabled = true
+toggle_key = "Insert"
+
+[policy]
+allow_memory_read = true
+allow_memory_write = true
+allow_code_patch = false
+allow_debugger = true
+allow_remote_shutdown = false
