@@ -39,8 +39,8 @@ Work is ordered by dependency: later phases should build on the shared core inst
 
 ## 3. Shared command layer and RPC
 
-- [ ] Define frontend-neutral commands/results for modules, memory, scans, watches, debugger operations, and lifecycle.
-- [ ] Enforce policy gates in the shared command layer rather than individually in frontends.
+- [x] Define frontend-neutral commands/results for modules, memory, scans, watches, debugger operations, and lifecycle.
+- [x] Enforce policy gates in the shared command layer rather than individually in frontends.
 - [ ] Define a versioned serialized RPC protocol.
 - [ ] Implement framed localhost TCP transport.
 - [ ] Implement optional Windows named-pipe transport.
