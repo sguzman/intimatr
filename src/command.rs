@@ -12,9 +12,7 @@ use tracing::{debug, info, warn};
 
 use crate::{
     config::{PolicyConfig, ScannerConfig},
-    memory::{
-        MemoryError, MemorySource, MemoryTarget, WritePolicy, read_scalar, write_scalar,
-    },
+    memory::{MemoryError, MemoryTarget, WritePolicy, read_scalar, write_scalar},
     scanner::{
         CancellationToken, ScalarValue, ScanCandidate, ScanError, ScanOptions, ScanPredicate,
         ScanSession, ScanStats, ValueType, first_scan,
@@ -401,11 +399,8 @@ where
                 self.require_transfer_size(bytes.len())?;
                 let address_native = address_to_usize(address)?;
                 ensure_address_range(address_native, bytes.len())?;
-                self.memory.write_exact(
-                    address_native,
-                    &bytes,
-                    WritePolicy::from(&self.policy),
-                )?;
+                self.memory
+                    .write_exact(address_native, &bytes, WritePolicy::from(&self.policy))?;
                 CommandExecution::immediate(CommandResult::WriteComplete {
                     address,
                     size: bytes.len(),
@@ -560,21 +555,22 @@ where
                 watches.sort_unstable_by_key(|watch| watch.id);
                 let values = watches
                     .into_iter()
-                    .map(|watch| match address_to_usize(watch.address)
-                        .and_then(|address| {
+                    .map(|watch| {
+                        match address_to_usize(watch.address).and_then(|address| {
                             read_scalar(&self.memory, address, watch.value_type)
                                 .map_err(CommandError::from)
                         }) {
-                        Ok(value) => WatchValue {
-                            watch,
-                            value: Some(value),
-                            error: None,
-                        },
-                        Err(error) => WatchValue {
-                            watch,
-                            value: None,
-                            error: Some(error.to_string()),
-                        },
+                            Ok(value) => WatchValue {
+                                watch,
+                                value: Some(value),
+                                error: None,
+                            },
+                            Err(error) => WatchValue {
+                                watch,
+                                value: None,
+                                error: Some(error.to_string()),
+                            },
+                        }
                     })
                     .collect();
                 CommandExecution::immediate(CommandResult::WatchValues { values })
@@ -610,7 +606,10 @@ where
             cancellation.cancel();
         }
         if !cancellations.is_empty() {
-            warn!(count = cancellations.len(), "cancelled active scans during command shutdown");
+            warn!(
+                count = cancellations.len(),
+                "cancelled active scans during command shutdown"
+            );
         }
         Ok(cancellations.len())
     }
