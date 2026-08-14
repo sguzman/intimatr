@@ -51,6 +51,7 @@ impl ScalarValue {
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "op", content = "operand", rename_all = "snake_case")]
 pub enum ScanPredicate {
+    UnknownInitialValue,
     Exact(ScalarValue),
     NotEqual(ScalarValue),
     GreaterThan(ScalarValue),
@@ -98,6 +99,7 @@ impl ScanPredicate {
         );
 
         match self {
+            Self::UnknownInitialValue => Ok(true),
             Self::Exact(expected) => current.equals(expected, float_epsilon),
             Self::NotEqual(expected) => Ok(!current.equals(expected, float_epsilon)?),
             Self::GreaterThan(expected) => {

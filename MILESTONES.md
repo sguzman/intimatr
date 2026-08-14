@@ -25,16 +25,17 @@ Work is ordered by dependency: later phases should build on the shared core inst
 
 ## 2. Memory engine and CE-style scanner
 
-- [ ] Enumerate committed memory regions with `VirtualQuery` and normalize region metadata.
-- [ ] Apply readable/writable/executable/guard-page filters from configuration.
-- [ ] Add safe wrappers for typed in-process reads.
-- [ ] Add policy-gated typed writes with temporary protection changes where needed.
-- [ ] Implement first-scan traversal with chunking and alignment controls.
-- [ ] Store typed scan candidates and previous-value snapshots.
-- [ ] Implement next-scan filtering using all predicates already defined in `scanner::predicate`.
-- [ ] Support signed integers, unsigned integers, `f32`, and `f64` with explicit data-width metadata.
-- [ ] Add scan cancellation, result limits, progress reporting, and timing/throughput logs.
-- [ ] Add deterministic scanner tests over synthetic memory buffers before wiring real process memory.
+- [x] Enumerate committed memory regions with `VirtualQuery` and normalize region metadata.
+- [x] Apply readable/writable/executable/guard-page filters from configuration.
+- [x] Add safe wrappers for typed in-process reads.
+- [x] Add policy-gated typed writes with temporary protection changes where needed.
+- [x] Implement first-scan traversal with chunking and alignment controls.
+- [x] Store typed scan candidates and previous-value snapshots.
+- [x] Implement next-scan filtering using all predicates already defined in `scanner::predicate`.
+- [x] Support signed integers, unsigned integers, `f32`, and `f64` with explicit data-width metadata.
+- [x] Add unknown-initial-value scans for CE-style discovery workflows.
+- [x] Add scan cancellation, result limits, progress reporting, and timing/throughput logs.
+- [x] Add deterministic scanner tests over synthetic memory buffers plus Windows backend smoke tests.
 
 ## 3. Shared command layer and RPC
 

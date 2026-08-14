@@ -3,6 +3,15 @@ use intimatr::scanner::{PredicateError, ScalarValue, ScanPredicate};
 const EPSILON: f64 = 1.0e-6;
 
 #[test]
+fn unknown_initial_value_matches_any_scalar() {
+    assert!(
+        ScanPredicate::UnknownInitialValue
+            .matches(ScalarValue::Signed(123), None, EPSILON)
+            .unwrap()
+    );
+}
+
+#[test]
 fn direct_numeric_predicates_match() {
     let current = ScalarValue::Signed(100);
 

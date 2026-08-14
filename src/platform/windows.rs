@@ -10,6 +10,8 @@ use windows_sys::Win32::{
     System::{Diagnostics::Debug::OutputDebugStringW, LibraryLoader::GetModuleFileNameW},
 };
 
+pub mod memory;
+
 const INITIAL_PATH_CAPACITY: usize = 260;
 const MAX_PATH_CAPACITY: usize = 32_768;
 

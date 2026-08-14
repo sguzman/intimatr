@@ -195,6 +195,10 @@ pub struct ScannerConfig {
     #[serde(default = "default_true")]
     pub require_readable: bool,
     #[serde(default)]
+    pub require_writable: bool,
+    #[serde(default)]
+    pub require_executable: bool,
+    #[serde(default)]
     pub include_guard_pages: bool,
 }
 
@@ -206,6 +210,8 @@ impl Default for ScannerConfig {
             max_results: default_max_results(),
             float_epsilon: default_float_epsilon(),
             require_readable: true,
+            require_writable: false,
+            require_executable: false,
             include_guard_pages: false,
         }
     }

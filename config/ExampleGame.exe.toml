@@ -20,6 +20,8 @@ alignment = 1
 max_results = 2000000
 float_epsilon = 0.000001
 require_readable = true
+require_writable = false
+require_executable = false
 include_guard_pages = false
 
 [debugger]

@@ -40,19 +40,11 @@ The project is for offline/single-player research and does not include anti-chea
 - Update `MILESTONES.md` as work lands and check completed items off in the same change.
 - Keep Windows-specific unsafe code behind small, auditable modules; the scanner predicate and protocol layers should remain platform-neutral and testable.
 
-## DLL bootstrap invariants
-
-- `DllMain` performs only loader-lock-safe/minimal work: lifecycle atomics, `DisableThreadLibraryCalls`, and creation of the bootstrap thread. It never parses TOML, initializes tracing, scans memory, starts RPC, or initializes the UI.
-- The bootstrap thread resolves both the loaded `intimatr.dll` path and the current process executable before starting higher-level subsystems.
-- Per-game configuration is rooted beside the DLL: `<intimatr directory>/config/<ExecutableName>.toml`.
-- Relative runtime paths in configuration, including `logging.directory`, are anchored to the DLL directory rather than the process working directory.
-- FFI entrypoints and the bootstrap thread contain Rust panics so unwinding never crosses a Windows ABI boundary.
-- Full shutdown runs outside `DllMain`. Process detach only raises an atomic shutdown request; callers that intentionally unload the DLL should invoke the exported `intimatr_request_shutdown` entrypoint before unloading so worker-backed resources can flush and stop cleanly.
-
 ## Scanner semantics
 
-The scan engine is general-purpose rather than game-specific. At minimum, first-scan and next-scan filtering must support:
+The scan engine is general-purpose rather than game-specific. First-scan and next-scan filtering supports:
 
+- unknown initial value
 - exact / not equal
 - greater than / greater-or-equal
 - less than / less-or-equal
@@ -63,16 +55,26 @@ The scan engine is general-purpose rather than game-specific. At minimum, first-
 
 Historical predicates operate against a previous scan snapshot. Float equality is controlled by a per-game `scanner.float_epsilon` setting.
 
+The scanner is intentionally split from Windows process access. `MemorySource` supplies normalized memory regions and exact byte reads. This lets the same scanner run against deterministic synthetic buffers in tests and `CurrentProcessMemory` inside the loaded DLL.
+
+Supported typed values are `i8`, `i16`, `i32`, `i64`, `u8`, `u16`, `u32`, `u64`, `f32`, and `f64`. Scan candidates store the current scalar plus the immediately previous scalar after a next scan.
+
+## Memory engine
+
+On Windows, `CurrentProcessMemory` enumerates regions with `VirtualQuery` and uses `ReadProcessMemory`/`WriteProcessMemory` against the current-process pseudo-handle. Region metadata records committed/readable/writable/executable/guard state.
+
+Writes are denied unless `policy.allow_memory_write` is enabled. Writes into executable regions additionally require `policy.allow_code_patch`. Non-writable committed regions may be temporarily changed to a writable protection for the duration of an allowed write, after which the original protection is restored. Executable writes flush the instruction cache.
+
 ## Configuration
 
-Configuration is resolved from the current executable filename. If the target is `SomeGame.exe`, Intimatr loads `<intimatr directory>/config/SomeGame.exe.toml` and validates that `[target].executable` matches the actual executable name case-insensitively.
+Configuration is resolved from the current executable filename. If the target is `SomeGame.exe`, Intimatr loads `config/SomeGame.exe.toml` and validates that `[target].executable` matches the actual executable name case-insensitively.
 
 The configuration owns:
 
 - target identity
 - logging settings
 - RPC transport/bind limits
-- scanner tuning parameters
+- scanner tuning parameters, access requirements, result limits, alignment, and float epsilon
 - debugger behavior
 - UI behavior
 - policy gates for read/write/patch/debugger/remote-control capabilities
