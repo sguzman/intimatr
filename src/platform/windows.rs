@@ -60,10 +60,7 @@ fn module_file_name(module: HMODULE) -> Result<PathBuf, WindowsError> {
 #[derive(Debug, Error)]
 pub enum WindowsError {
     #[error("Windows API call {operation} failed with error code {code}")]
-    Api {
-        operation: &'static str,
-        code: u32,
-    },
+    Api { operation: &'static str, code: u32 },
     #[error("module path exceeded the supported {limit}-character buffer")]
     PathTooLong { limit: usize },
 }

@@ -43,9 +43,7 @@ pub fn shutdown() -> Result<(), RuntimeError> {
     info!(state = ?LIFECYCLE.state(), "Intimatr shutdown started");
 
     let context = {
-        let mut guard = CONTEXT
-            .lock()
-            .map_err(|_| RuntimeError::ContextPoisoned)?;
+        let mut guard = CONTEXT.lock().map_err(|_| RuntimeError::ContextPoisoned)?;
         guard.take()
     };
 
@@ -90,9 +88,7 @@ fn bootstrap(module_path: PathBuf, host_executable: PathBuf) -> Result<(), Runti
     }
 
     {
-        let guard = CONTEXT
-            .lock()
-            .map_err(|_| RuntimeError::ContextPoisoned)?;
+        let guard = CONTEXT.lock().map_err(|_| RuntimeError::ContextPoisoned)?;
         if guard.is_some() {
             return Err(RuntimeError::AlreadyInitialized);
         }
@@ -118,9 +114,7 @@ fn bootstrap(module_path: PathBuf, host_executable: PathBuf) -> Result<(), Runti
             );
 
             {
-                let mut guard = CONTEXT
-                    .lock()
-                    .map_err(|_| RuntimeError::ContextPoisoned)?;
+                let mut guard = CONTEXT.lock().map_err(|_| RuntimeError::ContextPoisoned)?;
                 *guard = Some(context);
             }
 
