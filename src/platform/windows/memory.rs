@@ -2,7 +2,7 @@ use std::{ffi::c_void, mem};
 
 use tracing::{debug, trace};
 use windows_sys::Win32::{
-    Foundation::GetLastError,
+    Foundation::{GetLastError, HANDLE},
     System::{
         Diagnostics::Debug::{ReadProcessMemory, WriteProcessMemory},
         Memory::{
@@ -10,13 +10,22 @@ use windows_sys::Win32::{
             PAGE_EXECUTE_READWRITE, PAGE_EXECUTE_WRITECOPY, PAGE_GUARD, PAGE_READONLY,
             PAGE_READWRITE, PAGE_WRITECOPY, VirtualProtect, VirtualQuery,
         },
-        Threading::{FlushInstructionCache, GetCurrentProcess},
+        Threading::GetCurrentProcess,
     },
 };
 
 use crate::memory::{MemoryError, MemoryRegion, MemorySource, MemoryTarget, WritePolicy};
 
 const BASE_PROTECTION_MASK: u32 = 0xff;
+
+#[link(name = "kernel32")]
+unsafe extern "system" {
+    fn FlushInstructionCache(
+        hprocess: HANDLE,
+        lpbaseaddress: *const c_void,
+        dwsize: usize,
+    ) -> windows_sys::core::BOOL;
+}
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct CurrentProcessMemory;
