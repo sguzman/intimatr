@@ -75,25 +75,39 @@ impl AppConfig {
 
     pub fn validate(&self) -> Result<(), ConfigError> {
         if self.target.executable.trim().is_empty() {
-            return Err(ConfigError::InvalidValue("target.executable must not be empty"));
+            return Err(ConfigError::InvalidValue(
+                "target.executable must not be empty",
+            ));
         }
         if self.scanner.chunk_size_bytes == 0 {
-            return Err(ConfigError::InvalidValue("scanner.chunk_size_bytes must be greater than zero"));
+            return Err(ConfigError::InvalidValue(
+                "scanner.chunk_size_bytes must be greater than zero",
+            ));
         }
         if self.scanner.alignment == 0 {
-            return Err(ConfigError::InvalidValue("scanner.alignment must be greater than zero"));
+            return Err(ConfigError::InvalidValue(
+                "scanner.alignment must be greater than zero",
+            ));
         }
         if self.scanner.max_results == 0 {
-            return Err(ConfigError::InvalidValue("scanner.max_results must be greater than zero"));
+            return Err(ConfigError::InvalidValue(
+                "scanner.max_results must be greater than zero",
+            ));
         }
         if !self.scanner.float_epsilon.is_finite() || self.scanner.float_epsilon < 0.0 {
-            return Err(ConfigError::InvalidValue("scanner.float_epsilon must be finite and non-negative"));
+            return Err(ConfigError::InvalidValue(
+                "scanner.float_epsilon must be finite and non-negative",
+            ));
         }
         if self.rpc.max_clients == 0 {
-            return Err(ConfigError::InvalidValue("rpc.max_clients must be greater than zero"));
+            return Err(ConfigError::InvalidValue(
+                "rpc.max_clients must be greater than zero",
+            ));
         }
         if self.rpc.max_request_bytes == 0 {
-            return Err(ConfigError::InvalidValue("rpc.max_request_bytes must be greater than zero"));
+            return Err(ConfigError::InvalidValue(
+                "rpc.max_request_bytes must be greater than zero",
+            ));
         }
         Ok(())
     }

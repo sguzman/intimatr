@@ -6,46 +6,60 @@ const EPSILON: f64 = 1.0e-6;
 fn direct_numeric_predicates_match() {
     let current = ScalarValue::Signed(100);
 
-    assert!(ScanPredicate::Exact(ScalarValue::Signed(100))
+    assert!(
+        ScanPredicate::Exact(ScalarValue::Signed(100))
+            .matches(current, None, EPSILON)
+            .unwrap()
+    );
+    assert!(
+        ScanPredicate::GreaterThan(ScalarValue::Signed(99))
+            .matches(current, None, EPSILON)
+            .unwrap()
+    );
+    assert!(
+        ScanPredicate::LessOrEqual(ScalarValue::Signed(100))
+            .matches(current, None, EPSILON)
+            .unwrap()
+    );
+    assert!(
+        ScanPredicate::BetweenInclusive {
+            min: ScalarValue::Signed(90),
+            max: ScalarValue::Signed(110),
+        }
         .matches(current, None, EPSILON)
-        .unwrap());
-    assert!(ScanPredicate::GreaterThan(ScalarValue::Signed(99))
-        .matches(current, None, EPSILON)
-        .unwrap());
-    assert!(ScanPredicate::LessOrEqual(ScalarValue::Signed(100))
-        .matches(current, None, EPSILON)
-        .unwrap());
-    assert!(ScanPredicate::BetweenInclusive {
-        min: ScalarValue::Signed(90),
-        max: ScalarValue::Signed(110),
-    }
-    .matches(current, None, EPSILON)
-    .unwrap());
+        .unwrap()
+    );
 }
 
 #[test]
 fn history_predicates_match_changed_increased_and_decreased() {
-    assert!(ScanPredicate::Changed
-        .matches(
-            ScalarValue::Unsigned(11),
-            Some(ScalarValue::Unsigned(10)),
-            EPSILON,
-        )
-        .unwrap());
-    assert!(ScanPredicate::Increased
-        .matches(
-            ScalarValue::Unsigned(11),
-            Some(ScalarValue::Unsigned(10)),
-            EPSILON,
-        )
-        .unwrap());
-    assert!(ScanPredicate::Decreased
-        .matches(
-            ScalarValue::Signed(-2),
-            Some(ScalarValue::Signed(5)),
-            EPSILON,
-        )
-        .unwrap());
+    assert!(
+        ScanPredicate::Changed
+            .matches(
+                ScalarValue::Unsigned(11),
+                Some(ScalarValue::Unsigned(10)),
+                EPSILON,
+            )
+            .unwrap()
+    );
+    assert!(
+        ScanPredicate::Increased
+            .matches(
+                ScalarValue::Unsigned(11),
+                Some(ScalarValue::Unsigned(10)),
+                EPSILON,
+            )
+            .unwrap()
+    );
+    assert!(
+        ScanPredicate::Decreased
+            .matches(
+                ScalarValue::Signed(-2),
+                Some(ScalarValue::Signed(5)),
+                EPSILON,
+            )
+            .unwrap()
+    );
 }
 
 #[test]
@@ -53,30 +67,38 @@ fn unchanged_float_uses_configurable_epsilon() {
     let current = ScalarValue::Float(10.000_000_4);
     let previous = Some(ScalarValue::Float(10.0));
 
-    assert!(ScanPredicate::Unchanged
-        .matches(current, previous, 1.0e-6)
-        .unwrap());
-    assert!(!ScanPredicate::Unchanged
-        .matches(current, previous, 1.0e-8)
-        .unwrap());
+    assert!(
+        ScanPredicate::Unchanged
+            .matches(current, previous, 1.0e-6)
+            .unwrap()
+    );
+    assert!(
+        !ScanPredicate::Unchanged
+            .matches(current, previous, 1.0e-8)
+            .unwrap()
+    );
 }
 
 #[test]
 fn increased_by_and_decreased_by_match_exact_deltas() {
-    assert!(ScanPredicate::IncreasedBy(ScalarValue::Signed(5))
-        .matches(
-            ScalarValue::Signed(25),
-            Some(ScalarValue::Signed(20)),
-            EPSILON,
-        )
-        .unwrap());
-    assert!(ScanPredicate::DecreasedBy(ScalarValue::Unsigned(3))
-        .matches(
-            ScalarValue::Unsigned(17),
-            Some(ScalarValue::Unsigned(20)),
-            EPSILON,
-        )
-        .unwrap());
+    assert!(
+        ScanPredicate::IncreasedBy(ScalarValue::Signed(5))
+            .matches(
+                ScalarValue::Signed(25),
+                Some(ScalarValue::Signed(20)),
+                EPSILON,
+            )
+            .unwrap()
+    );
+    assert!(
+        ScanPredicate::DecreasedBy(ScalarValue::Unsigned(3))
+            .matches(
+                ScalarValue::Unsigned(17),
+                Some(ScalarValue::Unsigned(20)),
+                EPSILON,
+            )
+            .unwrap()
+    );
 }
 
 #[test]

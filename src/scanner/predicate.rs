@@ -162,7 +162,11 @@ fn difference_matches(
     }
 
     match (current, previous, delta) {
-        (ScalarValue::Signed(current), ScalarValue::Signed(previous), ScalarValue::Signed(delta)) => {
+        (
+            ScalarValue::Signed(current),
+            ScalarValue::Signed(previous),
+            ScalarValue::Signed(delta),
+        ) => {
             let expected = if increasing {
                 previous.checked_add(delta)
             } else {
