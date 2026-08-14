@@ -701,7 +701,7 @@ fn address_to_usize(address: u64) -> Result<usize, CommandError> {
 fn ensure_address_range(address: usize, size: usize) -> Result<(), CommandError> {
     address
         .checked_add(size)
-        .ok_or_else(|| MemoryError::AddressRangeOverflow { address, size })?;
+        .ok_or(MemoryError::AddressRangeOverflow { address, size })?;
     Ok(())
 }
 
