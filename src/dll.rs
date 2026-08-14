@@ -1,12 +1,15 @@
 use std::{ffi::c_void, panic::AssertUnwindSafe};
 
-use windows_sys::Win32::{
-    Foundation::{BOOL, CloseHandle, HINSTANCE},
-    System::{
-        LibraryLoader::DisableThreadLibraryCalls,
-        SystemServices::{DLL_PROCESS_ATTACH, DLL_PROCESS_DETACH},
-        Threading::CreateThread,
+use windows_sys::{
+    Win32::{
+        Foundation::{CloseHandle, HINSTANCE},
+        System::{
+            LibraryLoader::DisableThreadLibraryCalls,
+            SystemServices::{DLL_PROCESS_ATTACH, DLL_PROCESS_DETACH},
+            Threading::CreateThread,
+        },
     },
+    core::BOOL,
 };
 
 use crate::{platform::windows, runtime};
