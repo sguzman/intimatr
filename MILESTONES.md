@@ -41,12 +41,12 @@ Work is ordered by dependency: later phases should build on the shared core inst
 
 - [x] Define frontend-neutral commands/results for modules, memory, scans, watches, debugger operations, and lifecycle.
 - [x] Enforce policy gates in the shared command layer rather than individually in frontends.
-- [ ] Define a versioned serialized RPC protocol.
-- [ ] Implement framed localhost TCP transport.
-- [ ] Implement optional Windows named-pipe transport.
-- [ ] Add connection/request size limits and structured per-request tracing spans.
-- [ ] Add RPC integration tests using an in-memory or loopback client/server pair.
-- [ ] Add a small first-party Rust client crate/example to prove arbitrary external frontend support.
+- [x] Define a versioned serialized RPC protocol.
+- [x] Implement framed localhost TCP transport.
+- [x] Implement optional Windows named-pipe transport.
+- [x] Add connection/request size limits and structured per-request tracing spans.
+- [x] Add RPC integration tests using an in-memory or loopback client/server pair.
+- [x] Add a small first-party Rust client crate/example to prove arbitrary external frontend support.
 
 ## 4. In-process CE-style UI
 

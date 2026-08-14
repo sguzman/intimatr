@@ -16,12 +16,18 @@ Game.exe
     │   ├── typed reads/writes
     │   ├── first scan / next scan
     │   └── result snapshots
+    ├── shared command dispatcher
+    │   ├── policy enforcement
+    │   ├── scan/watch state
+    │   └── frontend-neutral results
     ├── debugger
     │   ├── threads/registers
     │   ├── disassembly
     │   └── breakpoints
     ├── in-process GUI
-    └── RPC command server
+    └── local RPC server
+         ├── loopback TCP
+         ├── Windows named pipe
          └── arbitrary external frontends
 ```
 
@@ -73,7 +79,7 @@ The configuration owns:
 
 - target identity
 - logging settings
-- RPC transport/bind limits
+- RPC transport, endpoint, client/frame/transfer/result-page limits
 - scanner tuning parameters, access requirements, result limits, alignment, and float epsilon
 - debugger behavior
 - UI behavior
@@ -81,4 +87,6 @@ The configuration owns:
 
 ## Frontend contract
 
-The eventual UI and RPC server should both call a shared command/service layer. Memory scanning, debugger operations, and policy enforcement must not be duplicated independently in each frontend.
+The in-process UI and RPC server both call the shared `CommandDispatcher`. Memory operations, scan sessions, watches, policy checks, transfer limits, and future debugger commands must be implemented once behind that boundary rather than independently in each frontend.
+
+The RPC protocol is explicitly versioned. Version 1 uses four-byte big-endian length-prefixed JSON messages with request IDs. TCP is restricted to loopback addresses. The Windows named-pipe transport rejects remote clients. Long command execution is kept off the RPC I/O reactor so separate clients remain responsive enough to issue scan cancellation requests.

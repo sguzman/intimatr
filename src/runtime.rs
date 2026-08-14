@@ -13,7 +13,13 @@ use crate::{
 };
 
 #[cfg(windows)]
-use crate::platform::windows::{self, WindowsError};
+use std::sync::Arc;
+#[cfg(windows)]
+use crate::{
+    command::{CommandDispatcher, CommandExecutor, CommandLimits, PostAction},
+    platform::windows::{self, WindowsError, memory::CurrentProcessMemory},
+    rpc::{self, PostActionHandler, RpcServerError, RpcServerHandle},
+};
 
 static LIFECYCLE: Lifecycle = Lifecycle::new();
 static CONTEXT: Mutex<Option<RuntimeContext>> = Mutex::new(None);
@@ -23,6 +29,8 @@ pub struct RuntimeContext {
     pub host_executable: PathBuf,
     pub module_path: PathBuf,
     pub config_path: PathBuf,
+    #[cfg(windows)]
+    _rpc_server: Option<RpcServerHandle>,
     _logging_guard: LoggingGuard,
 }
 
@@ -151,6 +159,7 @@ fn bootstrap_inner(
         config = %config_path.display(),
         log_directory = %config.logging.directory.display(),
         rpc_enabled = config.rpc.enabled,
+        rpc_transport = ?config.rpc.transport,
         debugger_enabled = config.debugger.enabled,
         ui_enabled = config.ui.enabled,
         allow_memory_read = config.policy.allow_memory_read,
@@ -159,13 +168,58 @@ fn bootstrap_inner(
         "Intimatr configuration and logging are online"
     );
 
+    #[cfg(windows)]
+    let rpc_server = start_rpc_if_enabled(&config)?;
+
     Ok(RuntimeContext {
         config,
         host_executable,
         module_path,
         config_path,
+        #[cfg(windows)]
+        _rpc_server: rpc_server,
         _logging_guard: logging_guard,
     })
+}
+
+#[cfg(windows)]
+fn start_rpc_if_enabled(config: &AppConfig) -> Result<Option<RpcServerHandle>, RuntimeError> {
+    if !config.rpc.enabled {
+        info!("RPC server is disabled by configuration");
+        return Ok(None);
+    }
+
+    let executor: Arc<dyn CommandExecutor> = Arc::new(CommandDispatcher::new(
+        CurrentProcessMemory::new(),
+        config.scanner.clone(),
+        config.policy.clone(),
+        CommandLimits {
+            max_memory_transfer_bytes: config.rpc.max_memory_transfer_bytes,
+            max_scan_results_per_page: config.rpc.max_scan_results_per_page,
+        },
+    ));
+    let post_action_handler: PostActionHandler = Arc::new(handle_rpc_post_action);
+    let server = rpc::start_server(config.rpc.clone(), executor, post_action_handler)?;
+    info!(endpoint = ?server.endpoint(), "Intimatr RPC server is online");
+    Ok(Some(server))
+}
+
+#[cfg(windows)]
+fn handle_rpc_post_action(action: PostAction) {
+    match action {
+        PostAction::Shutdown => {
+            let spawn_result = std::thread::Builder::new()
+                .name("intimatr-rpc-shutdown".to_owned())
+                .spawn(|| {
+                    if let Err(error) = shutdown() {
+                        error!(error = %error, "RPC-triggered shutdown failed");
+                    }
+                });
+            if let Err(error) = spawn_result {
+                error!(error = %error, "failed to spawn RPC shutdown worker");
+            }
+        }
+    }
 }
 
 fn module_directory(module_path: &Path) -> Result<PathBuf, RuntimeError> {
@@ -187,6 +241,9 @@ pub enum RuntimeError {
     #[cfg(windows)]
     #[error(transparent)]
     Windows(#[from] WindowsError),
+    #[cfg(windows)]
+    #[error(transparent)]
+    Rpc(#[from] RpcServerError),
     #[error("Intimatr runtime context mutex was poisoned")]
     ContextPoisoned,
     #[error("Intimatr runtime is already initialized")]
