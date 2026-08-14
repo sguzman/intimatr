@@ -2,7 +2,7 @@
 
 Intimatr is a Rust-first embedded memory research toolkit for offline single-player games. The long-term design is a DLL that hosts a Cheat Engine-like scanner, debugger-oriented UI, and local RPC server while sharing one core implementation between every frontend.
 
-The repository is currently at the foundation milestone: configuration, logging, scan predicate semantics, tests, CI, and DLL crate output are defined. Real Windows memory traversal, the RPC server, GUI, and debugger are the next milestones.
+The Windows DLL bootstrap/lifecycle milestone is complete: `intimatr.dll` now has a minimal loader-lock-aware entrypoint, deferred bootstrap thread, per-game config resolution, structured logging initialization, panic-contained FFI boundaries, explicit lifecycle states, and an exported clean-shutdown entrypoint. Real Windows memory traversal and scan sessions are the next milestone.
 
 ## Build
 
@@ -21,6 +21,23 @@ The DLL will be produced at:
 target\release\intimatr.dll
 ```
 
+## Runtime layout
+
+Per-game configuration is resolved relative to the loaded DLL, not the game's current working directory. A typical deployment is:
+
+```text
+Intimatr/
+├── intimatr.dll
+├── config/
+│   └── ExampleGame.exe.toml
+└── logs/
+    └── intimatr.log
+```
+
+When loaded into `ExampleGame.exe`, the bootstrap thread resolves `config/ExampleGame.exe.toml`, validates `[target].executable`, anchors relative runtime paths such as `logging.directory` to the DLL directory, initializes tracing, and transitions the runtime to `Running`.
+
+The exported `intimatr_lifecycle_state` function returns the numeric lifecycle state. `intimatr_request_shutdown` performs the full shutdown path outside `DllMain`; loaders that intentionally unload the DLL should call it before unloading so the non-blocking logging worker can flush and stop cleanly.
+
 ## Per-game configuration
 
 Each executable gets exactly one TOML file named after the executable, including the `.exe` suffix:
@@ -30,9 +47,7 @@ config/
 └── ExampleGame.exe.toml
 ```
 
-At runtime, `ExampleGame.exe` will resolve to `config/ExampleGame.exe.toml`. The `[target].executable` value is then validated against the actual process executable name.
-
-`config/ExampleGame.exe.toml` is the initial reference configuration and contains logging, RPC, scanner tuning, debugger, UI, and policy sections.
+`config/ExampleGame.exe.toml` is the reference configuration and contains logging, RPC, scanner tuning, debugger, UI, and policy sections.
 
 ## Scanner predicate core
 

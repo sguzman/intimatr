@@ -40,6 +40,15 @@ The project is for offline/single-player research and does not include anti-chea
 - Update `MILESTONES.md` as work lands and check completed items off in the same change.
 - Keep Windows-specific unsafe code behind small, auditable modules; the scanner predicate and protocol layers should remain platform-neutral and testable.
 
+## DLL bootstrap invariants
+
+- `DllMain` performs only loader-lock-safe/minimal work: lifecycle atomics, `DisableThreadLibraryCalls`, and creation of the bootstrap thread. It never parses TOML, initializes tracing, scans memory, starts RPC, or initializes the UI.
+- The bootstrap thread resolves both the loaded `intimatr.dll` path and the current process executable before starting higher-level subsystems.
+- Per-game configuration is rooted beside the DLL: `<intimatr directory>/config/<ExecutableName>.toml`.
+- Relative runtime paths in configuration, including `logging.directory`, are anchored to the DLL directory rather than the process working directory.
+- FFI entrypoints and the bootstrap thread contain Rust panics so unwinding never crosses a Windows ABI boundary.
+- Full shutdown runs outside `DllMain`. Process detach only raises an atomic shutdown request; callers that intentionally unload the DLL should invoke the exported `intimatr_request_shutdown` entrypoint before unloading so worker-backed resources can flush and stop cleanly.
+
 ## Scanner semantics
 
 The scan engine is general-purpose rather than game-specific. At minimum, first-scan and next-scan filtering must support:
@@ -56,7 +65,7 @@ Historical predicates operate against a previous scan snapshot. Float equality i
 
 ## Configuration
 
-Configuration is resolved from the current executable filename. If the target is `SomeGame.exe`, Intimatr loads `config/SomeGame.exe.toml` and validates that `[target].executable` matches the actual executable name case-insensitively.
+Configuration is resolved from the current executable filename. If the target is `SomeGame.exe`, Intimatr loads `<intimatr directory>/config/SomeGame.exe.toml` and validates that `[target].executable` matches the actual executable name case-insensitively.
 
 The configuration owns:
 

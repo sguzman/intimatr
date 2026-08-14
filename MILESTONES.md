@@ -15,12 +15,13 @@ Work is ordered by dependency: later phases should build on the shared core inst
 
 ## 1. Windows DLL bootstrap and lifecycle
 
-- [ ] Add the minimal Windows DLL entrypoint and keep loader-lock work trivial.
-- [ ] Move initialization onto a dedicated bootstrap thread after process attach.
-- [ ] Resolve the host executable path and automatically load its per-game TOML configuration.
-- [ ] Initialize tracing before subsystem startup and log lifecycle transitions extensively.
-- [ ] Add panic containment around FFI/thread entry boundaries.
-- [ ] Add explicit lifecycle states and a clean shutdown path.
+- [x] Add the minimal Windows DLL entrypoint and keep loader-lock work trivial.
+- [x] Move initialization onto a dedicated bootstrap thread after process attach.
+- [x] Resolve the host executable path and automatically load its per-game TOML configuration.
+- [x] Initialize tracing before subsystem startup and log lifecycle transitions extensively.
+- [x] Add panic containment around FFI/thread entry boundaries.
+- [x] Add explicit lifecycle states and a clean shutdown path.
+- [x] Add lifecycle/path-resolution tests and keep Windows FFI isolated behind auditable modules.
 
 ## 2. Memory engine and CE-style scanner
 
