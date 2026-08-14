@@ -1,5 +1,6 @@
 use std::{
     fs,
+    net::SocketAddr,
     path::{Path, PathBuf},
 };
 
@@ -109,6 +110,45 @@ impl AppConfig {
                 "rpc.max_request_bytes must be greater than zero",
             ));
         }
+        if self.rpc.max_response_bytes == 0 {
+            return Err(ConfigError::InvalidValue(
+                "rpc.max_response_bytes must be greater than zero",
+            ));
+        }
+        if self.rpc.max_memory_transfer_bytes == 0 {
+            return Err(ConfigError::InvalidValue(
+                "rpc.max_memory_transfer_bytes must be greater than zero",
+            ));
+        }
+        if self.rpc.max_scan_results_per_page == 0 {
+            return Err(ConfigError::InvalidValue(
+                "rpc.max_scan_results_per_page must be greater than zero",
+            ));
+        }
+        match self.rpc.transport {
+            RpcTransport::Tcp => {
+                let address: SocketAddr = self.rpc.bind.parse().map_err(|_| {
+                    ConfigError::InvalidValue("rpc.bind must be a valid socket address")
+                })?;
+                if !address.ip().is_loopback() {
+                    return Err(ConfigError::InvalidValue(
+                        "rpc.bind must use a loopback IP address",
+                    ));
+                }
+            }
+            RpcTransport::NamedPipe => {
+                if self.rpc.pipe_name.trim().is_empty() {
+                    return Err(ConfigError::InvalidValue(
+                        "rpc.pipe_name must not be empty for named-pipe transport",
+                    ));
+                }
+                if self.rpc.max_clients > 254 {
+                    return Err(ConfigError::InvalidValue(
+                        "rpc.max_clients must not exceed 254 for named-pipe transport",
+                    ));
+                }
+            }
+        }
         Ok(())
     }
 }
@@ -156,10 +196,18 @@ pub struct RpcConfig {
     pub transport: RpcTransport,
     #[serde(default = "default_rpc_bind")]
     pub bind: String,
+    #[serde(default = "default_pipe_name")]
+    pub pipe_name: String,
     #[serde(default = "default_max_clients")]
     pub max_clients: usize,
     #[serde(default = "default_max_request_bytes")]
     pub max_request_bytes: usize,
+    #[serde(default = "default_max_response_bytes")]
+    pub max_response_bytes: usize,
+    #[serde(default = "default_max_memory_transfer_bytes")]
+    pub max_memory_transfer_bytes: usize,
+    #[serde(default = "default_max_scan_results_per_page")]
+    pub max_scan_results_per_page: usize,
 }
 
 impl Default for RpcConfig {
@@ -168,8 +216,12 @@ impl Default for RpcConfig {
             enabled: true,
             transport: RpcTransport::Tcp,
             bind: default_rpc_bind(),
+            pipe_name: default_pipe_name(),
             max_clients: default_max_clients(),
             max_request_bytes: default_max_request_bytes(),
+            max_response_bytes: default_max_response_bytes(),
+            max_memory_transfer_bytes: default_max_memory_transfer_bytes(),
+            max_scan_results_per_page: default_max_scan_results_per_page(),
         }
     }
 }
@@ -318,12 +370,28 @@ fn default_rpc_bind() -> String {
     "127.0.0.1:31337".to_owned()
 }
 
+fn default_pipe_name() -> String {
+    "intimatr".to_owned()
+}
+
 fn default_max_clients() -> usize {
     4
 }
 
 fn default_max_request_bytes() -> usize {
     1024 * 1024
+}
+
+fn default_max_response_bytes() -> usize {
+    4 * 1024 * 1024
+}
+
+fn default_max_memory_transfer_bytes() -> usize {
+    256 * 1024
+}
+
+fn default_max_scan_results_per_page() -> usize {
+    4096
 }
 
 fn default_chunk_size() -> usize {

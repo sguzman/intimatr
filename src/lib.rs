@@ -9,6 +9,7 @@ pub mod lifecycle;
 pub mod logging;
 pub mod memory;
 pub mod platform;
+pub mod rpc;
 pub mod runtime;
 pub mod scanner;
 
