@@ -1,8 +1,8 @@
 # Intimatr
 
-Intimatr is a Rust-first embedded memory research toolkit for offline single-player games. It is built as a Windows DLL with one shared command core behind a Cheat Engine-style scanner, native CE-style tool windows, an in-process debugger, and local RPC for external frontends.
+Intimatr is a Rust-first embedded memory research toolkit for offline single-player games. It is built as a Windows DLL with one shared command core behind a Cheat Engine-style scanner, native CE-style tool windows, an in-process debugger, advanced memory-analysis primitives, and local RPC for external frontends.
 
-Milestones 0–5 are implemented. The DLL resolves per-game configuration, enumerates current-process memory, performs typed reads and policy-gated writes, runs first/next scans, maintains shared watches/freezes, enumerates loaded modules and process threads, exposes debugger state/events, and shares the same command state across the native UIs and RPC clients.
+Milestones 0–6 are implemented. The DLL resolves per-game configuration, enumerates current-process memory, performs typed reads and policy-gated writes, runs scalar and wildcard byte-pattern searches, maintains shared scans/watches, resolves pointer chains and module-relative addresses, inspects structures, exposes debugger state/events, and shares the same command state across native UIs and RPC clients.
 
 ## Build
 
@@ -70,7 +70,7 @@ The debugger provides:
 - an ordered debugger-event feed consumed by both the debugger UI and RPC
 - target-specific persisted debugger-window state
 
-Thread suspension is deliberately local and explicit: Intimatr tracks only suspensions that it created and refuses ambiguous pre-existing suspend counts rather than pretending to own them. Hardware breakpoint hits are trace-style events and automatically continue after Intimatr records/cleans its own debug state; Milestone 5 does not implement a global stop-the-world external-debugger model.
+Thread suspension is deliberately local and explicit: Intimatr tracks only suspensions that it created and refuses ambiguous pre-existing suspend counts rather than pretending to own them. Hardware breakpoint hits are trace-style events and automatically continue after Intimatr records/cleans its own debug state; the debugger does not claim a global stop-the-world external-debugger model.
 
 The Windows x64 context wrapper explicitly provides the alignment required by the Windows context APIs before calling `GetThreadContext`/`SetThreadContext`.
 
@@ -80,26 +80,31 @@ See `docs/debugger.md` for the debugger model and command surface.
 
 `CurrentProcessMemory` is the Windows in-process backend. It normalizes `VirtualQuery` results into committed/readable/writable/executable/guard metadata and implements exact byte reads/writes.
 
-The platform-neutral scanner supports these predicates:
-
-- unknown initial value
-- exact / not equal
-- `>` / `>=`
-- `<` / `<=`
-- inclusive range
-- changed / unchanged
-- increased / decreased
-- increased by / decreased by
-
-Supported scan types are `i8`, `i16`, `i32`, `i64`, `u8`, `u16`, `u32`, `u64`, `f32`, and `f64`. First scans traverse eligible regions in configured chunks and alignment. Next scans refresh only existing candidates and compare against their prior snapshots.
+The platform-neutral scalar scanner supports unknown-initial-value scans, exact/comparison/range predicates, changed/unchanged, increased/decreased, and delta predicates for signed integers, unsigned integers, `f32`, and `f64`. First scans traverse eligible regions in configured chunks and alignment; next scans refresh existing candidates against their previous snapshots.
 
 Scans expose cancellation, progress callbacks, result limits, read-failure statistics, elapsed time, and throughput logging. Deterministic synthetic-memory tests exercise chunk-boundary and historical-predicate behavior independently of Windows process memory.
 
+## Advanced search and analysis
+
+Milestone 6 adds reusable analysis primitives without creating a second memory-access or policy layer:
+
+- array-of-bytes scanning with exact bytes plus full/nibble wildcards such as `??`, `?F`, and `A?`
+- absolute and case-insensitive module-relative expressions such as `Game.exe+0x1234`
+- explicit 32/64-bit pointer-chain resolution and bounded reverse pointer-chain search
+- structure-oriented scalar, pointer, and raw-byte inspection
+- named saved scalar scan sessions and reusable watch templates
+- per-target, versioned JSON analysis workspaces
+- sequential `analysis.batch` automation through the same command/RPC implementation
+
+Saved watch templates prefer module-relative addresses when the address belongs to a loaded module, making them naturally ASLR-friendly. Saved scan sessions remain snapshots of their original candidate addresses and should be revalidated after process-layout changes.
+
+See `docs/analysis.md` for pattern syntax, pointer semantics, address expressions, persistence, and RPC examples.
+
 ## Shared commands and RPC
 
-The `command` module is the frontend-neutral service boundary for memory operations, scan sessions, watches/freezes, module/thread enumeration, debugger operations, and lifecycle. Policy and transfer limits are enforced there, so the in-process UIs and RPC clients cannot accidentally implement different access behavior or maintain separate state.
+The `command` module is the frontend-neutral service boundary for memory operations, scan sessions, watches/freezes, module/thread enumeration, debugger operations, advanced analysis, and lifecycle. Policy and transfer limits are enforced there, so native UIs and RPC clients cannot accidentally implement different access behavior or maintain separate state.
 
-RPC protocol v1 uses length-prefixed JSON and supports localhost TCP plus Windows named pipes. TCP binds are restricted to loopback addresses, named pipes reject remote clients, and request/response sizes and concurrent clients are bounded by each game's TOML file. Debugger events are exposed as a sequence-number cursor feed through the `debugger_events` command, so arbitrary clients can incrementally consume the same events shown by the native debugger UI.
+RPC protocol v1 uses length-prefixed JSON and supports localhost TCP plus Windows named pipes. TCP binds are restricted to loopback addresses, named pipes reject remote clients, and request/response sizes and concurrent clients are bounded by each game's TOML file. Debugger events are exposed as a sequence-number cursor feed, while advanced analysis is exposed through the serialized `analysis` command and nested `AnalysisCommand` payloads.
 
 A first-party client example is included:
 
