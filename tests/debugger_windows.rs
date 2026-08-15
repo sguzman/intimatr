@@ -110,7 +110,7 @@ fn controls_a_separate_thread_and_tracks_breakpoints_and_events() {
     let breakpoint = debugger
         .set_hardware_breakpoint(
             worker.thread_id,
-            breakpoint_probe as usize as u64,
+            breakpoint_probe as *const () as usize as u64,
             HardwareBreakpointKind::Execute,
             1,
         )
