@@ -60,14 +60,14 @@ Work is ordered by dependency: later phases should build on the shared core inst
 
 ## 5. Debugger core and UI
 
-- [ ] Enumerate threads and expose register/context snapshots.
-- [ ] Integrate an x86/x64 disassembler.
-- [ ] Add instruction/memory views and navigation.
-- [ ] Implement hardware breakpoint management.
-- [ ] Implement exception-based breakpoint handling with carefully scoped VEH logic.
-- [ ] Add continue/pause/single-step state machinery where viable in-process.
-- [ ] Surface debugger events through both the UI and RPC stream.
-- [ ] Add debugger-focused tests around state transitions and breakpoint bookkeeping.
+- [x] Enumerate threads and expose register/context snapshots.
+- [x] Integrate an x86/x64 disassembler.
+- [x] Add instruction/memory views and navigation.
+- [x] Implement hardware breakpoint management.
+- [x] Implement exception-based breakpoint handling with carefully scoped VEH logic.
+- [x] Add continue/pause/single-step state machinery where viable in-process.
+- [x] Surface debugger events through both the UI and RPC stream.
+- [x] Add debugger-focused tests around state transitions and breakpoint bookkeeping.
 
 ## 6. Advanced search and analysis
 

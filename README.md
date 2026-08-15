@@ -2,7 +2,7 @@
 
 Intimatr is a Rust-first embedded memory research toolkit for offline single-player games. It is built as a Windows DLL with one shared command core behind a Cheat Engine-style scanner, native CE-style tool windows, an in-process debugger, and local RPC for external frontends.
 
-Milestones 0–4 are complete, and the Milestone 5 debugger implementation is on the current development branch. The DLL resolves per-game configuration, enumerates current-process memory, performs typed reads and policy-gated writes, runs first/next scans, maintains shared watches/freezes, enumerates loaded modules and process threads, and exposes the same command state to the native UIs and RPC clients.
+Milestones 0–5 are implemented. The DLL resolves per-game configuration, enumerates current-process memory, performs typed reads and policy-gated writes, runs first/next scans, maintains shared watches/freezes, enumerates loaded modules and process threads, exposes debugger state/events, and shares the same command state across the native UIs and RPC clients.
 
 ## Build
 
