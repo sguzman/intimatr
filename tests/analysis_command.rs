@@ -42,10 +42,12 @@ impl MemorySource for FakeMemory {
     }
 
     fn read_exact(&self, address: usize, buffer: &mut [u8]) -> Result<(), MemoryError> {
-        let offset = address.checked_sub(BASE).ok_or(MemoryError::RegionNotFound {
-            address,
-            size: buffer.len(),
-        })?;
+        let offset = address
+            .checked_sub(BASE)
+            .ok_or(MemoryError::RegionNotFound {
+                address,
+                size: buffer.len(),
+            })?;
         let end = offset
             .checked_add(buffer.len())
             .ok_or(MemoryError::AddressRangeOverflow {
@@ -74,10 +76,12 @@ impl MemoryTarget for FakeMemory {
         if !policy.allow_memory_write {
             return Err(MemoryError::WriteDenied);
         }
-        let offset = address.checked_sub(BASE).ok_or(MemoryError::RegionNotFound {
-            address,
-            size: bytes.len(),
-        })?;
+        let offset = address
+            .checked_sub(BASE)
+            .ok_or(MemoryError::RegionNotFound {
+                address,
+                size: bytes.len(),
+            })?;
         let end = offset
             .checked_add(bytes.len())
             .ok_or(MemoryError::AddressRangeOverflow {
@@ -112,7 +116,10 @@ fn dispatcher(bytes: Vec<u8>) -> CommandDispatcher<FakeMemory> {
     .with_analysis_directory(directory)
 }
 
-fn analysis(dispatcher: &CommandDispatcher<FakeMemory>, request: AnalysisCommand) -> AnalysisResult {
+fn analysis(
+    dispatcher: &CommandDispatcher<FakeMemory>,
+    request: AnalysisCommand,
+) -> AnalysisResult {
     match dispatcher
         .execute(Command::Analysis { request })
         .expect("analysis command should succeed")
@@ -240,7 +247,9 @@ fn saved_scans_and_watch_templates_round_trip_through_workspace() {
             label: None,
         },
     ) {
-        AnalysisResult::WatchAdded { watch_id: restored, .. } => assert_ne!(restored, watch_id),
+        AnalysisResult::WatchAdded {
+            watch_id: restored, ..
+        } => assert_ne!(restored, watch_id),
         other => panic!("unexpected watch-template result: {other:?}"),
     }
 }
