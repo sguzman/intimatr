@@ -71,12 +71,12 @@ Work is ordered by dependency: later phases should build on the shared core inst
 
 ## 6. Advanced search and analysis
 
-- [ ] Add array-of-bytes/pattern scanning with wildcards.
-- [ ] Add pointer-chain search and validation.
-- [ ] Add module-relative/symbolic address expressions.
-- [ ] Add saved scan sessions and reusable watch definitions.
-- [ ] Add structure-oriented memory inspection helpers.
-- [ ] Add scriptable automation through the RPC command API without duplicating core logic.
+- [x] Add array-of-bytes/pattern scanning with wildcards.
+- [x] Add pointer-chain search and validation.
+- [x] Add module-relative/symbolic address expressions.
+- [x] Add saved scan sessions and reusable watch definitions.
+- [x] Add structure-oriented memory inspection helpers.
+- [x] Add scriptable automation through the RPC command API without duplicating core logic.
 
 ## 7. Hardening and releases
 
