@@ -14,4 +14,7 @@ pub mod runtime;
 pub mod scanner;
 
 #[cfg(windows)]
+pub mod ui;
+
+#[cfg(windows)]
 mod dll;

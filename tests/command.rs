@@ -229,7 +229,10 @@ fn watches_are_shared_frontend_state_and_refresh_through_memory_core() {
         .result;
 
     let watch_id = match added {
-        CommandResult::WatchAdded { watch } => watch.id,
+        CommandResult::WatchAdded { watch } => {
+            assert!(watch.frozen.is_none());
+            watch.id
+        }
         other => panic!("unexpected result: {other:?}"),
     };
 
@@ -247,6 +250,91 @@ fn watches_are_shared_frontend_state_and_refresh_through_memory_core() {
         }
         other => panic!("unexpected result: {other:?}"),
     }
+}
+
+#[test]
+fn frozen_watches_reapply_the_shared_value_during_refresh() {
+    let memory = FakeMemory::from_i32(&[42]);
+    let dispatcher = dispatcher(memory.clone());
+
+    let watch_id = match dispatcher
+        .execute(Command::AddWatch {
+            address: BASE as u64,
+            value_type: ValueType::I32,
+            label: None,
+        })
+        .unwrap()
+        .result
+    {
+        CommandResult::WatchAdded { watch } => watch.id,
+        other => panic!("unexpected result: {other:?}"),
+    };
+
+    dispatcher
+        .execute(Command::SetWatchFreeze {
+            watch_id,
+            value: Some(ScalarValue::Signed(42)),
+        })
+        .expect("freeze should be accepted");
+
+    memory
+        .write_exact(
+            BASE,
+            &7_i32.to_le_bytes(),
+            WritePolicy {
+                allow_memory_write: true,
+                allow_code_patch: false,
+            },
+        )
+        .unwrap();
+
+    let refreshed = dispatcher.execute(Command::RefreshWatches).unwrap().result;
+    match refreshed {
+        CommandResult::WatchValues { values } => {
+            assert_eq!(values[0].value, Some(ScalarValue::Signed(42)));
+            assert_eq!(values[0].watch.frozen, Some(ScalarValue::Signed(42)));
+        }
+        other => panic!("unexpected result: {other:?}"),
+    }
+
+    let mut bytes = [0_u8; 4];
+    memory.read_exact(BASE, &mut bytes).unwrap();
+    assert_eq!(i32::from_le_bytes(bytes), 42);
+}
+
+#[test]
+fn enabling_watch_freeze_respects_write_policy() {
+    let memory = FakeMemory::from_i32(&[42]);
+    let policy = PolicyConfig {
+        allow_memory_write: false,
+        ..PolicyConfig::default()
+    };
+    let dispatcher = CommandDispatcher::new(
+        memory,
+        ScannerConfig::default(),
+        policy,
+        CommandLimits::default(),
+    );
+    let watch_id = match dispatcher
+        .execute(Command::AddWatch {
+            address: BASE as u64,
+            value_type: ValueType::I32,
+            label: None,
+        })
+        .unwrap()
+        .result
+    {
+        CommandResult::WatchAdded { watch } => watch.id,
+        other => panic!("unexpected result: {other:?}"),
+    };
+
+    let error = dispatcher
+        .execute(Command::SetWatchFreeze {
+            watch_id,
+            value: Some(ScalarValue::Signed(42)),
+        })
+        .expect_err("freeze should honor write policy");
+    assert_eq!(error.code(), "policy_denied");
 }
 
 #[test]

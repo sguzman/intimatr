@@ -35,7 +35,13 @@ prefer_hardware_breakpoints = true
 
 [ui]
 enabled = true
+initially_visible = true
+always_on_top = false
 toggle_key = "Insert"
+width = 1180.0
+height = 760.0
+watch_refresh_ms = 250
+scan_page_size = 256
 
 [policy]
 allow_memory_read = true

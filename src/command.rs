@@ -19,6 +19,9 @@ use crate::{
     },
 };
 
+#[cfg(windows)]
+use crate::platform::windows::WindowsError;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CommandLimits {
     pub max_memory_transfer_bytes: usize,
@@ -84,6 +87,10 @@ pub enum Command {
         value_type: ValueType,
         label: Option<String>,
     },
+    SetWatchFreeze {
+        watch_id: u64,
+        value: Option<ScalarValue>,
+    },
     RemoveWatch {
         watch_id: u64,
     },
@@ -114,6 +121,7 @@ impl Command {
             Self::CancelScan { .. } => "cancel_scan",
             Self::DeleteScan { .. } => "delete_scan",
             Self::AddWatch { .. } => "add_watch",
+            Self::SetWatchFreeze { .. } => "set_watch_freeze",
             Self::RemoveWatch { .. } => "remove_watch",
             Self::ListWatches => "list_watches",
             Self::RefreshWatches => "refresh_watches",
@@ -167,6 +175,9 @@ pub enum CommandResult {
         existed: bool,
     },
     WatchAdded {
+        watch: WatchDefinition,
+    },
+    WatchUpdated {
         watch: WatchDefinition,
     },
     WatchRemoved {
@@ -238,12 +249,13 @@ impl ScanSummary {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WatchDefinition {
     pub id: u64,
     pub address: u64,
     pub value_type: ValueType,
     pub label: Option<String>,
+    pub frozen: Option<ScalarValue>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -536,9 +548,29 @@ where
                     address,
                     value_type,
                     label,
+                    frozen: None,
                 };
                 lock(&self.watches)?.insert(id, watch.clone());
                 CommandExecution::immediate(CommandResult::WatchAdded { watch })
+            }
+            Command::SetWatchFreeze { watch_id, value } => {
+                if value.is_some() {
+                    self.require_memory_write()?;
+                }
+                let mut watches = lock(&self.watches)?;
+                let watch = watches
+                    .get_mut(&watch_id)
+                    .ok_or(CommandError::WatchNotFound(watch_id))?;
+                if let Some(value) = value {
+                    watch
+                        .value_type
+                        .encode(value)
+                        .map_err(MemoryError::from)?;
+                }
+                watch.frozen = value;
+                CommandExecution::immediate(CommandResult::WatchUpdated {
+                    watch: watch.clone(),
+                })
             }
             Command::RemoveWatch { watch_id } => {
                 let existed = lock(&self.watches)?.remove(&watch_id).is_some();
@@ -555,33 +587,48 @@ where
                 watches.sort_unstable_by_key(|watch| watch.id);
                 let values = watches
                     .into_iter()
-                    .map(|watch| {
-                        match address_to_usize(watch.address).and_then(|address| {
-                            read_scalar(&self.memory, address, watch.value_type)
-                                .map_err(CommandError::from)
-                        }) {
-                            Ok(value) => WatchValue {
-                                watch,
-                                value: Some(value),
-                                error: None,
-                            },
-                            Err(error) => WatchValue {
-                                watch,
-                                value: None,
-                                error: Some(error.to_string()),
-                            },
-                        }
-                    })
+                    .map(|watch| self.refresh_watch(watch))
                     .collect();
                 CommandExecution::immediate(CommandResult::WatchValues { values })
             }
             Command::ListModules => {
                 self.require_memory_read()?;
-                return Err(CommandError::NotImplemented("module enumeration"));
+                #[cfg(windows)]
+                {
+                    let modules = crate::platform::windows::loaded_modules()?
+                        .into_iter()
+                        .map(|module| ModuleInfo {
+                            name: module.name,
+                            path: module.path,
+                            base: module.base,
+                            size: module.size,
+                        })
+                        .collect();
+                    CommandExecution::immediate(CommandResult::Modules { modules })
+                }
+                #[cfg(not(windows))]
+                {
+                    return Err(CommandError::NotImplemented("module enumeration"));
+                }
             }
-            Command::ListThreads | Command::ReadThreadRegisters { .. } => {
+            Command::ListThreads => {
                 self.require_debugger()?;
-                return Err(CommandError::NotImplemented("debugger thread inspection"));
+                #[cfg(windows)]
+                {
+                    let threads = crate::platform::windows::current_process_threads()?
+                        .into_iter()
+                        .map(|thread_id| ThreadInfo { thread_id })
+                        .collect();
+                    CommandExecution::immediate(CommandResult::Threads { threads })
+                }
+                #[cfg(not(windows))]
+                {
+                    return Err(CommandError::NotImplemented("thread enumeration"));
+                }
+            }
+            Command::ReadThreadRegisters { .. } => {
+                self.require_debugger()?;
+                return Err(CommandError::NotImplemented("debugger register inspection"));
             }
             Command::Shutdown => {
                 if !self.policy.allow_remote_shutdown {
@@ -612,6 +659,35 @@ where
             );
         }
         Ok(cancellations.len())
+    }
+
+    fn refresh_watch(&self, watch: WatchDefinition) -> WatchValue {
+        let result = address_to_usize(watch.address).and_then(|address| {
+            if let Some(frozen) = watch.frozen {
+                self.require_memory_write()?;
+                write_scalar(
+                    &self.memory,
+                    address,
+                    watch.value_type,
+                    frozen,
+                    WritePolicy::from(&self.policy),
+                )?;
+            }
+            read_scalar(&self.memory, address, watch.value_type).map_err(CommandError::from)
+        });
+
+        match result {
+            Ok(value) => WatchValue {
+                watch,
+                value: Some(value),
+                error: None,
+            },
+            Err(error) => WatchValue {
+                watch,
+                value: None,
+                error: Some(error.to_string()),
+            },
+        }
     }
 
     fn register_active_scan(
@@ -721,10 +797,15 @@ pub enum CommandError {
     ScanNotFound(u64),
     #[error("scan {0} already has an active operation")]
     ScanBusy(u64),
+    #[error("watch {0} does not exist")]
+    WatchNotFound(u64),
     #[error("shared command state mutex was poisoned")]
     StatePoisoned,
     #[error("{0} is defined in the command contract but is not implemented yet")]
     NotImplemented(&'static str),
+    #[cfg(windows)]
+    #[error(transparent)]
+    Windows(#[from] WindowsError),
     #[error(transparent)]
     Memory(#[from] MemoryError),
     #[error(transparent)]
@@ -739,8 +820,11 @@ impl CommandError {
             Self::AddressOutOfRange(_) => "address_out_of_range",
             Self::ScanNotFound(_) => "scan_not_found",
             Self::ScanBusy(_) => "scan_busy",
+            Self::WatchNotFound(_) => "watch_not_found",
             Self::StatePoisoned => "state_poisoned",
             Self::NotImplemented(_) => "not_implemented",
+            #[cfg(windows)]
+            Self::Windows(_) => "platform_error",
             Self::Memory(_) => "memory_error",
             Self::Scan(_) => "scan_error",
         }

@@ -149,6 +149,36 @@ impl AppConfig {
                 }
             }
         }
+        if self.ui.toggle_key.trim().is_empty() {
+            return Err(ConfigError::InvalidValue(
+                "ui.toggle_key must not be empty",
+            ));
+        }
+        if !self.ui.width.is_finite() || self.ui.width <= 0.0 {
+            return Err(ConfigError::InvalidValue(
+                "ui.width must be finite and greater than zero",
+            ));
+        }
+        if !self.ui.height.is_finite() || self.ui.height <= 0.0 {
+            return Err(ConfigError::InvalidValue(
+                "ui.height must be finite and greater than zero",
+            ));
+        }
+        if self.ui.watch_refresh_ms == 0 {
+            return Err(ConfigError::InvalidValue(
+                "ui.watch_refresh_ms must be greater than zero",
+            ));
+        }
+        if self.ui.scan_page_size == 0 {
+            return Err(ConfigError::InvalidValue(
+                "ui.scan_page_size must be greater than zero",
+            ));
+        }
+        if self.ui.scan_page_size > self.rpc.max_scan_results_per_page {
+            return Err(ConfigError::InvalidValue(
+                "ui.scan_page_size must not exceed rpc.max_scan_results_per_page",
+            ));
+        }
         Ok(())
     }
 }
@@ -293,15 +323,33 @@ impl Default for DebuggerConfig {
 pub struct UiConfig {
     #[serde(default = "default_true")]
     pub enabled: bool,
+    #[serde(default = "default_true")]
+    pub initially_visible: bool,
+    #[serde(default)]
+    pub always_on_top: bool,
     #[serde(default = "default_toggle_key")]
     pub toggle_key: String,
+    #[serde(default = "default_ui_width")]
+    pub width: f32,
+    #[serde(default = "default_ui_height")]
+    pub height: f32,
+    #[serde(default = "default_watch_refresh_ms")]
+    pub watch_refresh_ms: u64,
+    #[serde(default = "default_ui_scan_page_size")]
+    pub scan_page_size: usize,
 }
 
 impl Default for UiConfig {
     fn default() -> Self {
         Self {
             enabled: true,
+            initially_visible: true,
+            always_on_top: false,
             toggle_key: default_toggle_key(),
+            width: default_ui_width(),
+            height: default_ui_height(),
+            watch_refresh_ms: default_watch_refresh_ms(),
+            scan_page_size: default_ui_scan_page_size(),
         }
     }
 }
@@ -412,4 +460,20 @@ fn default_float_epsilon() -> f64 {
 
 fn default_toggle_key() -> String {
     "Insert".to_owned()
+}
+
+fn default_ui_width() -> f32 {
+    1180.0
+}
+
+fn default_ui_height() -> f32 {
+    760.0
+}
+
+fn default_watch_refresh_ms() -> u64 {
+    250
+}
+
+fn default_ui_scan_page_size() -> usize {
+    256
 }

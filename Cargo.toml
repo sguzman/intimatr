@@ -19,11 +19,15 @@ tracing-appender = "0.2.5"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter", "fmt"] }
 
 [target.'cfg(windows)'.dependencies]
+eframe = { version = "0.35.0", default-features = false, features = ["default_fonts", "glow", "persistence"] }
+winit = { version = "0.30.13", default-features = false, features = ["rwh_06"] }
 windows-sys = { version = "0.61.2", features = [
     "Win32_Foundation",
     "Win32_System_Diagnostics_Debug",
+    "Win32_System_Diagnostics_ToolHelp",
     "Win32_System_LibraryLoader",
     "Win32_System_Memory",
     "Win32_System_SystemServices",
     "Win32_System_Threading",
+    "Win32_UI_Input_KeyboardAndMouse",
 ] }

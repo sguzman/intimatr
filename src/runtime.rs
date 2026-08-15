@@ -17,6 +17,7 @@ use crate::{
     command::{CommandDispatcher, CommandExecutor, CommandLimits, PostAction},
     platform::windows::{self, WindowsError, memory::CurrentProcessMemory},
     rpc::{self, PostActionHandler, RpcServerError, RpcServerHandle},
+    ui::{self, UiError, UiHandle},
 };
 #[cfg(windows)]
 use std::sync::Arc;
@@ -29,6 +30,10 @@ pub struct RuntimeContext {
     pub host_executable: PathBuf,
     pub module_path: PathBuf,
     pub config_path: PathBuf,
+    #[cfg(windows)]
+    command_executor: Arc<dyn CommandExecutor>,
+    #[cfg(windows)]
+    _ui: Option<UiHandle>,
     #[cfg(windows)]
     _rpc_server: Option<RpcServerHandle>,
     _logging_guard: LoggingGuard,
@@ -55,7 +60,10 @@ pub fn shutdown() -> Result<(), RuntimeError> {
         guard.take()
     };
 
-    if context.is_none() {
+    if let Some(context) = context.as_ref() {
+        #[cfg(windows)]
+        context.command_executor.shutdown();
+    } else {
         warn!("Intimatr shutdown found no active runtime context");
     }
 
@@ -162,6 +170,7 @@ fn bootstrap_inner(
         rpc_transport = ?config.rpc.transport,
         debugger_enabled = config.debugger.enabled,
         ui_enabled = config.ui.enabled,
+        ui_toggle_key = %config.ui.toggle_key,
         allow_memory_read = config.policy.allow_memory_read,
         allow_memory_write = config.policy.allow_memory_write,
         allow_code_patch = config.policy.allow_code_patch,
@@ -169,7 +178,15 @@ fn bootstrap_inner(
     );
 
     #[cfg(windows)]
-    let rpc_server = start_rpc_if_enabled(&config)?;
+    let command_executor = create_command_executor(&config);
+    #[cfg(windows)]
+    let rpc_server = start_rpc_if_enabled(&config, Arc::clone(&command_executor))?;
+    #[cfg(windows)]
+    let ui = start_ui_if_enabled(
+        &config,
+        &module_directory,
+        Arc::clone(&command_executor),
+    )?;
 
     Ok(RuntimeContext {
         config,
@@ -177,19 +194,18 @@ fn bootstrap_inner(
         module_path,
         config_path,
         #[cfg(windows)]
+        command_executor,
+        #[cfg(windows)]
+        _ui: ui,
+        #[cfg(windows)]
         _rpc_server: rpc_server,
         _logging_guard: logging_guard,
     })
 }
 
 #[cfg(windows)]
-fn start_rpc_if_enabled(config: &AppConfig) -> Result<Option<RpcServerHandle>, RuntimeError> {
-    if !config.rpc.enabled {
-        info!("RPC server is disabled by configuration");
-        return Ok(None);
-    }
-
-    let executor: Arc<dyn CommandExecutor> = Arc::new(CommandDispatcher::new(
+fn create_command_executor(config: &AppConfig) -> Arc<dyn CommandExecutor> {
+    Arc::new(CommandDispatcher::new(
         CurrentProcessMemory::new(),
         config.scanner.clone(),
         config.policy.clone(),
@@ -197,11 +213,51 @@ fn start_rpc_if_enabled(config: &AppConfig) -> Result<Option<RpcServerHandle>, R
             max_memory_transfer_bytes: config.rpc.max_memory_transfer_bytes,
             max_scan_results_per_page: config.rpc.max_scan_results_per_page,
         },
-    ));
+    ))
+}
+
+#[cfg(windows)]
+fn start_rpc_if_enabled(
+    config: &AppConfig,
+    executor: Arc<dyn CommandExecutor>,
+) -> Result<Option<RpcServerHandle>, RuntimeError> {
+    if !config.rpc.enabled {
+        info!("RPC server is disabled by configuration");
+        return Ok(None);
+    }
+
     let post_action_handler: PostActionHandler = Arc::new(handle_rpc_post_action);
     let server = rpc::start_server(config.rpc.clone(), executor, post_action_handler)?;
     info!(endpoint = ?server.endpoint(), "Intimatr RPC server is online");
     Ok(Some(server))
+}
+
+#[cfg(windows)]
+fn start_ui_if_enabled(
+    config: &AppConfig,
+    module_directory: &Path,
+    executor: Arc<dyn CommandExecutor>,
+) -> Result<Option<UiHandle>, RuntimeError> {
+    if !config.ui.enabled {
+        info!("in-process UI is disabled by configuration");
+        return Ok(None);
+    }
+
+    let persistence_path = module_directory
+        .join("ui")
+        .join(&config.target.executable);
+    let handle = ui::UiHandle::start(
+        config.ui.clone(),
+        config.target.executable.clone(),
+        persistence_path.clone(),
+        executor,
+    )?;
+    info!(
+        toggle_key = %config.ui.toggle_key,
+        persistence_path = %persistence_path.display(),
+        "Intimatr in-process UI thread started"
+    );
+    Ok(Some(handle))
 }
 
 #[cfg(windows)]
@@ -244,6 +300,9 @@ pub enum RuntimeError {
     #[cfg(windows)]
     #[error(transparent)]
     Rpc(#[from] RpcServerError),
+    #[cfg(windows)]
+    #[error(transparent)]
+    Ui(#[from] UiError),
     #[error("Intimatr runtime context mutex was poisoned")]
     ContextPoisoned,
     #[error("Intimatr runtime is already initialized")]

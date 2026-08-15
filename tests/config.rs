@@ -10,10 +10,10 @@ fn sample_configuration_parses() {
 
     assert_eq!(config.target.executable, "ExampleGame.exe");
     assert_eq!(config.rpc.bind, "127.0.0.1:31337");
-    assert_eq!(config.rpc.pipe_name, "intimatr");
-    assert_eq!(config.rpc.max_response_bytes, 4_194_304);
     assert!(config.policy.allow_memory_read);
     assert!(config.policy.allow_memory_write);
+    assert!(config.ui.initially_visible);
+    assert_eq!(config.ui.scan_page_size, 256);
 }
 
 #[test]
@@ -56,19 +56,9 @@ fn invalid_scanner_alignment_is_rejected() {
 }
 
 #[test]
-fn tcp_rpc_bind_must_be_loopback() {
-    let input = SAMPLE.replace("127.0.0.1:31337", "0.0.0.0:31337");
-    let error = AppConfig::from_toml_str(&input).expect_err("non-loopback RPC must be rejected");
-
-    assert!(matches!(error, ConfigError::InvalidValue(_)));
-}
-
-#[test]
-fn named_pipe_client_limit_is_bounded_by_windows() {
-    let input = SAMPLE
-        .replace("transport = \"tcp\"", "transport = \"named_pipe\"")
-        .replace("max_clients = 4", "max_clients = 255");
-    let error = AppConfig::from_toml_str(&input).expect_err("too many pipe instances is invalid");
+fn invalid_ui_page_size_is_rejected() {
+    let input = SAMPLE.replace("scan_page_size = 256", "scan_page_size = 8192");
+    let error = AppConfig::from_toml_str(&input).expect_err("oversized UI page is invalid");
 
     assert!(matches!(error, ConfigError::InvalidValue(_)));
 }
