@@ -221,12 +221,40 @@ fn saved_scans_and_watch_templates_round_trip_through_workspace() {
         },
     );
 
+    analysis(
+        &dispatcher,
+        AnalysisCommand::SaveScan {
+            scan_id,
+            name: "transient_scan".to_owned(),
+        },
+    );
+    match analysis(&dispatcher, AnalysisCommand::ListSaved) {
+        AnalysisResult::Saved { summary } => {
+            assert_eq!(summary.scans, vec!["health_scan", "transient_scan"]);
+            assert_eq!(summary.watch_templates, vec!["health_watch"]);
+        }
+        other => panic!("unexpected list result: {other:?}"),
+    }
+
+    match analysis(
+        &dispatcher,
+        AnalysisCommand::LoadWorkspace {
+            name: "profile".to_owned(),
+        },
+    ) {
+        AnalysisResult::WorkspaceLoaded { summary, .. } => {
+            assert_eq!(summary.scans, vec!["health_scan"]);
+            assert_eq!(summary.watch_templates, vec!["health_watch"]);
+        }
+        other => panic!("unexpected workspace load result: {other:?}"),
+    }
+
     match analysis(&dispatcher, AnalysisCommand::ListSaved) {
         AnalysisResult::Saved { summary } => {
             assert_eq!(summary.scans, vec!["health_scan"]);
             assert_eq!(summary.watch_templates, vec!["health_watch"]);
         }
-        other => panic!("unexpected list result: {other:?}"),
+        other => panic!("unexpected reloaded list result: {other:?}"),
     }
 
     match analysis(
