@@ -255,6 +255,37 @@ fn saved_scans_and_watch_templates_round_trip_through_workspace() {
 }
 
 #[test]
+fn module_relative_resolution_respects_memory_read_policy() {
+    let dispatcher = CommandDispatcher::new(
+        FakeMemory::new(vec![0_u8; 64]),
+        ScannerConfig::default(),
+        PolicyConfig {
+            allow_memory_read: false,
+            ..PolicyConfig::default()
+        },
+        CommandLimits::default(),
+    );
+
+    let absolute = dispatcher
+        .execute(Command::Analysis {
+            request: AnalysisCommand::ResolveAddress {
+                expression: format!("0x{:X}", BASE),
+            },
+        })
+        .expect("absolute address resolution should not require memory access");
+    assert!(matches!(absolute.result, CommandResult::Analysis { .. }));
+
+    let error = dispatcher
+        .execute(Command::Analysis {
+            request: AnalysisCommand::ResolveAddress {
+                expression: "ExampleGame.exe+0x10".to_owned(),
+            },
+        })
+        .expect_err("module-relative resolution should honor memory-read policy");
+    assert_eq!(error.code(), "policy_denied");
+}
+
+#[test]
 fn pointer_chain_and_batch_are_rpc_serializable_analysis_primitives() {
     let mut bytes = vec![0_u8; 64];
     bytes[0..8].copy_from_slice(&((BASE + 24) as u64).to_le_bytes());

@@ -841,8 +841,14 @@ where
                 Ok(AnalysisResult::PatternScan { scan })
             }
             AnalysisCommand::ResolveAddress { expression } => {
-                let modules = self.analysis_modules()?;
-                let address = AddressExpression::parse(&expression)?.resolve(&modules)?;
+                let address = match AddressExpression::parse(&expression)? {
+                    AddressExpression::Absolute { address } => address,
+                    relative @ AddressExpression::ModuleOffset { .. } => {
+                        self.require_memory_read()?;
+                        let modules = self.analysis_modules()?;
+                        relative.resolve(&modules)?
+                    }
+                };
                 Ok(AnalysisResult::Address {
                     expression,
                     address,
