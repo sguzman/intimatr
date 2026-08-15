@@ -1,0 +1,58 @@
+name: Fix Milestone 6 Protocol Field 2
+
+on:
+  push:
+    branches:
+      - milestone-6-analysis
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Rename colliding result payload
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+
+          command_path = Path("src/command.rs")
+          text = command_path.read_text()
+          old = "    Analysis {\n        result: crate::analysis::AnalysisResult,\n    },"
+          new = "    Analysis {\n        analysis: crate::analysis::AnalysisResult,\n    },"
+          if old not in text:
+              raise SystemExit("CommandResult Analysis field marker missing")
+          text = text.replace(old, new, 1)
+          old = "CommandExecution::immediate(CommandResult::Analysis { result })"
+          new = "CommandExecution::immediate(CommandResult::Analysis { analysis: result })"
+          if old not in text:
+              raise SystemExit("analysis dispatch result marker missing")
+          command_path.write_text(text.replace(old, new, 1))
+
+          test_path = Path("tests/analysis_command.rs")
+          test = test_path.read_text()
+          old = "CommandResult::Analysis { result } => result,"
+          new = "CommandResult::Analysis { analysis } => analysis,"
+          if old in test:
+              test = test.replace(old, new, 1)
+          test_path.write_text(test)
+          '@ | python -
+          cargo fmt --all
+      - name: Commit clean fix
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/milestone6-protocol-fix2.yml
+          git add src/command.rs tests/analysis_command.rs
+          git commit -m "fix analysis result protocol tag collision"
+          git push origin HEAD:milestone-6-analysis
