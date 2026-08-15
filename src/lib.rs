@@ -3,6 +3,7 @@
 //! The project is intentionally split so the in-process UI, debugger, and RPC
 //! frontends can all share the same configuration and scanner semantics.
 
+pub mod analysis;
 pub mod command;
 pub mod config;
 pub mod debugger;
