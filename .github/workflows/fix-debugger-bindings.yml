@@ -1,0 +1,107 @@
+name: Fix Debugger Bindings
+
+on:
+  push:
+    branches:
+      - milestone-5-debugger
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Apply binding and eframe API fixes
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+
+          cargo = Path("Cargo.toml")
+          text = cargo.read_text()
+          needle = '    "Win32_System_LibraryLoader",\n'
+          replacement = needle + '    "Win32_System_Kernel",\n'
+          if '"Win32_System_Kernel"' not in text:
+              if needle not in text:
+                  raise SystemExit("Cargo feature insertion point not found")
+              text = text.replace(needle, replacement, 1)
+              cargo.write_text(text)
+
+          ui = Path("src/debugger_ui.rs")
+          text = ui.read_text()
+          old = '''impl eframe::App for DebuggerApp {
+              fn update(&mut self, context: &egui::Context, _frame: &mut eframe::Frame) {
+                  self.handle_visibility_and_shutdown(context);
+                  self.drain_responses();
+                  self.poll_events();
+
+                  egui::CentralPanel::default().show(context, |ui| {
+                      self.render_top_bar(ui);
+                      match self.tab {
+                          DebuggerTab::Threads => self.render_threads(ui),
+                          DebuggerTab::Disassembly => self.render_disassembly(ui),
+                          DebuggerTab::Breakpoints => self.render_breakpoints(ui),
+                          DebuggerTab::Events => self.render_events(ui),
+                      }
+                      ui.separator();
+                      ui.label(format!("Status: {}", self.status_text));
+                  });
+                  context.request_repaint_after(HOTKEY_POLL_INTERVAL);
+              }
+
+          '''
+          new = '''impl eframe::App for DebuggerApp {
+              fn logic(&mut self, context: &egui::Context, _frame: &mut eframe::Frame) {
+                  self.handle_visibility_and_shutdown(context);
+                  self.drain_responses();
+                  self.poll_events();
+                  context.request_repaint_after(HOTKEY_POLL_INTERVAL);
+              }
+
+              fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+                  egui::CentralPanel::default().show(ui, |ui| {
+                      self.render_top_bar(ui);
+                      match self.tab {
+                          DebuggerTab::Threads => self.render_threads(ui),
+                          DebuggerTab::Disassembly => self.render_disassembly(ui),
+                          DebuggerTab::Breakpoints => self.render_breakpoints(ui),
+                          DebuggerTab::Events => self.render_events(ui),
+                      }
+                      ui.separator();
+                      ui.label(format!("Status: {}", self.status_text));
+                  });
+              }
+
+          '''
+          if old not in text:
+              raise SystemExit("eframe App block not found")
+          ui.write_text(text.replace(old, new, 1))
+          '@ | Set-Content -Path fix_debugger.py
+          python fix_debugger.py
+          Remove-Item fix_debugger.py
+          cargo fmt --all
+
+      - name: Commit fixes
+        shell: pwsh
+        run: |
+          if (-not (git status --porcelain)) {
+            Write-Host "No changes"
+            exit 0
+          }
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add --all
+          git commit -m "fix debugger Windows and eframe bindings"
+          git push origin HEAD:milestone-5-debugger
