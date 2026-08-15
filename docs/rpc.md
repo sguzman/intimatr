@@ -1,6 +1,6 @@
 # RPC protocol
 
-Intimatr exposes the same shared command dispatcher used by the in-process UI through a local RPC transport. RPC does not bypass policy: memory read/write, code patch, debugger, transfer-size, result-page, and remote-shutdown rules are enforced by the shared command layer before transport-specific code sees a result.
+Intimatr exposes the same shared command dispatcher used by the in-process UIs through a local RPC transport. RPC does not bypass policy: memory read/write, code patch, debugger, transfer-size, result-page, and remote-shutdown rules are enforced by the shared command layer before transport-specific code sees a result.
 
 ## Protocol version 1
 
@@ -33,7 +33,41 @@ A successful response contains the same `request_id`:
 
 Errors use a stable string code and human-readable message. Unsupported protocol versions receive `version_mismatch` rather than being silently interpreted.
 
-The command schema includes shared memory operations, scan sessions/results/cancellation, watch management, module/thread queries, lifecycle operations, and debugger operations as they are implemented. Watch definitions include an optional `frozen` scalar. `set_watch_freeze` enables or clears that shared value; enabling a freeze remains subject to `policy.allow_memory_write`.
+The command schema includes shared memory operations, scan sessions/results/cancellation, watch management, module/thread queries, debugger operations, and lifecycle operations. Watch definitions include an optional `frozen` scalar. `set_watch_freeze` enables or clears that shared value; enabling a freeze remains subject to `policy.allow_memory_write`.
+
+## Debugger commands
+
+Protocol v1 debugger commands use the same serialized `Command`/`CommandResult` types as the native debugger UI. The current debugger surface includes:
+
+- `list_threads`
+- `read_thread_registers`
+- `disassemble`
+- `debugger_status`
+- `pause_thread`
+- `resume_thread`
+- `single_step_thread`
+- `set_hardware_breakpoint`
+- `remove_hardware_breakpoint`
+- `list_hardware_breakpoints`
+- `debugger_events`
+
+All of these require `policy.allow_debugger`. `disassemble` additionally requires memory-read permission and remains bounded by both the shared memory-transfer limit and debugger disassembly limits.
+
+Debugger events use a cursor rather than transport-specific server push. A client remembers the largest sequence it has consumed and asks for later events:
+
+```json
+{
+  "version": 1,
+  "request_id": 42,
+  "command": "debugger_events",
+  "after_sequence": 120,
+  "limit": 64
+}
+```
+
+The response contains an ordered `events` array plus `latest_sequence`. Polling again with the last consumed sequence incrementally consumes the same bounded event feed used by the native debugger UI. A slow client may miss events that have already rolled out of the bounded in-process ring, so consumers should advance their cursor regularly rather than treating the feed as durable storage.
+
+Hardware-breakpoint and single-step events are trace-style notifications in Milestone 5. The scoped Windows exception handler records Intimatr-owned events and resumes execution; RPC does not imply a global external-debugger stop state.
 
 ## TCP
 
@@ -73,8 +107,8 @@ cargo run --example rpc_client -- 127.0.0.1:31337
 
 The client handles framing, protocol version checks, request-ID matching, and remote error conversion. On Windows it can also connect to the named-pipe transport through `RpcClient::connect_named_pipe`.
 
-## Concurrency, scans, and watches
+## Concurrency, scans, watches, and debugger work
 
-Connection I/O runs on a dedicated Tokio runtime owned by an Intimatr RPC thread. Command execution runs through blocking worker tasks so long memory scans do not block the I/O reactor. Scan cancellation tokens live in the shared dispatcher, allowing another connected frontend to request cancellation while a scan is active.
+Connection I/O runs on a dedicated Tokio runtime owned by an Intimatr RPC thread. Command execution runs through blocking worker tasks so long memory scans or debugger operations do not block the I/O reactor. Scan cancellation tokens live in the shared dispatcher, allowing another connected frontend to request cancellation while a scan is active.
 
-Watch definitions and scan sessions live in the same dispatcher used by the native UI. RPC therefore observes the same watch IDs, frozen values, and scan IDs rather than maintaining transport-specific state. A `refresh_watches` command reapplies any frozen values through the normal policy-gated memory write path and returns the resulting values/errors.
+Watch definitions, scan sessions, debugger state, breakpoints, and debugger events live behind the same dispatcher used by the native UIs. RPC therefore observes the same IDs and state rather than maintaining transport-specific copies. A `refresh_watches` command reapplies any frozen values through the normal policy-gated memory write path and returns the resulting values/errors.
