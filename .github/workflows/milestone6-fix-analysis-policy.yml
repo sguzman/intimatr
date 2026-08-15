@@ -1,0 +1,38 @@
+name: Fix Milestone 6 Analysis Policy
+
+on:
+  push:
+    branches:
+      - milestone-6-analysis
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Apply policy fix
+        shell: pwsh
+        run: |
+          python scripts/fix_analysis_policy.py
+          cargo fmt --all
+          git diff --check -- src/command.rs tests/analysis_command.rs
+          $status = git status --porcelain -- src/command.rs tests/analysis_command.rs
+          if (-not $status) { throw "analysis policy patch produced no source changes" }
+      - name: Commit policy fix
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/milestone6-fix-analysis-policy.yml scripts/fix_analysis_policy.py
+          git add src/command.rs tests/analysis_command.rs
+          git commit -m "enforce module address resolution policy"
+          git push origin HEAD:milestone-6-analysis
