@@ -769,12 +769,15 @@ impl DebuggerApp {
 }
 
 impl eframe::App for DebuggerApp {
-    fn update(&mut self, context: &egui::Context, _frame: &mut eframe::Frame) {
+    fn logic(&mut self, context: &egui::Context, _frame: &mut eframe::Frame) {
         self.handle_visibility_and_shutdown(context);
         self.drain_responses();
         self.poll_events();
+        context.request_repaint_after(HOTKEY_POLL_INTERVAL);
+    }
 
-        egui::CentralPanel::default().show(context, |ui| {
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        egui::CentralPanel::default().show(ui, |ui| {
             self.render_top_bar(ui);
             match self.tab {
                 DebuggerTab::Threads => self.render_threads(ui),
@@ -785,7 +788,6 @@ impl eframe::App for DebuggerApp {
             ui.separator();
             ui.label(format!("Status: {}", self.status_text));
         });
-        context.request_repaint_after(HOTKEY_POLL_INTERVAL);
     }
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
