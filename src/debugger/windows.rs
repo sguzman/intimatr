@@ -621,6 +621,39 @@ mod tests {
     }
 
     #[test]
+    fn captures_a_separate_running_thread_context() {
+        use std::{
+            sync::{
+                Arc,
+                atomic::{AtomicBool, Ordering},
+                mpsc,
+            },
+            thread,
+        };
+
+        let stop = Arc::new(AtomicBool::new(false));
+        let worker_stop = Arc::clone(&stop);
+        let (sender, receiver) = mpsc::channel();
+        let worker = thread::spawn(move || {
+            let thread_id = unsafe { GetCurrentThreadId() };
+            sender.send(thread_id).expect("send worker thread id");
+            while !worker_stop.load(Ordering::Acquire) {
+                thread::yield_now();
+            }
+        });
+        let thread_id = receiver.recv().expect("receive worker thread id");
+
+        let snapshot = snapshot_registers(thread_id, false)
+            .expect("separate running thread context should capture");
+        assert_eq!(snapshot.thread_id, thread_id);
+        assert_ne!(snapshot.instruction_pointer, 0);
+        assert_ne!(snapshot.stack_pointer, 0);
+
+        stop.store(true, Ordering::Release);
+        worker.join().expect("worker should exit cleanly");
+    }
+
+    #[test]
     fn event_ring_preserves_order() {
         let before = latest_event_sequence();
         EVENT_RING.push(11, 0x1000, 2, 0);
