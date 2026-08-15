@@ -32,6 +32,19 @@ include_guard_pages = false
 enabled = true
 break_on_start = false
 prefer_hardware_breakpoints = true
+max_disassembly_bytes = 65536
+max_disassembly_instructions = 512
+max_hardware_breakpoints = 32
+max_events_per_poll = 256
+ui_enabled = true
+ui_initially_visible = false
+ui_always_on_top = false
+ui_toggle_key = "F10"
+ui_width = 1160.0
+ui_height = 760.0
+event_poll_ms = 100
+disassembly_default_bytes = 256
+disassembly_default_instructions = 64
 
 [ui]
 enabled = true

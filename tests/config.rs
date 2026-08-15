@@ -14,6 +14,10 @@ fn sample_configuration_parses() {
     assert!(config.policy.allow_memory_write);
     assert!(config.ui.initially_visible);
     assert_eq!(config.ui.scan_page_size, 256);
+    assert!(config.debugger.enabled);
+    assert!(config.debugger.ui_enabled);
+    assert_eq!(config.debugger.ui_toggle_key, "F10");
+    assert_eq!(config.debugger.max_disassembly_bytes, 65_536);
 }
 
 #[test]
@@ -60,5 +64,23 @@ fn invalid_ui_page_size_is_rejected() {
     let input = SAMPLE.replace("scan_page_size = 256", "scan_page_size = 8192");
     let error = AppConfig::from_toml_str(&input).expect_err("oversized UI page is invalid");
 
+    assert!(matches!(error, ConfigError::InvalidValue(_)));
+}
+
+#[test]
+fn invalid_debugger_limits_are_rejected() {
+    let input = SAMPLE.replace("max_hardware_breakpoints = 32", "max_hardware_breakpoints = 65");
+    let error = AppConfig::from_toml_str(&input).expect_err("breakpoint registry is bounded");
+    assert!(matches!(error, ConfigError::InvalidValue(_)));
+
+    let input = SAMPLE.replace("max_events_per_poll = 256", "max_events_per_poll = 513");
+    let error = AppConfig::from_toml_str(&input).expect_err("event poll is bounded");
+    assert!(matches!(error, ConfigError::InvalidValue(_)));
+}
+
+#[test]
+fn debugger_ui_defaults_must_fit_debugger_limits() {
+    let input = SAMPLE.replace("disassembly_default_bytes = 256", "disassembly_default_bytes = 70000");
+    let error = AppConfig::from_toml_str(&input).expect_err("UI default must fit byte limit");
     assert!(matches!(error, ConfigError::InvalidValue(_)));
 }

@@ -15,6 +15,7 @@ use crate::{
 #[cfg(windows)]
 use crate::{
     command::{CommandDispatcher, CommandExecutor, CommandLimits, PostAction},
+    debugger_ui::{DebuggerUiError, DebuggerUiHandle},
     platform::windows::{self, WindowsError, memory::CurrentProcessMemory},
     rpc::{self, PostActionHandler, RpcServerError, RpcServerHandle},
     ui::{self, UiError, UiHandle},
@@ -34,6 +35,8 @@ pub struct RuntimeContext {
     command_executor: Arc<dyn CommandExecutor>,
     #[cfg(windows)]
     _ui: Option<UiHandle>,
+    #[cfg(windows)]
+    _debugger_ui: Option<DebuggerUiHandle>,
     #[cfg(windows)]
     _rpc_server: Option<RpcServerHandle>,
     _logging_guard: LoggingGuard,
@@ -169,11 +172,14 @@ fn bootstrap_inner(
         rpc_enabled = config.rpc.enabled,
         rpc_transport = ?config.rpc.transport,
         debugger_enabled = config.debugger.enabled,
+        debugger_ui_enabled = config.debugger.ui_enabled,
+        debugger_ui_toggle_key = %config.debugger.ui_toggle_key,
         ui_enabled = config.ui.enabled,
         ui_toggle_key = %config.ui.toggle_key,
         allow_memory_read = config.policy.allow_memory_read,
         allow_memory_write = config.policy.allow_memory_write,
         allow_code_patch = config.policy.allow_code_patch,
+        allow_debugger = config.policy.allow_debugger,
         "Intimatr configuration and logging are online"
     );
 
@@ -183,6 +189,12 @@ fn bootstrap_inner(
     let rpc_server = start_rpc_if_enabled(&config, Arc::clone(&command_executor))?;
     #[cfg(windows)]
     let ui = start_ui_if_enabled(&config, &module_directory, Arc::clone(&command_executor))?;
+    #[cfg(windows)]
+    let debugger_ui = start_debugger_ui_if_enabled(
+        &config,
+        &module_directory,
+        Arc::clone(&command_executor),
+    )?;
 
     Ok(RuntimeContext {
         config,
@@ -194,6 +206,8 @@ fn bootstrap_inner(
         #[cfg(windows)]
         _ui: ui,
         #[cfg(windows)]
+        _debugger_ui: debugger_ui,
+        #[cfg(windows)]
         _rpc_server: rpc_server,
         _logging_guard: logging_guard,
     })
@@ -201,9 +215,10 @@ fn bootstrap_inner(
 
 #[cfg(windows)]
 fn create_command_executor(config: &AppConfig) -> Arc<dyn CommandExecutor> {
-    Arc::new(CommandDispatcher::new(
+    Arc::new(CommandDispatcher::new_with_debugger(
         CurrentProcessMemory::new(),
         config.scanner.clone(),
+        config.debugger.clone(),
         config.policy.clone(),
         CommandLimits {
             max_memory_transfer_bytes: config.rpc.max_memory_transfer_bytes,
@@ -255,6 +270,39 @@ fn start_ui_if_enabled(
 }
 
 #[cfg(windows)]
+fn start_debugger_ui_if_enabled(
+    config: &AppConfig,
+    module_directory: &Path,
+    executor: Arc<dyn CommandExecutor>,
+) -> Result<Option<DebuggerUiHandle>, RuntimeError> {
+    if !config.debugger.enabled || !config.debugger.ui_enabled {
+        info!("debugger UI is disabled by configuration");
+        return Ok(None);
+    }
+    if !config.policy.allow_debugger {
+        info!("debugger UI is disabled because policy.allow_debugger is false");
+        return Ok(None);
+    }
+
+    let persistence_path = module_directory
+        .join("ui")
+        .join(&config.target.executable)
+        .join("debugger");
+    let handle = DebuggerUiHandle::start(
+        config.debugger.clone(),
+        config.target.executable.clone(),
+        persistence_path.clone(),
+        executor,
+    )?;
+    info!(
+        toggle_key = %config.debugger.ui_toggle_key,
+        persistence_path = %persistence_path.display(),
+        "Intimatr debugger UI thread started"
+    );
+    Ok(Some(handle))
+}
+
+#[cfg(windows)]
 fn handle_rpc_post_action(action: PostAction) {
     match action {
         PostAction::Shutdown => {
@@ -297,6 +345,9 @@ pub enum RuntimeError {
     #[cfg(windows)]
     #[error(transparent)]
     Ui(#[from] UiError),
+    #[cfg(windows)]
+    #[error(transparent)]
+    DebuggerUi(#[from] DebuggerUiError),
     #[error("Intimatr runtime context mutex was poisoned")]
     ContextPoisoned,
     #[error("Intimatr runtime is already initialized")]

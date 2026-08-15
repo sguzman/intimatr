@@ -149,6 +149,65 @@ impl AppConfig {
                 }
             }
         }
+
+        if self.debugger.max_disassembly_bytes == 0 {
+            return Err(ConfigError::InvalidValue(
+                "debugger.max_disassembly_bytes must be greater than zero",
+            ));
+        }
+        if self.debugger.max_disassembly_instructions == 0 {
+            return Err(ConfigError::InvalidValue(
+                "debugger.max_disassembly_instructions must be greater than zero",
+            ));
+        }
+        if self.debugger.max_hardware_breakpoints == 0
+            || self.debugger.max_hardware_breakpoints > 64
+        {
+            return Err(ConfigError::InvalidValue(
+                "debugger.max_hardware_breakpoints must be between 1 and 64",
+            ));
+        }
+        if self.debugger.max_events_per_poll == 0 || self.debugger.max_events_per_poll > 512 {
+            return Err(ConfigError::InvalidValue(
+                "debugger.max_events_per_poll must be between 1 and 512",
+            ));
+        }
+        if self.debugger.ui_toggle_key.trim().is_empty() {
+            return Err(ConfigError::InvalidValue(
+                "debugger.ui_toggle_key must not be empty",
+            ));
+        }
+        if !self.debugger.ui_width.is_finite() || self.debugger.ui_width <= 0.0 {
+            return Err(ConfigError::InvalidValue(
+                "debugger.ui_width must be finite and greater than zero",
+            ));
+        }
+        if !self.debugger.ui_height.is_finite() || self.debugger.ui_height <= 0.0 {
+            return Err(ConfigError::InvalidValue(
+                "debugger.ui_height must be finite and greater than zero",
+            ));
+        }
+        if self.debugger.event_poll_ms == 0 {
+            return Err(ConfigError::InvalidValue(
+                "debugger.event_poll_ms must be greater than zero",
+            ));
+        }
+        if self.debugger.disassembly_default_bytes == 0
+            || self.debugger.disassembly_default_bytes > self.debugger.max_disassembly_bytes
+        {
+            return Err(ConfigError::InvalidValue(
+                "debugger.disassembly_default_bytes must be between 1 and debugger.max_disassembly_bytes",
+            ));
+        }
+        if self.debugger.disassembly_default_instructions == 0
+            || self.debugger.disassembly_default_instructions
+                > self.debugger.max_disassembly_instructions
+        {
+            return Err(ConfigError::InvalidValue(
+                "debugger.disassembly_default_instructions must be between 1 and debugger.max_disassembly_instructions",
+            ));
+        }
+
         if self.ui.toggle_key.trim().is_empty() {
             return Err(ConfigError::InvalidValue("ui.toggle_key must not be empty"));
         }
@@ -305,6 +364,32 @@ pub struct DebuggerConfig {
     pub break_on_start: bool,
     #[serde(default = "default_true")]
     pub prefer_hardware_breakpoints: bool,
+    #[serde(default = "default_max_disassembly_bytes")]
+    pub max_disassembly_bytes: usize,
+    #[serde(default = "default_max_disassembly_instructions")]
+    pub max_disassembly_instructions: usize,
+    #[serde(default = "default_max_hardware_breakpoints")]
+    pub max_hardware_breakpoints: usize,
+    #[serde(default = "default_max_debugger_events_per_poll")]
+    pub max_events_per_poll: usize,
+    #[serde(default = "default_true")]
+    pub ui_enabled: bool,
+    #[serde(default)]
+    pub ui_initially_visible: bool,
+    #[serde(default)]
+    pub ui_always_on_top: bool,
+    #[serde(default = "default_debugger_toggle_key")]
+    pub ui_toggle_key: String,
+    #[serde(default = "default_debugger_ui_width")]
+    pub ui_width: f32,
+    #[serde(default = "default_debugger_ui_height")]
+    pub ui_height: f32,
+    #[serde(default = "default_debugger_event_poll_ms")]
+    pub event_poll_ms: u64,
+    #[serde(default = "default_disassembly_bytes")]
+    pub disassembly_default_bytes: usize,
+    #[serde(default = "default_disassembly_instructions")]
+    pub disassembly_default_instructions: usize,
 }
 
 impl Default for DebuggerConfig {
@@ -313,6 +398,19 @@ impl Default for DebuggerConfig {
             enabled: true,
             break_on_start: false,
             prefer_hardware_breakpoints: true,
+            max_disassembly_bytes: default_max_disassembly_bytes(),
+            max_disassembly_instructions: default_max_disassembly_instructions(),
+            max_hardware_breakpoints: default_max_hardware_breakpoints(),
+            max_events_per_poll: default_max_debugger_events_per_poll(),
+            ui_enabled: true,
+            ui_initially_visible: false,
+            ui_always_on_top: false,
+            ui_toggle_key: default_debugger_toggle_key(),
+            ui_width: default_debugger_ui_width(),
+            ui_height: default_debugger_ui_height(),
+            event_poll_ms: default_debugger_event_poll_ms(),
+            disassembly_default_bytes: default_disassembly_bytes(),
+            disassembly_default_instructions: default_disassembly_instructions(),
         }
     }
 }
@@ -399,79 +497,90 @@ pub enum ConfigError {
 fn default_true() -> bool {
     true
 }
-
 fn default_log_filter() -> String {
     "intimatr=trace".to_owned()
 }
-
 fn default_log_directory() -> PathBuf {
     PathBuf::from("logs")
 }
-
 fn default_log_file_name() -> String {
     "intimatr.log".to_owned()
 }
-
 fn default_rpc_bind() -> String {
     "127.0.0.1:31337".to_owned()
 }
-
 fn default_pipe_name() -> String {
     "intimatr".to_owned()
 }
-
 fn default_max_clients() -> usize {
     4
 }
-
 fn default_max_request_bytes() -> usize {
     1024 * 1024
 }
-
 fn default_max_response_bytes() -> usize {
     4 * 1024 * 1024
 }
-
 fn default_max_memory_transfer_bytes() -> usize {
     256 * 1024
 }
-
 fn default_max_scan_results_per_page() -> usize {
     4096
 }
-
 fn default_chunk_size() -> usize {
     1024 * 1024
 }
-
 fn default_alignment() -> usize {
     1
 }
-
 fn default_max_results() -> usize {
     2_000_000
 }
-
 fn default_float_epsilon() -> f64 {
     1.0e-6
 }
-
+fn default_max_disassembly_bytes() -> usize {
+    64 * 1024
+}
+fn default_max_disassembly_instructions() -> usize {
+    512
+}
+fn default_max_hardware_breakpoints() -> usize {
+    32
+}
+fn default_max_debugger_events_per_poll() -> usize {
+    256
+}
+fn default_debugger_toggle_key() -> String {
+    "F10".to_owned()
+}
+fn default_debugger_ui_width() -> f32 {
+    1160.0
+}
+fn default_debugger_ui_height() -> f32 {
+    760.0
+}
+fn default_debugger_event_poll_ms() -> u64 {
+    100
+}
+fn default_disassembly_bytes() -> usize {
+    256
+}
+fn default_disassembly_instructions() -> usize {
+    64
+}
 fn default_toggle_key() -> String {
     "Insert".to_owned()
 }
-
 fn default_ui_width() -> f32 {
     1180.0
 }
-
 fn default_ui_height() -> f32 {
     760.0
 }
-
 fn default_watch_refresh_ms() -> u64 {
     250
 }
-
 fn default_ui_scan_page_size() -> usize {
     256
 }

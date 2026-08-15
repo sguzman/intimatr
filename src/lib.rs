@@ -5,6 +5,7 @@
 
 pub mod command;
 pub mod config;
+pub mod debugger;
 pub mod lifecycle;
 pub mod logging;
 pub mod memory;
@@ -14,7 +15,9 @@ pub mod runtime;
 pub mod scanner;
 
 #[cfg(windows)]
-#[allow(clippy::manual_is_multiple_of)]
+pub mod debugger_ui;
+
+#[cfg(windows)]
 pub mod ui;
 
 #[cfg(windows)]
