@@ -97,8 +97,10 @@ fn dispatcher(memory: FakeMemory) -> CommandDispatcher<FakeMemory> {
 #[test]
 fn policy_gates_memory_reads_in_shared_command_layer() {
     let memory = FakeMemory::from_i32(&[10]);
-    let mut policy = PolicyConfig::default();
-    policy.allow_memory_read = false;
+    let policy = PolicyConfig {
+        allow_memory_read: false,
+        ..PolicyConfig::default()
+    };
     let dispatcher = CommandDispatcher::new(
         memory,
         ScannerConfig::default(),

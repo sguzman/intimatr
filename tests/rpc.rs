@@ -37,9 +37,11 @@ fn post_action_recorder(flag: Arc<AtomicBool>) -> PostActionHandler {
 
 #[test]
 fn loopback_tcp_client_and_server_round_trip_commands() {
-    let mut config = RpcConfig::default();
-    config.transport = RpcTransport::Tcp;
-    config.bind = "127.0.0.1:0".to_owned();
+    let config = RpcConfig {
+        transport: RpcTransport::Tcp,
+        bind: "127.0.0.1:0".to_owned(),
+        ..RpcConfig::default()
+    };
     let shutdown_seen = Arc::new(AtomicBool::new(false));
     let mut server = start_server(
         config.clone(),
@@ -75,16 +77,18 @@ fn loopback_tcp_client_and_server_round_trip_commands() {
 #[cfg(windows)]
 #[test]
 fn windows_named_pipe_client_and_server_round_trip() {
-    let mut config = RpcConfig::default();
-    config.transport = RpcTransport::NamedPipe;
-    config.pipe_name = format!(
-        "intimatr-test-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos()
-    );
+    let config = RpcConfig {
+        transport: RpcTransport::NamedPipe,
+        pipe_name: format!(
+            "intimatr-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ),
+        ..RpcConfig::default()
+    };
     let shutdown_seen = Arc::new(AtomicBool::new(false));
     let mut server = start_server(
         config.clone(),
