@@ -184,7 +184,7 @@ fn bootstrap_inner(
     );
 
     #[cfg(windows)]
-    let command_executor = create_command_executor(&config);
+    let command_executor = create_command_executor(&config, &module_directory);
     #[cfg(windows)]
     let rpc_server = start_rpc_if_enabled(&config, Arc::clone(&command_executor))?;
     #[cfg(windows)]
@@ -211,17 +211,26 @@ fn bootstrap_inner(
 }
 
 #[cfg(windows)]
-fn create_command_executor(config: &AppConfig) -> Arc<dyn CommandExecutor> {
-    Arc::new(CommandDispatcher::new_with_debugger(
-        CurrentProcessMemory::new(),
-        config.scanner.clone(),
-        config.debugger.clone(),
-        config.policy.clone(),
-        CommandLimits {
-            max_memory_transfer_bytes: config.rpc.max_memory_transfer_bytes,
-            max_scan_results_per_page: config.rpc.max_scan_results_per_page,
-        },
-    ))
+fn create_command_executor(
+    config: &AppConfig,
+    module_directory: &Path,
+) -> Arc<dyn CommandExecutor> {
+    let analysis_directory = module_directory
+        .join("analysis")
+        .join(&config.target.executable);
+    Arc::new(
+        CommandDispatcher::new_with_debugger(
+            CurrentProcessMemory::new(),
+            config.scanner.clone(),
+            config.debugger.clone(),
+            config.policy.clone(),
+            CommandLimits {
+                max_memory_transfer_bytes: config.rpc.max_memory_transfer_bytes,
+                max_scan_results_per_page: config.rpc.max_scan_results_per_page,
+            },
+        )
+        .with_analysis_directory(analysis_directory),
+    )
 }
 
 #[cfg(windows)]

@@ -833,6 +833,8 @@ pub enum AnalysisError {
     SavedWatchNotFound(String),
     #[error("analysis workspace version mismatch: expected {expected}, got {actual}")]
     WorkspaceVersion { expected: u32, actual: u32 },
+    #[error("analysis workspace storage is not configured for this runtime")]
+    WorkspaceStorageUnavailable,
     #[error("analysis workspace I/O failed for {path}: {source}")]
     WorkspaceIo {
         path: std::path::PathBuf,

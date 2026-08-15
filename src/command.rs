@@ -136,6 +136,9 @@ pub enum Command {
         after_sequence: u64,
         limit: usize,
     },
+    Analysis {
+        request: crate::analysis::AnalysisCommand,
+    },
     Shutdown,
 }
 
@@ -172,6 +175,7 @@ impl Command {
             Self::RemoveHardwareBreakpoint { .. } => "remove_hardware_breakpoint",
             Self::ListHardwareBreakpoints => "list_hardware_breakpoints",
             Self::DebuggerEvents { .. } => "debugger_events",
+            Self::Analysis { .. } => "analysis",
             Self::Shutdown => "shutdown",
         }
     }
@@ -267,6 +271,9 @@ pub enum CommandResult {
     DebuggerEvents {
         events: Vec<DebuggerEvent>,
         latest_sequence: u64,
+    },
+    Analysis {
+        result: crate::analysis::AnalysisResult,
     },
     ShutdownAccepted,
 }
@@ -378,6 +385,8 @@ pub struct CommandDispatcher<M> {
     policy: PolicyConfig,
     limits: CommandLimits,
     debugger: DebuggerCore,
+    analysis: Mutex<crate::analysis::AnalysisWorkspace>,
+    analysis_directory: Option<std::path::PathBuf>,
     scans: Mutex<HashMap<u64, ScanSession>>,
     active_scans: Mutex<HashMap<u64, CancellationToken>>,
     watches: Mutex<HashMap<u64, WatchDefinition>>,
@@ -417,12 +426,19 @@ where
             policy,
             limits,
             debugger: DebuggerCore::new(debugger_config),
+            analysis: Mutex::new(crate::analysis::AnalysisWorkspace::default()),
+            analysis_directory: None,
             scans: Mutex::new(HashMap::new()),
             active_scans: Mutex::new(HashMap::new()),
             watches: Mutex::new(HashMap::new()),
             next_scan_id: AtomicU64::new(1),
             next_watch_id: AtomicU64::new(1),
         }
+    }
+
+    pub fn with_analysis_directory(mut self, directory: std::path::PathBuf) -> Self {
+        self.analysis_directory = Some(directory);
+        self
     }
 
     pub fn execute(&self, command: Command) -> Result<CommandExecution, CommandError> {
@@ -775,6 +791,10 @@ where
                     latest_sequence,
                 })
             }
+            Command::Analysis { request } => {
+                let result = self.execute_analysis(request)?;
+                CommandExecution::immediate(CommandResult::Analysis { result })
+            }
             Command::Shutdown => {
                 if !self.policy.allow_remote_shutdown {
                     return Err(CommandError::PolicyDenied {
@@ -790,6 +810,190 @@ where
 
         debug!(command = command_name, "frontend command completed");
         Ok(execution)
+    }
+
+    fn execute_analysis(
+        &self,
+        request: crate::analysis::AnalysisCommand,
+    ) -> Result<crate::analysis::AnalysisResult, CommandError> {
+        use crate::analysis::{
+            AddressExpression, AnalysisCommand, AnalysisResult, ModuleDescriptor,
+            PatternScanOptions, SavedWatchTemplate, inspect_structure, resolve_pointer_chain,
+            scan_pattern, search_pointer_chains, validate_workspace_name,
+        };
+
+        match request {
+            AnalysisCommand::AobScan {
+                pattern,
+                alignment,
+                max_results,
+            } => {
+                self.require_memory_read()?;
+                let scan = scan_pattern(
+                    &self.memory,
+                    &pattern,
+                    &self.scanner_config,
+                    PatternScanOptions {
+                        alignment,
+                        max_results,
+                    },
+                )?;
+                Ok(AnalysisResult::PatternScan { scan })
+            }
+            AnalysisCommand::ResolveAddress { expression } => {
+                let modules = self.analysis_modules()?;
+                let address = AddressExpression::parse(&expression)?.resolve(&modules)?;
+                Ok(AnalysisResult::Address {
+                    expression,
+                    address,
+                })
+            }
+            AnalysisCommand::ResolvePointerChain { spec } => {
+                self.require_memory_read()?;
+                let modules = self.analysis_modules()?;
+                let resolution = resolve_pointer_chain(&self.memory, &modules, &spec)?;
+                Ok(AnalysisResult::PointerChain { resolution })
+            }
+            AnalysisCommand::SearchPointerChains { target, options } => {
+                self.require_memory_read()?;
+                let paths =
+                    search_pointer_chains(&self.memory, target, &self.scanner_config, options)?;
+                Ok(AnalysisResult::PointerPaths { paths })
+            }
+            AnalysisCommand::InspectStructure { base, fields } => {
+                self.require_memory_read()?;
+                let modules = self.analysis_modules()?;
+                let fields = inspect_structure(
+                    &self.memory,
+                    &modules,
+                    &base,
+                    &fields,
+                    self.limits.max_memory_transfer_bytes,
+                )?;
+                Ok(AnalysisResult::Structure { fields })
+            }
+            AnalysisCommand::SaveScan { scan_id, name } => {
+                let session = lock(&self.scans)?
+                    .get(&scan_id)
+                    .cloned()
+                    .ok_or(CommandError::ScanNotFound(scan_id))?;
+                lock(&self.analysis)?.save_scan(name.clone(), session)?;
+                Ok(AnalysisResult::ScanSaved { name })
+            }
+            AnalysisCommand::RestoreScan { name } => {
+                let session = lock(&self.analysis)?.scan(&name)?;
+                let scan_id = self.next_scan_id.fetch_add(1, Ordering::Relaxed);
+                lock(&self.scans)?.insert(scan_id, session);
+                Ok(AnalysisResult::ScanRestored { name, scan_id })
+            }
+            AnalysisCommand::SaveWatchTemplate { watch_id, name } => {
+                let watch = lock(&self.watches)?
+                    .get(&watch_id)
+                    .cloned()
+                    .ok_or(CommandError::WatchNotFound(watch_id))?;
+                let template = SavedWatchTemplate {
+                    name: name.clone(),
+                    address: format!("0x{:X}", watch.address),
+                    value_type: watch.value_type,
+                    frozen: watch.frozen,
+                };
+                lock(&self.analysis)?.save_watch_template(template)?;
+                Ok(AnalysisResult::WatchTemplateSaved { name })
+            }
+            AnalysisCommand::AddWatchFromTemplate { name, label } => {
+                let template = lock(&self.analysis)?.watch_template(&name)?;
+                let modules: Vec<ModuleDescriptor> = self.analysis_modules()?;
+                let address = AddressExpression::parse(&template.address)?.resolve(&modules)?;
+                address_to_usize(address)?;
+                if let Some(value) = template.frozen {
+                    self.require_memory_write()?;
+                    template
+                        .value_type
+                        .encode(value)
+                        .map_err(MemoryError::from)?;
+                }
+                let watch_id = self.next_watch_id.fetch_add(1, Ordering::Relaxed);
+                lock(&self.watches)?.insert(
+                    watch_id,
+                    WatchDefinition {
+                        id: watch_id,
+                        address,
+                        value_type: template.value_type,
+                        label: label.or_else(|| Some(name.clone())),
+                        frozen: template.frozen,
+                    },
+                );
+                Ok(AnalysisResult::WatchAdded { name, watch_id })
+            }
+            AnalysisCommand::ListSaved => Ok(AnalysisResult::Saved {
+                summary: lock(&self.analysis)?.summary(),
+            }),
+            AnalysisCommand::SaveWorkspace { name } => {
+                validate_workspace_name(&name)?;
+                let path = self.analysis_workspace_path(&name)?;
+                lock(&self.analysis)?.save_to_path(&path)?;
+                Ok(AnalysisResult::WorkspaceSaved { name })
+            }
+            AnalysisCommand::LoadWorkspace { name } => {
+                validate_workspace_name(&name)?;
+                let path = self.analysis_workspace_path(&name)?;
+                let mut workspace = lock(&self.analysis)?;
+                workspace.load_from_path(&path)?;
+                Ok(AnalysisResult::WorkspaceLoaded {
+                    name,
+                    summary: workspace.summary(),
+                })
+            }
+            AnalysisCommand::Batch { commands } => {
+                if commands.is_empty() || commands.len() > 128 {
+                    return Err(crate::analysis::AnalysisError::InvalidLimit(
+                        "analysis batch command count",
+                    )
+                    .into());
+                }
+                if commands
+                    .iter()
+                    .any(|command| matches!(command, AnalysisCommand::Batch { .. }))
+                {
+                    return Err(crate::analysis::AnalysisError::InvalidLimit(
+                        "nested analysis batch",
+                    )
+                    .into());
+                }
+                let mut results = Vec::with_capacity(commands.len());
+                for command in commands {
+                    results.push(self.execute_analysis(command)?);
+                }
+                Ok(AnalysisResult::Batch { results })
+            }
+        }
+    }
+
+    fn analysis_workspace_path(&self, name: &str) -> Result<std::path::PathBuf, CommandError> {
+        let directory = self
+            .analysis_directory
+            .as_ref()
+            .ok_or(crate::analysis::AnalysisError::WorkspaceStorageUnavailable)?;
+        Ok(directory.join(format!("{name}.json")))
+    }
+
+    fn analysis_modules(&self) -> Result<Vec<crate::analysis::ModuleDescriptor>, CommandError> {
+        #[cfg(windows)]
+        {
+            Ok(crate::platform::windows::loaded_modules()?
+                .into_iter()
+                .map(|module| crate::analysis::ModuleDescriptor {
+                    name: module.name,
+                    path: module.path,
+                    base: module.base,
+                    size: module.size,
+                })
+                .collect())
+        }
+        #[cfg(not(windows))]
+        {
+            Ok(Vec::new())
+        }
     }
 
     pub fn cancel_all_scans(&self) -> Result<usize, CommandError> {
@@ -952,6 +1156,8 @@ pub enum CommandError {
     Scan(#[from] ScanError),
     #[error(transparent)]
     Debugger(#[from] DebuggerError),
+    #[error(transparent)]
+    Analysis(#[from] crate::analysis::AnalysisError),
 }
 
 impl CommandError {
@@ -970,6 +1176,7 @@ impl CommandError {
             Self::Memory(_) => "memory_error",
             Self::Scan(_) => "scan_error",
             Self::Debugger(_) => "debugger_error",
+            Self::Analysis(_) => "analysis_error",
         }
     }
 }
