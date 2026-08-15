@@ -562,10 +562,7 @@ where
                     .get_mut(&watch_id)
                     .ok_or(CommandError::WatchNotFound(watch_id))?;
                 if let Some(value) = value {
-                    watch
-                        .value_type
-                        .encode(value)
-                        .map_err(MemoryError::from)?;
+                    watch.value_type.encode(value).map_err(MemoryError::from)?;
                 }
                 watch.frozen = value;
                 CommandExecution::immediate(CommandResult::WatchUpdated {

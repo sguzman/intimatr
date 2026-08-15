@@ -45,9 +45,8 @@ pub fn loaded_module_path(module: HMODULE) -> Result<PathBuf, WindowsError> {
 
 pub fn loaded_modules() -> Result<Vec<LoadedModule>, WindowsError> {
     let process_id = unsafe { GetCurrentProcessId() };
-    let snapshot = unsafe {
-        CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, process_id)
-    };
+    let snapshot =
+        unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, process_id) };
     if snapshot == INVALID_HANDLE_VALUE {
         return Err(last_api_error("CreateToolhelp32Snapshot(modules)"));
     }

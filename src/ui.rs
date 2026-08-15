@@ -322,13 +322,15 @@ impl IntimatrApp {
                 self.request_scan_page();
             }
             CommandResult::ScanResults {
-                total,
-                candidates,
-                ..
+                total, candidates, ..
             } => {
                 self.scan_total = total;
                 self.scan_results = candidates;
-                self.status = format!("Showing {} of {} scan results", self.scan_results.len(), total);
+                self.status = format!(
+                    "Showing {} of {} scan results",
+                    self.scan_results.len(),
+                    total
+                );
             }
             CommandResult::ScanCancellation {
                 scan_id,
@@ -437,7 +439,10 @@ impl IntimatrApp {
                 return;
             }
         };
-        self.submit(UiTaskKind::ReadMemory, Command::ReadMemory { address, size });
+        self.submit(
+            UiTaskKind::ReadMemory,
+            Command::ReadMemory { address, size },
+        );
     }
 
     fn render_top_bar(&mut self, ui: &mut egui::Ui) {
@@ -494,7 +499,10 @@ impl IntimatrApp {
         ui.horizontal(|ui| {
             let scanning = self.pending.contains(&UiTaskKind::FirstScan)
                 || self.pending.contains(&UiTaskKind::NextScan);
-            if ui.add_enabled(!scanning, egui::Button::new("First scan")).clicked() {
+            if ui
+                .add_enabled(!scanning, egui::Button::new("First scan"))
+                .clicked()
+            {
                 match self.scan_mode.to_predicate(
                     self.scan_value_type,
                     &self.scan_operand_a,
@@ -514,14 +522,18 @@ impl IntimatrApp {
                         self.status = "First scan running…".to_owned();
                     }
                     Ok(_) => {
-                        self.status = "That comparison requires a previous scan; use Next scan".to_owned();
+                        self.status =
+                            "That comparison requires a previous scan; use Next scan".to_owned();
                     }
                     Err(error) => self.status = error,
                 }
             }
 
             let can_next = !scanning && self.scan_summary.is_some();
-            if ui.add_enabled(can_next, egui::Button::new("Next scan")).clicked() {
+            if ui
+                .add_enabled(can_next, egui::Button::new("Next scan"))
+                .clicked()
+            {
                 let summary = self.scan_summary.expect("checked above");
                 match self.scan_mode.to_predicate(
                     summary.value_type,
@@ -585,10 +597,7 @@ impl IntimatrApp {
             }
             ui.label(format!("Page {} / {page_count}", self.scan_page + 1));
             if ui
-                .add_enabled(
-                    self.scan_page + 1 < page_count,
-                    egui::Button::new("Next"),
-                )
+                .add_enabled(self.scan_page + 1 < page_count, egui::Button::new("Next"))
                 .clicked()
             {
                 self.scan_page += 1;
@@ -696,7 +705,8 @@ impl IntimatrApp {
                         if ui.checkbox(&mut frozen, "").changed() {
                             let value = if frozen { watch_value.value } else { None };
                             if frozen && value.is_none() {
-                                self.status = "Cannot freeze a watch until it has a readable value".to_owned();
+                                self.status = "Cannot freeze a watch until it has a readable value"
+                                    .to_owned();
                             } else {
                                 freeze_action = Some((watch.id, value));
                             }
@@ -1115,13 +1125,16 @@ fn parse_address(text: &str) -> Result<u64, String> {
     if digits.is_empty() {
         return Err("Address must not be empty".to_owned());
     }
-    u64::from_str_radix(digits, 16).map_err(|_| format!("{text:?} is not a valid hexadecimal address"))
+    u64::from_str_radix(digits, 16)
+        .map_err(|_| format!("{text:?} is not a valid hexadecimal address"))
 }
 
 fn parse_hex_bytes(text: &str) -> Result<Vec<u8>, String> {
     let compact: String = text
         .chars()
-        .filter(|character| !character.is_ascii_whitespace() && *character != ',' && *character != '_')
+        .filter(|character| {
+            !character.is_ascii_whitespace() && *character != ',' && *character != '_'
+        })
         .collect();
     if compact.is_empty() {
         return Ok(Vec::new());
@@ -1243,9 +1256,18 @@ mod tests {
 
     #[test]
     fn parses_scalar_kinds_and_widths() {
-        assert_eq!(parse_scalar(ValueType::I32, "-7").unwrap(), ScalarValue::Signed(-7));
-        assert_eq!(parse_scalar(ValueType::U16, "42").unwrap(), ScalarValue::Unsigned(42));
-        assert_eq!(parse_scalar(ValueType::F32, "1.5").unwrap(), ScalarValue::Float(1.5));
+        assert_eq!(
+            parse_scalar(ValueType::I32, "-7").unwrap(),
+            ScalarValue::Signed(-7)
+        );
+        assert_eq!(
+            parse_scalar(ValueType::U16, "42").unwrap(),
+            ScalarValue::Unsigned(42)
+        );
+        assert_eq!(
+            parse_scalar(ValueType::F32, "1.5").unwrap(),
+            ScalarValue::Float(1.5)
+        );
         assert!(parse_scalar(ValueType::I8, "128").is_err());
     }
 

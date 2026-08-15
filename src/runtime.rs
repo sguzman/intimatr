@@ -182,11 +182,7 @@ fn bootstrap_inner(
     #[cfg(windows)]
     let rpc_server = start_rpc_if_enabled(&config, Arc::clone(&command_executor))?;
     #[cfg(windows)]
-    let ui = start_ui_if_enabled(
-        &config,
-        &module_directory,
-        Arc::clone(&command_executor),
-    )?;
+    let ui = start_ui_if_enabled(&config, &module_directory, Arc::clone(&command_executor))?;
 
     Ok(RuntimeContext {
         config,
@@ -243,9 +239,7 @@ fn start_ui_if_enabled(
         return Ok(None);
     }
 
-    let persistence_path = module_directory
-        .join("ui")
-        .join(&config.target.executable);
+    let persistence_path = module_directory.join("ui").join(&config.target.executable);
     let handle = ui::UiHandle::start(
         config.ui.clone(),
         config.target.executable.clone(),

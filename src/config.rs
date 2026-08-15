@@ -150,9 +150,7 @@ impl AppConfig {
             }
         }
         if self.ui.toggle_key.trim().is_empty() {
-            return Err(ConfigError::InvalidValue(
-                "ui.toggle_key must not be empty",
-            ));
+            return Err(ConfigError::InvalidValue("ui.toggle_key must not be empty"));
         }
         if !self.ui.width.is_finite() || self.ui.width <= 0.0 {
             return Err(ConfigError::InvalidValue(
