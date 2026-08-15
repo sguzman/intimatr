@@ -1,0 +1,103 @@
+name: Fix Debugger Context Alignment
+
+on:
+  push:
+    branches:
+      - milestone-5-debugger
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Align Windows x64 CONTEXT buffers
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+
+          path = Path("src/debugger/windows.rs")
+          text = path.read_text()
+
+          text = text.replace(
+              "    let context = get_context(&handle, CONTEXT_ALL_AMD64)?;\n    Ok(context_snapshot(thread_id, &context))",
+              "    let context = get_context(&handle, CONTEXT_ALL_AMD64)?;\n    Ok(context_snapshot(thread_id, &context.0))",
+              1,
+          )
+          text = text.replace("    context.EFlags |= TRAP_FLAG;", "    context.0.EFlags |= TRAP_FLAG;", 1)
+          text = text.replace(
+              "    if unsafe { SetThreadContext(handle.0, &context) } == 0 {",
+              "    if unsafe { SetThreadContext(handle.0, &context.0) } == 0 {",
+              1,
+          )
+          text = text.replace(
+              "    set_debug_address(&mut context, breakpoint.slot, breakpoint.address)?;",
+              "    set_debug_address(&mut context.0, breakpoint.slot, breakpoint.address)?;",
+              1,
+          )
+          text = text.replace("    context.Dr7 &= !(0b11_u64 << enable_shift);", "    context.0.Dr7 &= !(0b11_u64 << enable_shift);", 1)
+          text = text.replace("    context.Dr7 |= 1_u64 << enable_shift;", "    context.0.Dr7 |= 1_u64 << enable_shift;", 1)
+          text = text.replace("    context.Dr7 &= !(0b1111_u64 << control_shift);", "    context.0.Dr7 &= !(0b1111_u64 << control_shift);", 1)
+          text = text.replace("    context.Dr7 |= (rw | (len << 2)) << control_shift;", "    context.0.Dr7 |= (rw | (len << 2)) << control_shift;", 1)
+          text = text.replace("    context.Dr6 = 0;", "    context.0.Dr6 = 0;", 1)
+          text = text.replace(
+              "    if unsafe { SetThreadContext(handle.0, &context) } == 0 {",
+              "    if unsafe { SetThreadContext(handle.0, &context.0) } == 0 {",
+              1,
+          )
+          text = text.replace("    set_debug_address(&mut context, breakpoint.slot, 0)?;", "    set_debug_address(&mut context.0, breakpoint.slot, 0)?;", 1)
+          text = text.replace("    context.Dr7 &= !(0b11_u64 << enable_shift);", "    context.0.Dr7 &= !(0b11_u64 << enable_shift);", 1)
+          text = text.replace("    context.Dr7 &= !(0b1111_u64 << control_shift);", "    context.0.Dr7 &= !(0b1111_u64 << control_shift);", 1)
+          text = text.replace("    context.Dr6 = 0;", "    context.0.Dr6 = 0;", 1)
+          text = text.replace(
+              "    if unsafe { SetThreadContext(handle.0, &context) } == 0 {",
+              "    if unsafe { SetThreadContext(handle.0, &context.0) } == 0 {",
+              1,
+          )
+
+          old = '''fn get_context(handle: &ThreadHandle, flags: u32) -> Result<CONTEXT, WindowsDebuggerError> {
+              let mut context: CONTEXT = unsafe { zeroed() };
+              context.ContextFlags = flags;
+              if unsafe { GetThreadContext(handle.0, &mut context) } == 0 {
+                  return Err(last_api_error("GetThreadContext"));
+              }
+              Ok(context)
+          }'''
+          new = '''#[repr(align(16))]
+          struct AlignedContext(CONTEXT);
+
+          fn get_context(handle: &ThreadHandle, flags: u32) -> Result<AlignedContext, WindowsDebuggerError> {
+              let mut context = AlignedContext(unsafe { zeroed() });
+              context.0.ContextFlags = flags;
+              if unsafe { GetThreadContext(handle.0, &mut context.0) } == 0 {
+                  return Err(last_api_error("GetThreadContext"));
+              }
+              Ok(context)
+          }'''
+          if old not in text:
+              raise SystemExit("get_context block not found")
+          text = text.replace(old, new, 1)
+          path.write_text(text)
+          '@ | Set-Content -Path fix_context_alignment.py
+          python fix_context_alignment.py
+          Remove-Item fix_context_alignment.py
+          cargo fmt --all
+      - name: Commit fix
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/debugger/windows.rs
+          git commit -m "align Windows debugger context buffers"
+          git push origin HEAD:milestone-5-debugger
