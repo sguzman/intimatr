@@ -47,7 +47,7 @@ pub fn snapshot_registers(
     )?;
     let _suspension = TemporarySuspension::maybe(&handle, already_suspended)?;
     let context = get_context(&handle, CONTEXT_ALL_AMD64)?;
-    Ok(context_snapshot(thread_id, &context))
+    Ok(context_snapshot(thread_id, &context.0))
 }
 
 pub fn pause_thread(thread_id: u32) -> Result<(), WindowsDebuggerError> {
@@ -94,9 +94,9 @@ pub fn arm_single_step(
     )?;
     let _suspension = TemporarySuspension::maybe(&handle, already_suspended)?;
     let mut context = get_context(&handle, CONTEXT_CONTROL_AMD64)?;
-    context.EFlags |= TRAP_FLAG;
+    context.0.EFlags |= TRAP_FLAG;
     reserve_single_step(thread_id)?;
-    if unsafe { SetThreadContext(handle.0, &context) } == 0 {
+    if unsafe { SetThreadContext(handle.0, &context.0) } == 0 {
         release_single_step(thread_id);
         return Err(last_api_error("SetThreadContext(single-step)"));
     }
@@ -130,13 +130,13 @@ fn set_hardware_breakpoint_inner(
         CONTEXT_DEBUG_REGISTERS_AMD64 | CONTEXT_CONTROL_AMD64,
     )?;
 
-    set_debug_address(&mut context, breakpoint.slot, breakpoint.address)?;
+    set_debug_address(&mut context.0, breakpoint.slot, breakpoint.address)?;
     let enable_shift = u32::from(breakpoint.slot) * 2;
-    context.Dr7 &= !(0b11_u64 << enable_shift);
-    context.Dr7 |= 1_u64 << enable_shift;
+    context.0.Dr7 &= !(0b11_u64 << enable_shift);
+    context.0.Dr7 |= 1_u64 << enable_shift;
 
     let control_shift = 16 + u32::from(breakpoint.slot) * 4;
-    context.Dr7 &= !(0b1111_u64 << control_shift);
+    context.0.Dr7 &= !(0b1111_u64 << control_shift);
     let rw = match breakpoint.kind {
         HardwareBreakpointKind::Execute => 0_u64,
         HardwareBreakpointKind::Write => 1_u64,
@@ -149,10 +149,10 @@ fn set_hardware_breakpoint_inner(
         8 => 2_u64,
         _ => return Err(WindowsDebuggerError::InvalidBreakpointEncoding),
     };
-    context.Dr7 |= (rw | (len << 2)) << control_shift;
-    context.Dr6 = 0;
+    context.0.Dr7 |= (rw | (len << 2)) << control_shift;
+    context.0.Dr6 = 0;
 
-    if unsafe { SetThreadContext(handle.0, &context) } == 0 {
+    if unsafe { SetThreadContext(handle.0, &context.0) } == 0 {
         return Err(last_api_error("SetThreadContext(hardware breakpoint)"));
     }
     Ok(())
@@ -172,13 +172,13 @@ pub fn clear_hardware_breakpoint(
         &handle,
         CONTEXT_DEBUG_REGISTERS_AMD64 | CONTEXT_CONTROL_AMD64,
     )?;
-    set_debug_address(&mut context, breakpoint.slot, 0)?;
+    set_debug_address(&mut context.0, breakpoint.slot, 0)?;
     let enable_shift = u32::from(breakpoint.slot) * 2;
-    context.Dr7 &= !(0b11_u64 << enable_shift);
+    context.0.Dr7 &= !(0b11_u64 << enable_shift);
     let control_shift = 16 + u32::from(breakpoint.slot) * 4;
-    context.Dr7 &= !(0b1111_u64 << control_shift);
-    context.Dr6 = 0;
-    if unsafe { SetThreadContext(handle.0, &context) } == 0 {
+    context.0.Dr7 &= !(0b1111_u64 << control_shift);
+    context.0.Dr6 = 0;
+    if unsafe { SetThreadContext(handle.0, &context.0) } == 0 {
         return Err(last_api_error(
             "SetThreadContext(clear hardware breakpoint)",
         ));
@@ -319,10 +319,13 @@ fn context_snapshot(thread_id: u32, context: &CONTEXT) -> RegisterSnapshot {
     }
 }
 
-fn get_context(handle: &ThreadHandle, flags: u32) -> Result<CONTEXT, WindowsDebuggerError> {
-    let mut context: CONTEXT = unsafe { zeroed() };
-    context.ContextFlags = flags;
-    if unsafe { GetThreadContext(handle.0, &mut context) } == 0 {
+#[repr(align(16))]
+struct AlignedContext(CONTEXT);
+
+fn get_context(handle: &ThreadHandle, flags: u32) -> Result<AlignedContext, WindowsDebuggerError> {
+    let mut context = AlignedContext(unsafe { zeroed() });
+    context.0.ContextFlags = flags;
+    if unsafe { GetThreadContext(handle.0, &mut context.0) } == 0 {
         return Err(last_api_error("GetThreadContext"));
     }
     Ok(context)
