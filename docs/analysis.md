@@ -32,6 +32,8 @@ game-client.dll+0x40
 
 Absolute decimal and hexadecimal addresses resolve directly. Module names and full module paths are matched case-insensitively against the current process module list. A module without an offset resolves to its base. The parser uses the rightmost numeric `+`/`-` suffix, so punctuation such as a hyphen inside a module filename does not prevent normal module-relative addressing.
 
+Absolute address parsing does not read or enumerate process state. Module-relative resolution does consult the current loaded-module list and therefore requires the same shared memory-read policy used by ordinary module enumeration; `resolve_address` cannot bypass that policy gate.
+
 Module-relative expressions are preferred for reusable state because they naturally follow ASLR when a module is loaded at a different base in a later process.
 
 ## Pointer-chain resolution
