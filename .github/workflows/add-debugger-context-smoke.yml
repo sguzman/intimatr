@@ -1,0 +1,82 @@
+name: Add Debugger Context Smoke Test
+
+on:
+  push:
+    branches:
+      - milestone-5-debugger
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Add other-thread context smoke test
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+
+          path = Path("src/debugger/windows.rs")
+          text = path.read_text()
+          marker = '''    #[test]
+              fn event_ring_preserves_order() {'''
+          test = '''    #[test]
+              fn captures_a_separate_running_thread_context() {
+                  use std::{
+                      sync::{
+                          Arc,
+                          atomic::{AtomicBool, Ordering},
+                          mpsc,
+                      },
+                      thread,
+                  };
+
+                  let stop = Arc::new(AtomicBool::new(false));
+                  let worker_stop = Arc::clone(&stop);
+                  let (sender, receiver) = mpsc::channel();
+                  let worker = thread::spawn(move || {
+                      let thread_id = unsafe { GetCurrentThreadId() };
+                      sender.send(thread_id).expect("send worker thread id");
+                      while !worker_stop.load(Ordering::Acquire) {
+                          thread::yield_now();
+                      }
+                  });
+                  let thread_id = receiver.recv().expect("receive worker thread id");
+
+                  let snapshot = snapshot_registers(thread_id, false)
+                      .expect("separate running thread context should capture");
+                  assert_eq!(snapshot.thread_id, thread_id);
+                  assert_ne!(snapshot.instruction_pointer, 0);
+                  assert_ne!(snapshot.stack_pointer, 0);
+
+                  stop.store(true, Ordering::Release);
+                  worker.join().expect("worker should exit cleanly");
+              }
+
+          '''
+          if marker not in text:
+              raise SystemExit("event ring test marker not found")
+          path.write_text(text.replace(marker, test + marker, 1))
+          '@ | Set-Content -Path add_context_test.py
+          python add_context_test.py
+          Remove-Item add_context_test.py
+          cargo fmt --all
+      - name: Commit test
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/debugger/windows.rs
+          git commit -m "test debugger context capture on separate thread"
+          git push origin HEAD:milestone-5-debugger
