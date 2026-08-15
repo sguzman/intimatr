@@ -378,16 +378,15 @@ pub fn search_pointer_chains<S: MemorySource + ?Sized>(
         if depth >= options.max_depth || results.len() >= options.max_results {
             continue;
         }
-        let candidates = scan_pointer_predecessors(
-            source,
-            current_target,
+        let predecessor_options = PointerPredecessorScanOptions {
             filter,
-            scanner_config.chunk_size_bytes,
-            options.pointer_size,
-            options.alignment,
-            options.max_offset,
-            options.max_results.saturating_sub(results.len()),
-        )?;
+            configured_chunk_size: scanner_config.chunk_size_bytes,
+            pointer_size: options.pointer_size,
+            alignment: options.alignment,
+            max_offset: options.max_offset,
+            max_results: options.max_results.saturating_sub(results.len()),
+        };
+        let candidates = scan_pointer_predecessors(source, current_target, predecessor_options)?;
         for (root, offset) in candidates {
             let mut offsets = Vec::with_capacity(suffix_offsets.len() + 1);
             offsets.push(offset);
@@ -413,24 +412,29 @@ pub fn search_pointer_chains<S: MemorySource + ?Sized>(
     Ok(results)
 }
 
-fn scan_pointer_predecessors<S: MemorySource + ?Sized>(
-    source: &S,
-    target: u64,
+#[derive(Debug, Clone, Copy)]
+struct PointerPredecessorScanOptions {
     filter: RegionFilter,
     configured_chunk_size: usize,
     pointer_size: u8,
     alignment: usize,
     max_offset: u64,
     max_results: usize,
+}
+
+fn scan_pointer_predecessors<S: MemorySource + ?Sized>(
+    source: &S,
+    target: u64,
+    options: PointerPredecessorScanOptions,
 ) -> Result<Vec<(u64, i64)>, AnalysisError> {
-    let width = pointer_size as usize;
-    let chunk_size = configured_chunk_size.max(width);
+    let width = options.pointer_size as usize;
+    let chunk_size = options.configured_chunk_size.max(width);
     let overlap = width.saturating_sub(1);
     let mut results = Vec::new();
     let mut regions = source.regions()?;
     regions.sort_unstable_by_key(|region| region.base);
     for region in regions {
-        if !region.is_scannable(filter) || region.size < width {
+        if !region.is_scannable(options.filter) || region.size < width {
             continue;
         }
         let end = region.end()?;
@@ -447,10 +451,10 @@ fn scan_pointer_predecessors<S: MemorySource + ?Sized>(
             }
             for offset in 0..=buffer.len() - width {
                 let address = cursor + offset;
-                if (address - region.base) % alignment != 0 {
+                if (address - region.base) % options.alignment != 0 {
                     continue;
                 }
-                let pointer = if pointer_size == 4 {
+                let pointer = if options.pointer_size == 4 {
                     u64::from(u32::from_le_bytes(
                         buffer[offset..offset + 4]
                             .try_into()
@@ -467,9 +471,9 @@ fn scan_pointer_predecessors<S: MemorySource + ?Sized>(
                     continue;
                 }
                 let delta = target - pointer;
-                if delta <= max_offset && delta <= i64::MAX as u64 {
+                if delta <= options.max_offset && delta <= i64::MAX as u64 {
                     results.push((address as u64, delta as i64));
-                    if results.len() >= max_results {
+                    if results.len() >= options.max_results {
                         return Ok(results);
                     }
                 }
@@ -902,8 +906,10 @@ mod tests {
     #[test]
     fn pattern_scan_finds_matches_across_chunk_overlap() {
         let memory = Bytes::new(0x1000, vec![0x90, 0x48, 0x8B, 0x01, 0x90, 0x48, 0x8B, 0xFF]);
-        let mut config = ScannerConfig::default();
-        config.chunk_size_bytes = 4;
+        let config = ScannerConfig {
+            chunk_size_bytes: 4,
+            ..ScannerConfig::default()
+        };
         let result = scan_pattern(
             &memory,
             "48 8B ??",
