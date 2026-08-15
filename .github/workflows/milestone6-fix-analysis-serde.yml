@@ -1,0 +1,73 @@
+name: Repair Milestone 6 Analysis Serde
+
+on:
+  push:
+    branches:
+      - milestone-6-analysis
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Apply protocol repair
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+          import re
+
+          command_path = Path("src/command.rs")
+          original = command_path.read_text()
+          text = original
+
+          text, count = re.subn(
+              r'(\n\s*Analysis \{\n\s*)result(: crate::analysis::AnalysisResult,\n\s*\},)',
+              r'\1analysis\2',
+              text,
+              count=1,
+          )
+          if count != 1:
+              raise SystemExit(f"expected one CommandResult Analysis field replacement, got {count}")
+
+          old_dispatch = "CommandExecution::immediate(CommandResult::Analysis { result })"
+          new_dispatch = "CommandExecution::immediate(CommandResult::Analysis { analysis: result })"
+          if old_dispatch not in text:
+              raise SystemExit("analysis dispatch marker missing")
+          text = text.replace(old_dispatch, new_dispatch, 1)
+          if text == original:
+              raise SystemExit("command.rs was not changed")
+          command_path.write_text(text)
+
+          test_path = Path("tests/analysis_command.rs")
+          test = test_path.read_text()
+          old_test = "CommandResult::Analysis { result } => result,"
+          new_test = "CommandResult::Analysis { analysis } => analysis,"
+          if old_test not in test:
+              raise SystemExit("analysis integration-test marker missing")
+          test_path.write_text(test.replace(old_test, new_test, 1))
+          '@ | python -
+
+          cargo fmt --all
+          git diff --exit-code -- src/command.rs tests/analysis_command.rs
+          if ($LASTEXITCODE -eq 0) { throw "expected source changes but git diff is empty" }
+          git diff --check -- src/command.rs tests/analysis_command.rs
+      - name: Commit repair and remove helper
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/milestone6-fix-analysis-serde.yml
+          git add src/command.rs tests/analysis_command.rs
+          git diff --cached --stat
+          git commit -m "fix analysis RPC result serialization"
+          git push origin HEAD:milestone-6-analysis
