@@ -1,6 +1,6 @@
 # Intimatr Project Specification
 
-Intimatr is a Rust-first, in-process memory research toolkit intended for offline single-player games. It is meant to feel like an embedded and programmable subset of Cheat Engine: a DLL loaded into the target process, a CE-style scanner and native tool UI, debugger-oriented tooling, and a local RPC surface for external frontends and automation.
+Intimatr is a Rust-first, in-process memory research toolkit intended for offline single-player games. It is meant to feel like an embedded and programmable subset of Cheat Engine: a DLL loaded into the target process, a CE-style scanner and native tool UI, debugger-oriented tooling, advanced memory analysis, and a local RPC surface for external frontends and automation.
 
 ## Scope
 
@@ -16,9 +16,16 @@ Game.exe
     │   ├── typed reads/writes
     │   ├── first scan / next scan
     │   └── result snapshots
+    ├── analysis
+    │   ├── AOB/wildcard search
+    │   ├── symbolic/module-relative addresses
+    │   ├── pointer chains/search
+    │   ├── structure inspection
+    │   └── saved workspaces
     ├── shared command dispatcher
     │   ├── policy enforcement
     │   ├── scan/watch/freeze state
+    │   ├── analysis workspace state
     │   ├── module/thread inspection
     │   ├── debugger state/events
     │   └── frontend-neutral results
@@ -53,24 +60,13 @@ The project is for offline/single-player research and does not include anti-chea
 - There is exactly one TOML configuration file per target game executable.
 - Config files are named `<ExecutableName>.toml`, including the `.exe` suffix; for example, `ExampleGame.exe.toml`.
 - Update `MILESTONES.md` as work lands and check completed items off in the same change.
-- Keep Windows-specific unsafe code behind small, auditable modules; the scanner predicate, disassembler DTOs, command protocol, and RPC layers should remain platform-neutral and testable.
+- Keep Windows-specific unsafe code behind small, auditable modules; scanner/analysis predicates, disassembler DTOs, command protocol, and RPC layers should remain platform-neutral and testable where practical.
 
 ## Scanner semantics
 
-The scan engine is general-purpose rather than game-specific. First-scan and next-scan filtering supports:
+The scalar scan engine is general-purpose rather than game-specific. First-scan and next-scan filtering supports unknown initial value, exact/comparison/range predicates, changed/unchanged, increased/decreased, and delta predicates. Historical predicates operate against a previous scan snapshot, and float equality is controlled by a per-game `scanner.float_epsilon` setting.
 
-- unknown initial value
-- exact / not equal
-- greater than / greater-or-equal
-- less than / less-or-equal
-- inclusive range
-- changed / unchanged
-- increased / decreased
-- increased by / decreased by
-
-Historical predicates operate against a previous scan snapshot. Float equality is controlled by a per-game `scanner.float_epsilon` setting.
-
-The scanner is intentionally split from Windows process access. `MemorySource` supplies normalized memory regions and exact byte reads. This lets the same scanner run against deterministic synthetic buffers in tests and `CurrentProcessMemory` inside the loaded DLL.
+The scanner is intentionally split from Windows process access. `MemorySource` supplies normalized memory regions and exact byte reads. This lets deterministic synthetic buffers and `CurrentProcessMemory` use the same scanner and analysis primitives.
 
 Supported typed values are `i8`, `i16`, `i32`, `i64`, `u8`, `u16`, `u32`, `u64`, `f32`, and `f64`. Scan candidates store the current scalar plus the immediately previous scalar after a next scan.
 
@@ -80,35 +76,43 @@ On Windows, `CurrentProcessMemory` enumerates regions with `VirtualQuery` and us
 
 Writes are denied unless `policy.allow_memory_write` is enabled. Writes into executable regions additionally require `policy.allow_code_patch`. Non-writable committed regions may be temporarily changed to a writable protection for the duration of an allowed write, after which the original protection is restored. Executable writes flush the instruction cache.
 
+## Advanced analysis contract
+
+Advanced analysis is implemented above `MemorySource` rather than creating another process-access backend. AOB scans reuse scanner region filters, configured chunking, overlap, alignment, and result ceilings. Pattern bytes are mask-based and support exact bytes, `??`, low-nibble wildcards such as `?F`, and high-nibble wildcards such as `A?`.
+
+Address expressions resolve absolute decimal/hexadecimal values or current-process module names/paths plus signed offsets. Module matching is case-insensitive and the rightmost numeric suffix is interpreted as the relative offset, allowing ordinary punctuation in module names. Reusable module-backed watch templates prefer `Module+offset` storage so ASLR changes do not silently convert them into stale absolute pointers.
+
+Explicit pointer-chain resolution uses a deterministic dereference-then-add convention with 4- or 8-byte little-endian pointers and signed offsets. Reverse pointer search is deliberately bounded by depth, offset, alignment, scanner-eligible regions, and result count instead of trying to materialize an unconstrained whole-process pointer graph.
+
+Structure inspection resolves one base expression and reads named scalar, pointer, or bounded raw-byte fields at signed offsets. Reads stay behind the shared memory-read policy and transfer limits.
+
+Named scan sessions and watch templates live in one `AnalysisWorkspace` owned by the shared dispatcher. Workspaces serialize to versioned JSON under `analysis/<ExecutableName>` beside the DLL. Restored scalar scans are snapshots of their original candidate addresses and may be stale after process-layout changes; module-relative watch templates are the durable cross-run primitive when a stable module offset is available.
+
+`AnalysisCommand::Batch` is the automation primitive: it runs a bounded sequence of ordinary analysis commands through the same implementation and policy checks. It is not a second scripting engine and nested batches are rejected.
+
 ## Configuration
 
 Configuration is resolved from the current executable filename. If the target is `SomeGame.exe`, Intimatr loads `config/SomeGame.exe.toml` and validates that `[target].executable` matches the actual executable name case-insensitively.
 
-The configuration owns:
-
-- target identity
-- logging settings
-- RPC transport, endpoint, client/frame/transfer/result-page limits
-- scanner tuning parameters, access requirements, result limits, alignment, and float epsilon
-- debugger enablement, disassembly limits, breakpoint/event limits, native debugger UI, hotkey, and polling cadence
-- general CE-style UI enablement, initial visibility, topmost mode, hotkey, dimensions, watch refresh cadence, and scan paging
-- policy gates for read/write/patch/debugger/remote-control capabilities
+The configuration owns target identity, logging, RPC transport/limits, scanner tuning, debugger behavior, CE-style UI behavior, and policy gates. Analysis uses those existing scanner, memory-transfer, and policy limits rather than introducing an independent configuration authority.
 
 ## Frontend contract
 
-The in-process UIs and RPC server all call the same `CommandExecutor`/`CommandDispatcher` instance created during bootstrap. Memory operations, scan sessions, watches/freezes, module/thread enumeration, policy checks, transfer limits, and debugger commands must be implemented once behind that boundary rather than independently in each frontend.
+The in-process UIs and RPC server all call the same `CommandExecutor`/`CommandDispatcher` instance created during bootstrap. Memory operations, scan sessions, watches/freezes, analysis workspaces, module/thread enumeration, policy checks, transfer limits, and debugger commands must be implemented once behind that boundary rather than independently in each frontend.
 
-A frozen watch stores its target scalar in shared watch state. `RefreshWatches` reapplies that value through the normal policy-gated write path before reading it back. The first-party UI drives refreshes at its configured cadence, while RPC clients see and manipulate the same watch definition rather than a second frontend-specific freeze list.
+A frozen watch stores its target scalar in shared watch state. `RefreshWatches` reapplies that value through the normal policy-gated write path before reading it back. RPC clients see and manipulate the same watch definition rather than a second frontend-specific freeze list.
 
-The RPC protocol is explicitly versioned. Version 1 uses four-byte big-endian length-prefixed JSON messages with request IDs. TCP is restricted to loopback addresses. The Windows named-pipe transport rejects remote clients. Long command execution is kept off the RPC I/O reactor so separate clients remain responsive enough to issue scan cancellation requests.
+The RPC protocol is explicitly versioned. Version 1 uses four-byte big-endian length-prefixed JSON messages with request IDs. TCP is restricted to loopback addresses. The Windows named-pipe transport rejects remote clients. Long command execution is kept off the RPC I/O reactor so separate clients remain responsive enough to issue cancellation or other requests.
 
-Debugger events are shared state as well. The Windows debugger backend records Intimatr-owned events into a bounded sequence-numbered ring. `DebuggerEvents { after_sequence, limit }` exposes a cursor feed through the command layer; the native debugger UI polls that command and RPC clients can consume the same ordered stream without a second event system.
+Debugger events are shared state as well. The Windows debugger backend records Intimatr-owned events into a bounded sequence-numbered ring. `DebuggerEvents { after_sequence, limit }` exposes a cursor feed through the command layer; the native debugger UI and RPC clients consume the same ordered stream.
+
+Advanced analysis enters through `Command::Analysis { request }`. Because `AnalysisCommand`/`AnalysisResult` are normal serialized command DTOs, local frontends and remote automation execute the same AOB, pointer, structure, persistence, and batch logic.
 
 ## Native UI contract
 
 The general CE-style UI uses eframe/egui with the Glow backend as a normal native Windows tool window owned by the loaded DLL. The event loop is created on Intimatr's dedicated post-bootstrap UI thread; `DllMain` remains limited to minimal loader-safe work.
 
-The UI dispatches commands through worker threads and receives command results back through a local response channel, keeping scans and memory operations off the render/event-loop thread. Window visibility is controlled by a configurable Windows virtual-key hotkey. Closing the window hides it; runtime shutdown closes and joins the UI thread. eframe persistence is scoped to a directory under `ui/<ExecutableName>` beside the DLL so UI/window state remains target-specific.
+The UI dispatches commands through worker threads and receives command results back through a local response channel, keeping scans and memory operations off the render/event-loop thread. Window visibility is controlled by a configurable Windows virtual-key hotkey. Closing the window hides it; runtime shutdown closes and joins the UI thread. eframe persistence is scoped to `ui/<ExecutableName>` beside the DLL so UI/window state remains target-specific.
 
 The native UI does not depend on hooking the target renderer. Renderer interception or an overlaid game-surface UI is not required for the CE-style tool-window workflow.
 
@@ -120,8 +124,6 @@ Thread control is per selected thread. Intimatr records only suspensions that it
 
 Register snapshots use Windows thread-context APIs on a selected non-current thread. x64 context storage is wrapped in explicit 16-byte alignment before `GetThreadContext`/`SetThreadContext` calls. Disassembly is platform-neutral above the memory-read boundary and uses `iced-x86` for 16/32/64-bit decoding and Intel formatting.
 
-Hardware breakpoints use the architecture's DR0–DR3 address slots per thread. Execute breakpoints use size 1; data breakpoints support the architecture encodings for 1/2/4/8-byte aligned ranges. These breakpoints do not patch game code.
+Hardware breakpoints use DR0–DR3 per thread and do not patch game code. The vectored exception handler is acquired only when stepping or hardware breakpoints require it and consumes only `EXCEPTION_SINGLE_STEP` events matching Intimatr-owned state; unrelated exceptions continue searching.
 
-A vectored exception handler is acquired only when stepping or hardware breakpoints require it. It consumes only `EXCEPTION_SINGLE_STEP` events that match Intimatr's own registered per-thread breakpoint/single-step state. Unrelated single-step exceptions return `EXCEPTION_CONTINUE_SEARCH`. Recorded breakpoint hits are trace-style events that auto-continue after Intimatr cleans the relevant debug state; there is no process-wide stop-the-world claim in this milestone.
-
-Shutdown removes known hardware breakpoints, resumes threads still owned by Intimatr, cancels active scans through the shared executor, stops the UIs/RPC server, and releases the scoped exception handler outside loader-lock work.
+Shutdown removes known hardware breakpoints, resumes threads still owned by Intimatr, cancels active scans through the shared executor, stops UIs/RPC, and releases the scoped exception handler outside loader-lock work.
