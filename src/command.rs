@@ -793,7 +793,7 @@ where
             }
             Command::Analysis { request } => {
                 let result = self.execute_analysis(request)?;
-                CommandExecution::immediate(CommandResult::Analysis { result })
+                CommandExecution::immediate(CommandResult::Analysis { analysis: result })
             }
             Command::Shutdown => {
                 if !self.policy.allow_remote_shutdown {

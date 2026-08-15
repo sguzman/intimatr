@@ -125,7 +125,7 @@ fn analysis(
         .expect("analysis command should succeed")
         .result
     {
-        CommandResult::Analysis { result } => result,
+        CommandResult::Analysis { analysis } => analysis,
         other => panic!("unexpected command result: {other:?}"),
     }
 }
