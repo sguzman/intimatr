@@ -1,0 +1,40 @@
+name: Format Debugger Branch
+
+on:
+  push:
+    branches:
+      - milestone-5-debugger
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Format
+        run: cargo fmt --all
+
+      - name: Commit rustfmt output
+        shell: pwsh
+        run: |
+          if (-not (git status --porcelain)) {
+            Write-Host "No formatter changes"
+            exit 0
+          }
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add --all
+          git commit -m "format debugger implementation"
+          git push origin HEAD:milestone-5-debugger
