@@ -54,15 +54,15 @@ The result reports the resolved base, each pointer value that was dereferenced, 
 
 ## Pointer-chain search
 
-`search_pointer_chains` performs a bounded reverse search for pointer locations that can reach a target through small offsets. Its request controls:
+`search_pointer_chains` performs a bounded reverse search for pointer locations that can reach a target through small non-negative offsets. Its request controls:
 
 - maximum depth (currently capped at 8);
-- maximum offset magnitude;
+- maximum positive offset;
 - pointer width (`4` or `8` bytes);
 - pointer alignment;
 - maximum returned paths.
 
-The search walks only scanner-eligible regions and respects the shared scanner result ceiling. It is intentionally bounded rather than pretending that an unconstrained whole-process pointer graph is cheap.
+The search walks only scanner-eligible regions and respects the shared scanner result ceiling. It is intentionally bounded rather than pretending that an unconstrained whole-process pointer graph is cheap. Explicit pointer-chain resolution still supports signed offsets; the current reverse-search primitive narrows discovery to non-negative offsets for predictable breadth and cost.
 
 Returned `PointerPath` values contain a root address and the ordered offsets needed to walk from that root toward the target using the same dereference-then-add convention as explicit pointer-chain resolution.
 
