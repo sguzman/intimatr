@@ -30,7 +30,7 @@ use super::{
     RegisterValue,
 };
 
-const EXCEPTION_SINGLE_STEP_CODE: u32 = 0x8000_0004;
+const EXCEPTION_SINGLE_STEP_CODE: i32 = 0x8000_0004_u32 as i32;
 const TRAP_FLAG: u32 = 1 << 8;
 const RESUME_FLAG: u32 = 1 << 16;
 const EVENT_CAPACITY: usize = 512;
