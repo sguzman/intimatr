@@ -1,0 +1,70 @@
+name: Fix Debugger Clippy
+
+on:
+  push:
+    branches:
+      - milestone-5-debugger
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Apply strict Clippy fixes
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+
+          debugger = Path("src/debugger.rs")
+          text = debugger.read_text()
+          replacements = [
+              (
+                  "            return windows::snapshot_registers(thread_id, paused).map_err(DebuggerError::from);",
+                  "            windows::snapshot_registers(thread_id, paused).map_err(DebuggerError::from)",
+              ),
+              (
+                  "            return Ok(ThreadControlState {\n                thread_id,\n                paused_by_intimatr: false,\n            });",
+                  "            Ok(ThreadControlState {\n                thread_id,\n                paused_by_intimatr: false,\n            })",
+              ),
+              (
+                  "        if !self.veh_acquired.swap(true, Ordering::AcqRel) {\n            if let Err(error) = windows::acquire_vectored_handler() {\n                self.veh_acquired.store(false, Ordering::Release);\n                return Err(error.into());\n            }\n        }",
+                  "        if !self.veh_acquired.swap(true, Ordering::AcqRel)\n            && let Err(error) = windows::acquire_vectored_handler()\n        {\n            self.veh_acquired.store(false, Ordering::Release);\n            return Err(error.into());\n        }",
+              ),
+          ]
+          for old, new in replacements:
+              if old not in text:
+                  raise SystemExit(f"debugger replacement not found: {old[:60]}")
+              text = text.replace(old, new, 1)
+          debugger.write_text(text)
+
+          ui = Path("src/ui.rs")
+          text = ui.read_text()
+          old = "    if compact.len() % 2 != 0 {"
+          new = "    if !compact.len().is_multiple_of(2) {"
+          if old not in text:
+              raise SystemExit("UI parity lint replacement not found")
+          ui.write_text(text.replace(old, new, 1))
+          '@ | Set-Content -Path fix_clippy.py
+          python fix_clippy.py
+          Remove-Item fix_clippy.py
+          cargo fmt --all
+      - name: Commit fixes
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/debugger.rs src/ui.rs
+          git commit -m "fix debugger clippy lints"
+          git push origin HEAD:milestone-5-debugger
