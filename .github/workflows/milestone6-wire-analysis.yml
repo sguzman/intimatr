@@ -22,6 +22,10 @@ jobs:
       - name: Wire analysis
         shell: pwsh
         run: |
+          $path = "scripts/wire_analysis.py"
+          $text = Get-Content $path -Raw
+          $text = $text.Replace('ScanSession>>,","', 'ScanSession>>,",')
+          Set-Content $path $text
           python scripts/wire_analysis.py
           cargo fmt --all
       - name: Commit wiring
