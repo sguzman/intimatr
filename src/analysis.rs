@@ -11,7 +11,7 @@ use tracing::{debug, info, warn};
 use crate::{
     config::ScannerConfig,
     memory::{MemoryError, MemorySource, RegionFilter},
-    scanner::{ScanSession, ScalarValue, ValueType},
+    scanner::{ScalarValue, ScanSession, ValueType},
 };
 
 pub const WORKSPACE_VERSION: u32 = 1;
@@ -326,7 +326,9 @@ fn read_pointer<S: MemorySource + ?Sized>(
     let mut bytes = [0_u8; 8];
     source.read_exact(native, &mut bytes[..pointer_size as usize])?;
     Ok(if pointer_size == 4 {
-        u64::from(u32::from_le_bytes(bytes[..4].try_into().expect("four-byte slice")))
+        u64::from(u32::from_le_bytes(
+            bytes[..4].try_into().expect("four-byte slice"),
+        ))
     } else {
         u64::from_le_bytes(bytes)
     })
@@ -403,7 +405,11 @@ pub fn search_pointer_chains<S: MemorySource + ?Sized>(
         }
     }
 
-    debug!(target, results = results.len(), "completed bounded pointer-chain search");
+    debug!(
+        target,
+        results = results.len(),
+        "completed bounded pointer-chain search"
+    );
     Ok(results)
 }
 
@@ -446,11 +452,15 @@ fn scan_pointer_predecessors<S: MemorySource + ?Sized>(
                 }
                 let pointer = if pointer_size == 4 {
                     u64::from(u32::from_le_bytes(
-                        buffer[offset..offset + 4].try_into().expect("four-byte slice"),
+                        buffer[offset..offset + 4]
+                            .try_into()
+                            .expect("four-byte slice"),
                     ))
                 } else {
                     u64::from_le_bytes(
-                        buffer[offset..offset + 8].try_into().expect("eight-byte slice"),
+                        buffer[offset..offset + 8]
+                            .try_into()
+                            .expect("eight-byte slice"),
                     )
                 };
                 if pointer > target {
@@ -752,19 +762,49 @@ pub enum AnalysisCommand {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "analysis_result", rename_all = "snake_case")]
 pub enum AnalysisResult {
-    PatternScan { scan: PatternScanResult },
-    Address { expression: String, address: u64 },
-    PointerChain { resolution: PointerChainResolution },
-    PointerPaths { paths: Vec<PointerPath> },
-    Structure { fields: Vec<StructureFieldValue> },
-    ScanSaved { name: String },
-    ScanRestored { name: String, scan_id: u64 },
-    WatchTemplateSaved { name: String },
-    WatchAdded { name: String, watch_id: u64 },
-    Saved { summary: SavedAnalysisSummary },
-    WorkspaceSaved { name: String },
-    WorkspaceLoaded { name: String, summary: SavedAnalysisSummary },
-    Batch { results: Vec<AnalysisResult> },
+    PatternScan {
+        scan: PatternScanResult,
+    },
+    Address {
+        expression: String,
+        address: u64,
+    },
+    PointerChain {
+        resolution: PointerChainResolution,
+    },
+    PointerPaths {
+        paths: Vec<PointerPath>,
+    },
+    Structure {
+        fields: Vec<StructureFieldValue>,
+    },
+    ScanSaved {
+        name: String,
+    },
+    ScanRestored {
+        name: String,
+        scan_id: u64,
+    },
+    WatchTemplateSaved {
+        name: String,
+    },
+    WatchAdded {
+        name: String,
+        watch_id: u64,
+    },
+    Saved {
+        summary: SavedAnalysisSummary,
+    },
+    WorkspaceSaved {
+        name: String,
+    },
+    WorkspaceLoaded {
+        name: String,
+        summary: SavedAnalysisSummary,
+    },
+    Batch {
+        results: Vec<AnalysisResult>,
+    },
 }
 
 #[derive(Debug, Error)]
@@ -931,6 +971,10 @@ mod tests {
             },
         )
         .unwrap();
-        assert!(paths.iter().any(|path| path.root == 0x2010 && path.offsets == vec![0x20]));
+        assert!(
+            paths
+                .iter()
+                .any(|path| path.root == 0x2010 && path.offsets == vec![0x20])
+        );
     }
 }
