@@ -1,0 +1,94 @@
+name: Fix Debugger Self Context
+
+on:
+  push:
+    branches:
+      - milestone-5-debugger
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Remove unsafe self-context capture path
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+
+          path = Path("src/debugger/windows.rs")
+          text = path.read_text()
+          old_import = "            EXCEPTION_POINTERS, GetThreadContext, RemoveVectoredExceptionHandler,\n            RtlCaptureContext, SetThreadContext,"
+          new_import = "            EXCEPTION_POINTERS, GetThreadContext, RemoveVectoredExceptionHandler,\n            SetThreadContext,"
+          if old_import not in text:
+              raise SystemExit("RtlCaptureContext import block not found")
+          text = text.replace(old_import, new_import, 1)
+
+          old_fn = '''    let current = unsafe { GetCurrentThreadId() };
+              let context = if thread_id == current {
+                  let mut context: CONTEXT = unsafe { zeroed() };
+                  unsafe { RtlCaptureContext(&mut context) };
+                  context
+              } else {
+                  let handle = ThreadHandle::open(
+                      thread_id,
+                      THREAD_GET_CONTEXT | THREAD_QUERY_INFORMATION | THREAD_SUSPEND_RESUME,
+                  )?;
+                  let _suspension = TemporarySuspension::maybe(&handle, already_suspended)?;
+                  get_context(&handle, CONTEXT_ALL_AMD64)?
+              };
+              Ok(context_snapshot(thread_id, &context))'''
+          new_fn = '''    reject_current_thread(thread_id)?;
+              let handle = ThreadHandle::open(
+                  thread_id,
+                  THREAD_GET_CONTEXT | THREAD_QUERY_INFORMATION | THREAD_SUSPEND_RESUME,
+              )?;
+              let _suspension = TemporarySuspension::maybe(&handle, already_suspended)?;
+              let context = get_context(&handle, CONTEXT_ALL_AMD64)?;
+              Ok(context_snapshot(thread_id, &context))'''
+          if old_fn not in text:
+              raise SystemExit("snapshot_registers body not found")
+          text = text.replace(old_fn, new_fn, 1)
+
+          old_test = '''    #[test]
+              fn captures_current_thread_registers_without_suspending_it() {
+                  let thread_id = unsafe { GetCurrentThreadId() };
+                  let snapshot =
+                      snapshot_registers(thread_id, false).expect("current context should capture");
+                  assert_eq!(snapshot.thread_id, thread_id);
+                  assert_ne!(snapshot.instruction_pointer, 0);
+                  assert_ne!(snapshot.stack_pointer, 0);
+              }'''
+          new_test = '''    #[test]
+              fn rejects_current_thread_context_capture() {
+                  let thread_id = unsafe { GetCurrentThreadId() };
+                  let error = snapshot_registers(thread_id, false)
+                      .expect_err("debugger worker must not capture itself through thread APIs");
+                  assert!(matches!(error, WindowsDebuggerError::CurrentThreadOperation(id) if id == thread_id));
+              }'''
+          if old_test not in text:
+              raise SystemExit("self-context test block not found")
+          path.write_text(text.replace(old_test, new_test, 1))
+          '@ | Set-Content -Path fix_self_context.py
+          python fix_self_context.py
+          Remove-Item fix_self_context.py
+          cargo fmt --all
+      - name: Commit fix
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/debugger/windows.rs
+          git commit -m "harden debugger thread context capture"
+          git push origin HEAD:milestone-5-debugger
