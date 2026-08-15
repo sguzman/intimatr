@@ -88,11 +88,7 @@ impl RpcClient {
         }
     }
 
-    fn from_stream<S>(
-        stream: S,
-        max_request_bytes: usize,
-        max_response_bytes: usize,
-    ) -> Self
+    fn from_stream<S>(stream: S, max_request_bytes: usize, max_response_bytes: usize) -> Self
     where
         S: ClientStream + 'static,
     {

@@ -13,13 +13,13 @@ use crate::{
 };
 
 #[cfg(windows)]
-use std::sync::Arc;
-#[cfg(windows)]
 use crate::{
     command::{CommandDispatcher, CommandExecutor, CommandLimits, PostAction},
     platform::windows::{self, WindowsError, memory::CurrentProcessMemory},
     rpc::{self, PostActionHandler, RpcServerError, RpcServerHandle},
 };
+#[cfg(windows)]
+use std::sync::Arc;
 
 static LIFECYCLE: Lifecycle = Lifecycle::new();
 static CONTEXT: Mutex<Option<RuntimeContext>> = Mutex::new(None);

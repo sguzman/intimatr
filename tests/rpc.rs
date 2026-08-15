@@ -4,7 +4,9 @@ use std::sync::{
 };
 
 use intimatr::{
-    command::{Command, CommandError, CommandExecution, CommandExecutor, CommandResult, PostAction},
+    command::{
+        Command, CommandError, CommandExecution, CommandExecutor, CommandResult, PostAction,
+    },
     config::{RpcConfig, RpcTransport},
     rpc::{PostActionHandler, RpcClient, RpcEndpoint, start_server},
 };
@@ -50,12 +52,9 @@ fn loopback_tcp_client_and_server_round_trip_commands() {
         RpcEndpoint::Tcp(address) => *address,
         other => panic!("unexpected endpoint: {other:?}"),
     };
-    let mut client = RpcClient::connect_tcp(
-        address,
-        config.max_request_bytes,
-        config.max_response_bytes,
-    )
-    .expect("TCP client should connect");
+    let mut client =
+        RpcClient::connect_tcp(address, config.max_request_bytes, config.max_response_bytes)
+            .expect("TCP client should connect");
 
     assert_eq!(client.call(Command::Ping).unwrap(), CommandResult::Pong);
     assert_eq!(
@@ -98,12 +97,9 @@ fn windows_named_pipe_client_and_server_round_trip() {
         RpcEndpoint::NamedPipe(pipe) => pipe.clone(),
         other => panic!("unexpected endpoint: {other:?}"),
     };
-    let mut client = RpcClient::connect_named_pipe(
-        &pipe,
-        config.max_request_bytes,
-        config.max_response_bytes,
-    )
-    .expect("named-pipe client should connect");
+    let mut client =
+        RpcClient::connect_named_pipe(&pipe, config.max_request_bytes, config.max_response_bytes)
+            .expect("named-pipe client should connect");
 
     assert_eq!(client.call(Command::Ping).unwrap(), CommandResult::Pong);
     server.stop().expect("server should stop cleanly");

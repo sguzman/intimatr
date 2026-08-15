@@ -98,7 +98,9 @@ where
     T: Serialize,
 {
     let payload = encode_payload(value, max_bytes)?;
-    writer.write_all(&(payload.len() as u32).to_be_bytes()).await?;
+    writer
+        .write_all(&(payload.len() as u32).to_be_bytes())
+        .await?;
     writer.write_all(&payload).await?;
     writer.flush().await?;
     Ok(())

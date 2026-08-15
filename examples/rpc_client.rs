@@ -18,9 +18,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     )?;
 
     println!("ping: {:#?}", client.call(Command::Ping)?);
-    println!(
-        "lifecycle: {:#?}",
-        client.call(Command::LifecycleState)?
-    );
+    println!("lifecycle: {:#?}", client.call(Command::LifecycleState)?);
     Ok(())
 }
