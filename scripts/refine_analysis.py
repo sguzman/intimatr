@@ -15,8 +15,8 @@ old = '''        let mut split_index = None;
                 offset: 0,
             });
         };'''
-new = '''        let split_index = expression.char_indices().rev().find(|(index, character)| {
-            if *index == 0 || !matches!(character, '+' | '-') {
+new = '''        let split_index = expression.char_indices().rev().find(|&(index, character)| {
+            if index == 0 || !matches!(character, '+' | '-') {
                 return false;
             }
             let offset_text = expression[index + character.len_utf8()..].trim();
@@ -38,7 +38,7 @@ new_test = '''    #[test]
     fn module_relative_expression_allows_hyphenated_module_names() {
         let modules = vec![ModuleDescriptor {
             name: "game-client.dll".to_owned(),
-            path: "C:\\Games\\game-client.dll".to_owned(),
+            path: r"C:\\Games\\game-client.dll".to_owned(),
             base: 0x180000000,
             size: 0x100000,
         }];
