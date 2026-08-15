@@ -332,7 +332,8 @@ impl DebuggerApp {
             }
             CommandResult::DebuggerStatus { status } => {
                 self.breakpoints = status.breakpoints.clone();
-                self.last_event_sequence = self.last_event_sequence.max(status.latest_event_sequence);
+                self.last_event_sequence =
+                    self.last_event_sequence.max(status.latest_event_sequence);
                 self.debugger_status = Some(status);
             }
             CommandResult::ThreadControl { state } => {
@@ -536,25 +537,26 @@ impl DebuggerApp {
 
         ui.columns(2, |columns| {
             columns[0].heading("Process threads");
-            egui::ScrollArea::vertical().max_height(500.0).show(&mut columns[0], |ui| {
-                for thread in self.threads.clone() {
-                    let paused = self
-                        .debugger_status
-                        .as_ref()
-                        .is_some_and(|status| status.paused_threads.contains(&thread.thread_id));
-                    let label = if paused {
-                        format!("{}  [paused]", thread.thread_id)
-                    } else {
-                        thread.thread_id.to_string()
-                    };
-                    if ui
-                        .selectable_label(self.selected_thread == Some(thread.thread_id), label)
-                        .clicked()
-                    {
-                        self.selected_thread = Some(thread.thread_id);
+            egui::ScrollArea::vertical()
+                .max_height(500.0)
+                .show(&mut columns[0], |ui| {
+                    for thread in self.threads.clone() {
+                        let paused = self.debugger_status.as_ref().is_some_and(|status| {
+                            status.paused_threads.contains(&thread.thread_id)
+                        });
+                        let label = if paused {
+                            format!("{}  [paused]", thread.thread_id)
+                        } else {
+                            thread.thread_id.to_string()
+                        };
+                        if ui
+                            .selectable_label(self.selected_thread == Some(thread.thread_id), label)
+                            .clicked()
+                        {
+                            self.selected_thread = Some(thread.thread_id);
+                        }
                     }
-                }
-            });
+                });
 
             columns[1].heading("Register snapshot");
             if let Some(snapshot) = &self.registers {
@@ -592,7 +594,11 @@ impl DebuggerApp {
                 .selected_text(self.disassembly_bitness.to_string())
                 .show_ui(ui, |ui| {
                     for bitness in [16_u32, 32, 64] {
-                        ui.selectable_value(&mut self.disassembly_bitness, bitness, bitness.to_string());
+                        ui.selectable_value(
+                            &mut self.disassembly_bitness,
+                            bitness,
+                            bitness.to_string(),
+                        );
                     }
                 });
             ui.label("Bytes");
@@ -713,30 +719,33 @@ impl DebuggerApp {
                 self.events.clear();
             }
             if ui.button("Poll now").clicked() {
-                self.last_event_poll = Instant::now() - Duration::from_millis(self.config.event_poll_ms);
+                self.last_event_poll =
+                    Instant::now() - Duration::from_millis(self.config.event_poll_ms);
                 self.poll_events();
             }
         });
         ui.label("Hardware-breakpoint and single-step events are recorded by a narrow VEH and auto-continue; they are also available through RPC polling.");
-        egui::ScrollArea::vertical().stick_to_bottom(true).show(ui, |ui| {
-            egui::Grid::new("debugger-event-grid")
-                .num_columns(4)
-                .striped(true)
-                .show(ui, |ui| {
-                    ui.strong("Seq");
-                    ui.strong("Thread");
-                    ui.strong("Address");
-                    ui.strong("Event");
-                    ui.end_row();
-                    for event in &self.events {
-                        ui.label(event.sequence.to_string());
-                        ui.label(event.thread_id.to_string());
-                        ui.monospace(format!("0x{:016X}", event.address));
-                        ui.label(format!("{:?}", event.kind));
+        egui::ScrollArea::vertical()
+            .stick_to_bottom(true)
+            .show(ui, |ui| {
+                egui::Grid::new("debugger-event-grid")
+                    .num_columns(4)
+                    .striped(true)
+                    .show(ui, |ui| {
+                        ui.strong("Seq");
+                        ui.strong("Thread");
+                        ui.strong("Address");
+                        ui.strong("Event");
                         ui.end_row();
-                    }
-                });
-        });
+                        for event in &self.events {
+                            ui.label(event.sequence.to_string());
+                            ui.label(event.thread_id.to_string());
+                            ui.monospace(format!("0x{:016X}", event.address));
+                            ui.label(format!("{:?}", event.kind));
+                            ui.end_row();
+                        }
+                    });
+            });
     }
 
     fn handle_visibility_and_shutdown(&mut self, context: &egui::Context) {

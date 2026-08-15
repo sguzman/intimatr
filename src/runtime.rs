@@ -190,11 +190,8 @@ fn bootstrap_inner(
     #[cfg(windows)]
     let ui = start_ui_if_enabled(&config, &module_directory, Arc::clone(&command_executor))?;
     #[cfg(windows)]
-    let debugger_ui = start_debugger_ui_if_enabled(
-        &config,
-        &module_directory,
-        Arc::clone(&command_executor),
-    )?;
+    let debugger_ui =
+        start_debugger_ui_if_enabled(&config, &module_directory, Arc::clone(&command_executor))?;
 
     Ok(RuntimeContext {
         config,

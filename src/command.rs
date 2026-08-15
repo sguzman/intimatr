@@ -48,24 +48,64 @@ pub enum Command {
     Ping,
     LifecycleState,
     ListMemoryRegions,
-    ReadMemory { address: u64, size: usize },
-    ReadScalar { address: u64, value_type: ValueType },
-    WriteMemory { address: u64, bytes: Vec<u8> },
-    WriteScalar { address: u64, value_type: ValueType, value: ScalarValue },
-    FirstScan { value_type: ValueType, predicate: ScanPredicate },
-    NextScan { scan_id: u64, predicate: ScanPredicate },
-    ScanSummary { scan_id: u64 },
-    ScanResults { scan_id: u64, offset: usize, limit: usize },
-    CancelScan { scan_id: u64 },
-    DeleteScan { scan_id: u64 },
-    AddWatch { address: u64, value_type: ValueType, label: Option<String> },
-    SetWatchFreeze { watch_id: u64, value: Option<ScalarValue> },
-    RemoveWatch { watch_id: u64 },
+    ReadMemory {
+        address: u64,
+        size: usize,
+    },
+    ReadScalar {
+        address: u64,
+        value_type: ValueType,
+    },
+    WriteMemory {
+        address: u64,
+        bytes: Vec<u8>,
+    },
+    WriteScalar {
+        address: u64,
+        value_type: ValueType,
+        value: ScalarValue,
+    },
+    FirstScan {
+        value_type: ValueType,
+        predicate: ScanPredicate,
+    },
+    NextScan {
+        scan_id: u64,
+        predicate: ScanPredicate,
+    },
+    ScanSummary {
+        scan_id: u64,
+    },
+    ScanResults {
+        scan_id: u64,
+        offset: usize,
+        limit: usize,
+    },
+    CancelScan {
+        scan_id: u64,
+    },
+    DeleteScan {
+        scan_id: u64,
+    },
+    AddWatch {
+        address: u64,
+        value_type: ValueType,
+        label: Option<String>,
+    },
+    SetWatchFreeze {
+        watch_id: u64,
+        value: Option<ScalarValue>,
+    },
+    RemoveWatch {
+        watch_id: u64,
+    },
     ListWatches,
     RefreshWatches,
     ListModules,
     ListThreads,
-    ReadThreadRegisters { thread_id: u32 },
+    ReadThreadRegisters {
+        thread_id: u32,
+    },
     Disassemble {
         address: u64,
         byte_count: usize,
@@ -73,18 +113,29 @@ pub enum Command {
         bitness: u32,
     },
     DebuggerStatus,
-    PauseThread { thread_id: u32 },
-    ResumeThread { thread_id: u32 },
-    SingleStepThread { thread_id: u32 },
+    PauseThread {
+        thread_id: u32,
+    },
+    ResumeThread {
+        thread_id: u32,
+    },
+    SingleStepThread {
+        thread_id: u32,
+    },
     SetHardwareBreakpoint {
         thread_id: u32,
         address: u64,
         kind: HardwareBreakpointKind,
         size: u8,
     },
-    RemoveHardwareBreakpoint { breakpoint_id: u64 },
+    RemoveHardwareBreakpoint {
+        breakpoint_id: u64,
+    },
     ListHardwareBreakpoints,
-    DebuggerEvents { after_sequence: u64, limit: usize },
+    DebuggerEvents {
+        after_sequence: u64,
+        limit: usize,
+    },
     Shutdown,
 }
 
@@ -130,35 +181,93 @@ impl Command {
 #[serde(tag = "result", rename_all = "snake_case")]
 pub enum CommandResult {
     Pong,
-    Lifecycle { state: String, shutdown_requested: bool },
-    MemoryRegions { regions: Vec<MemoryRegionInfo> },
-    MemoryBytes { address: u64, bytes: Vec<u8> },
-    Scalar { address: u64, value_type: ValueType, value: ScalarValue },
-    WriteComplete { address: u64, size: usize },
-    Scan { summary: ScanSummary },
+    Lifecycle {
+        state: String,
+        shutdown_requested: bool,
+    },
+    MemoryRegions {
+        regions: Vec<MemoryRegionInfo>,
+    },
+    MemoryBytes {
+        address: u64,
+        bytes: Vec<u8>,
+    },
+    Scalar {
+        address: u64,
+        value_type: ValueType,
+        value: ScalarValue,
+    },
+    WriteComplete {
+        address: u64,
+        size: usize,
+    },
+    Scan {
+        summary: ScanSummary,
+    },
     ScanResults {
         scan_id: u64,
         offset: usize,
         total: usize,
         candidates: Vec<ScanCandidateInfo>,
     },
-    ScanCancellation { scan_id: u64, was_active: bool },
-    ScanDeleted { scan_id: u64, existed: bool },
-    WatchAdded { watch: WatchDefinition },
-    WatchUpdated { watch: WatchDefinition },
-    WatchRemoved { watch_id: u64, existed: bool },
-    Watches { watches: Vec<WatchDefinition> },
-    WatchValues { values: Vec<WatchValue> },
-    Modules { modules: Vec<ModuleInfo> },
-    Threads { threads: Vec<ThreadInfo> },
-    ThreadRegisters { registers: RegisterSnapshot },
-    Disassembly { address: u64, bitness: u32, lines: Vec<DisassemblyLine> },
-    DebuggerStatus { status: DebuggerStatus },
-    ThreadControl { state: ThreadControlState },
-    HardwareBreakpointAdded { breakpoint: HardwareBreakpoint },
-    HardwareBreakpointRemoved { breakpoint_id: u64, existed: bool },
-    HardwareBreakpoints { breakpoints: Vec<HardwareBreakpoint> },
-    DebuggerEvents { events: Vec<DebuggerEvent>, latest_sequence: u64 },
+    ScanCancellation {
+        scan_id: u64,
+        was_active: bool,
+    },
+    ScanDeleted {
+        scan_id: u64,
+        existed: bool,
+    },
+    WatchAdded {
+        watch: WatchDefinition,
+    },
+    WatchUpdated {
+        watch: WatchDefinition,
+    },
+    WatchRemoved {
+        watch_id: u64,
+        existed: bool,
+    },
+    Watches {
+        watches: Vec<WatchDefinition>,
+    },
+    WatchValues {
+        values: Vec<WatchValue>,
+    },
+    Modules {
+        modules: Vec<ModuleInfo>,
+    },
+    Threads {
+        threads: Vec<ThreadInfo>,
+    },
+    ThreadRegisters {
+        registers: RegisterSnapshot,
+    },
+    Disassembly {
+        address: u64,
+        bitness: u32,
+        lines: Vec<DisassemblyLine>,
+    },
+    DebuggerStatus {
+        status: DebuggerStatus,
+    },
+    ThreadControl {
+        state: ThreadControlState,
+    },
+    HardwareBreakpointAdded {
+        breakpoint: HardwareBreakpoint,
+    },
+    HardwareBreakpointRemoved {
+        breakpoint_id: u64,
+        existed: bool,
+    },
+    HardwareBreakpoints {
+        breakpoints: Vec<HardwareBreakpoint>,
+    },
+    DebuggerEvents {
+        events: Vec<DebuggerEvent>,
+        latest_sequence: u64,
+    },
     ShutdownAccepted,
 }
 
@@ -251,7 +360,10 @@ pub struct CommandExecution {
 
 impl CommandExecution {
     fn immediate(result: CommandResult) -> Self {
-        Self { result, post_action: None }
+        Self {
+            result,
+            post_action: None,
+        }
     }
 }
 
@@ -325,15 +437,20 @@ where
             }),
             Command::ListMemoryRegions => {
                 self.require_memory_read()?;
-                let regions = self.memory.regions()?.into_iter().map(|region| MemoryRegionInfo {
-                    base: region.base as u64,
-                    size: region.size as u64,
-                    committed: region.committed,
-                    readable: region.readable,
-                    writable: region.writable,
-                    executable: region.executable,
-                    guard: region.guard,
-                }).collect();
+                let regions = self
+                    .memory
+                    .regions()?
+                    .into_iter()
+                    .map(|region| MemoryRegionInfo {
+                        base: region.base as u64,
+                        size: region.size as u64,
+                        committed: region.committed,
+                        readable: region.readable,
+                        writable: region.writable,
+                        executable: region.executable,
+                        guard: region.guard,
+                    })
+                    .collect();
                 CommandExecution::immediate(CommandResult::MemoryRegions { regions })
             }
             Command::ReadMemory { address, size } => {
@@ -345,20 +462,35 @@ where
                 self.memory.read_exact(address_native, &mut bytes)?;
                 CommandExecution::immediate(CommandResult::MemoryBytes { address, bytes })
             }
-            Command::ReadScalar { address, value_type } => {
+            Command::ReadScalar {
+                address,
+                value_type,
+            } => {
                 self.require_memory_read()?;
                 let value = read_scalar(&self.memory, address_to_usize(address)?, value_type)?;
-                CommandExecution::immediate(CommandResult::Scalar { address, value_type, value })
+                CommandExecution::immediate(CommandResult::Scalar {
+                    address,
+                    value_type,
+                    value,
+                })
             }
             Command::WriteMemory { address, bytes } => {
                 self.require_memory_write()?;
                 self.require_transfer_size(bytes.len())?;
                 let address_native = address_to_usize(address)?;
                 ensure_address_range(address_native, bytes.len())?;
-                self.memory.write_exact(address_native, &bytes, WritePolicy::from(&self.policy))?;
-                CommandExecution::immediate(CommandResult::WriteComplete { address, size: bytes.len() })
+                self.memory
+                    .write_exact(address_native, &bytes, WritePolicy::from(&self.policy))?;
+                CommandExecution::immediate(CommandResult::WriteComplete {
+                    address,
+                    size: bytes.len(),
+                })
             }
-            Command::WriteScalar { address, value_type, value } => {
+            Command::WriteScalar {
+                address,
+                value_type,
+                value,
+            } => {
                 self.require_memory_write()?;
                 write_scalar(
                     &self.memory,
@@ -372,7 +504,10 @@ where
                     size: value_type.byte_width(),
                 })
             }
-            Command::FirstScan { value_type, predicate } => {
+            Command::FirstScan {
+                value_type,
+                predicate,
+            } => {
                 self.require_memory_read()?;
                 let scan_id = self.next_scan_id.fetch_add(1, Ordering::Relaxed);
                 let cancellation = CancellationToken::new();
@@ -392,7 +527,9 @@ where
             }
             Command::NextScan { scan_id, predicate } => {
                 self.require_memory_read()?;
-                let previous = lock(&self.scans)?.get(&scan_id).cloned()
+                let previous = lock(&self.scans)?
+                    .get(&scan_id)
+                    .cloned()
                     .ok_or(CommandError::ScanNotFound(scan_id))?;
                 let cancellation = CancellationToken::new();
                 self.register_active_scan(scan_id, cancellation.clone())?;
@@ -410,12 +547,18 @@ where
             }
             Command::ScanSummary { scan_id } => {
                 let scans = lock(&self.scans)?;
-                let session = scans.get(&scan_id).ok_or(CommandError::ScanNotFound(scan_id))?;
+                let session = scans
+                    .get(&scan_id)
+                    .ok_or(CommandError::ScanNotFound(scan_id))?;
                 CommandExecution::immediate(CommandResult::Scan {
                     summary: ScanSummary::from_session(scan_id, session),
                 })
             }
-            Command::ScanResults { scan_id, offset, limit } => {
+            Command::ScanResults {
+                scan_id,
+                offset,
+                limit,
+            } => {
                 if limit > self.limits.max_scan_results_per_page {
                     return Err(CommandError::LimitExceeded {
                         resource: "scan result page",
@@ -424,11 +567,16 @@ where
                     });
                 }
                 let scans = lock(&self.scans)?;
-                let session = scans.get(&scan_id).ok_or(CommandError::ScanNotFound(scan_id))?;
+                let session = scans
+                    .get(&scan_id)
+                    .ok_or(CommandError::ScanNotFound(scan_id))?;
                 let total = session.candidates.len();
                 let start = offset.min(total);
                 let end = start.saturating_add(limit).min(total);
-                let candidates = session.candidates[start..end].iter().map(ScanCandidateInfo::from).collect();
+                let candidates = session.candidates[start..end]
+                    .iter()
+                    .map(ScanCandidateInfo::from)
+                    .collect();
                 CommandExecution::immediate(CommandResult::ScanResults {
                     scan_id,
                     offset: start,
@@ -443,7 +591,10 @@ where
                     cancellation.cancel();
                     info!(scan_id, "scan cancellation requested");
                 }
-                CommandExecution::immediate(CommandResult::ScanCancellation { scan_id, was_active })
+                CommandExecution::immediate(CommandResult::ScanCancellation {
+                    scan_id,
+                    was_active,
+                })
             }
             Command::DeleteScan { scan_id } => {
                 if lock(&self.active_scans)?.contains_key(&scan_id) {
@@ -452,22 +603,38 @@ where
                 let existed = lock(&self.scans)?.remove(&scan_id).is_some();
                 CommandExecution::immediate(CommandResult::ScanDeleted { scan_id, existed })
             }
-            Command::AddWatch { address, value_type, label } => {
+            Command::AddWatch {
+                address,
+                value_type,
+                label,
+            } => {
                 address_to_usize(address)?;
                 let id = self.next_watch_id.fetch_add(1, Ordering::Relaxed);
-                let watch = WatchDefinition { id, address, value_type, label, frozen: None };
+                let watch = WatchDefinition {
+                    id,
+                    address,
+                    value_type,
+                    label,
+                    frozen: None,
+                };
                 lock(&self.watches)?.insert(id, watch.clone());
                 CommandExecution::immediate(CommandResult::WatchAdded { watch })
             }
             Command::SetWatchFreeze { watch_id, value } => {
-                if value.is_some() { self.require_memory_write()?; }
+                if value.is_some() {
+                    self.require_memory_write()?;
+                }
                 let mut watches = lock(&self.watches)?;
-                let watch = watches.get_mut(&watch_id).ok_or(CommandError::WatchNotFound(watch_id))?;
+                let watch = watches
+                    .get_mut(&watch_id)
+                    .ok_or(CommandError::WatchNotFound(watch_id))?;
                 if let Some(value) = value {
                     watch.value_type.encode(value).map_err(MemoryError::from)?;
                 }
                 watch.frozen = value;
-                CommandExecution::immediate(CommandResult::WatchUpdated { watch: watch.clone() })
+                CommandExecution::immediate(CommandResult::WatchUpdated {
+                    watch: watch.clone(),
+                })
             }
             Command::RemoveWatch { watch_id } => {
                 let existed = lock(&self.watches)?.remove(&watch_id).is_some();
@@ -482,19 +649,25 @@ where
                 self.require_memory_read()?;
                 let mut watches: Vec<_> = lock(&self.watches)?.values().cloned().collect();
                 watches.sort_unstable_by_key(|watch| watch.id);
-                let values = watches.into_iter().map(|watch| self.refresh_watch(watch)).collect();
+                let values = watches
+                    .into_iter()
+                    .map(|watch| self.refresh_watch(watch))
+                    .collect();
                 CommandExecution::immediate(CommandResult::WatchValues { values })
             }
             Command::ListModules => {
                 self.require_memory_read()?;
                 #[cfg(windows)]
                 {
-                    let modules = crate::platform::windows::loaded_modules()?.into_iter().map(|module| ModuleInfo {
-                        name: module.name,
-                        path: module.path,
-                        base: module.base,
-                        size: module.size,
-                    }).collect();
+                    let modules = crate::platform::windows::loaded_modules()?
+                        .into_iter()
+                        .map(|module| ModuleInfo {
+                            name: module.name,
+                            path: module.path,
+                            base: module.base,
+                            size: module.size,
+                        })
+                        .collect();
                     CommandExecution::immediate(CommandResult::Modules { modules })
                 }
                 #[cfg(not(windows))]
@@ -504,8 +677,10 @@ where
                 self.require_debugger()?;
                 #[cfg(windows)]
                 {
-                    let threads = crate::platform::windows::current_process_threads()?.into_iter()
-                        .map(|thread_id| ThreadInfo { thread_id }).collect();
+                    let threads = crate::platform::windows::current_process_threads()?
+                        .into_iter()
+                        .map(|thread_id| ThreadInfo { thread_id })
+                        .collect();
                     CommandExecution::immediate(CommandResult::Threads { threads })
                 }
                 #[cfg(not(windows))]
@@ -516,7 +691,12 @@ where
                 let registers = self.debugger.read_registers(thread_id)?;
                 CommandExecution::immediate(CommandResult::ThreadRegisters { registers })
             }
-            Command::Disassemble { address, byte_count, max_instructions, bitness } => {
+            Command::Disassemble {
+                address,
+                byte_count,
+                max_instructions,
+                bitness,
+            } => {
                 self.require_debugger()?;
                 self.require_memory_read()?;
                 self.require_transfer_size(byte_count)?;
@@ -527,11 +707,17 @@ where
                     max_instructions,
                     bitness,
                 )?;
-                CommandExecution::immediate(CommandResult::Disassembly { address, bitness, lines })
+                CommandExecution::immediate(CommandResult::Disassembly {
+                    address,
+                    bitness,
+                    lines,
+                })
             }
             Command::DebuggerStatus => {
                 self.require_debugger()?;
-                CommandExecution::immediate(CommandResult::DebuggerStatus { status: self.debugger.status()? })
+                CommandExecution::immediate(CommandResult::DebuggerStatus {
+                    status: self.debugger.status()?,
+                })
             }
             Command::PauseThread { thread_id } => {
                 self.require_debugger()?;
@@ -551,15 +737,25 @@ where
                     state: self.debugger.single_step_thread(thread_id)?,
                 })
             }
-            Command::SetHardwareBreakpoint { thread_id, address, kind, size } => {
+            Command::SetHardwareBreakpoint {
+                thread_id,
+                address,
+                kind,
+                size,
+            } => {
                 self.require_debugger()?;
-                let breakpoint = self.debugger.set_hardware_breakpoint(thread_id, address, kind, size)?;
+                let breakpoint = self
+                    .debugger
+                    .set_hardware_breakpoint(thread_id, address, kind, size)?;
                 CommandExecution::immediate(CommandResult::HardwareBreakpointAdded { breakpoint })
             }
             Command::RemoveHardwareBreakpoint { breakpoint_id } => {
                 self.require_debugger()?;
                 let existed = self.debugger.remove_hardware_breakpoint(breakpoint_id)?;
-                CommandExecution::immediate(CommandResult::HardwareBreakpointRemoved { breakpoint_id, existed })
+                CommandExecution::immediate(CommandResult::HardwareBreakpointRemoved {
+                    breakpoint_id,
+                    existed,
+                })
             }
             Command::ListHardwareBreakpoints => {
                 self.require_debugger()?;
@@ -567,15 +763,23 @@ where
                     breakpoints: self.debugger.list_hardware_breakpoints()?,
                 })
             }
-            Command::DebuggerEvents { after_sequence, limit } => {
+            Command::DebuggerEvents {
+                after_sequence,
+                limit,
+            } => {
                 self.require_debugger()?;
                 let events = self.debugger.events(after_sequence, limit)?;
                 let latest_sequence = self.debugger.status()?.latest_event_sequence;
-                CommandExecution::immediate(CommandResult::DebuggerEvents { events, latest_sequence })
+                CommandExecution::immediate(CommandResult::DebuggerEvents {
+                    events,
+                    latest_sequence,
+                })
             }
             Command::Shutdown => {
                 if !self.policy.allow_remote_shutdown {
-                    return Err(CommandError::PolicyDenied { capability: "remote shutdown" });
+                    return Err(CommandError::PolicyDenied {
+                        capability: "remote shutdown",
+                    });
                 }
                 CommandExecution {
                     result: CommandResult::ShutdownAccepted,
@@ -590,9 +794,14 @@ where
 
     pub fn cancel_all_scans(&self) -> Result<usize, CommandError> {
         let cancellations: Vec<_> = lock(&self.active_scans)?.values().cloned().collect();
-        for cancellation in &cancellations { cancellation.cancel(); }
+        for cancellation in &cancellations {
+            cancellation.cancel();
+        }
         if !cancellations.is_empty() {
-            warn!(count = cancellations.len(), "cancelled active scans during command shutdown");
+            warn!(
+                count = cancellations.len(),
+                "cancelled active scans during command shutdown"
+            );
         }
         Ok(cancellations.len())
     }
@@ -612,14 +821,28 @@ where
             read_scalar(&self.memory, address, watch.value_type).map_err(CommandError::from)
         });
         match result {
-            Ok(value) => WatchValue { watch, value: Some(value), error: None },
-            Err(error) => WatchValue { watch, value: None, error: Some(error.to_string()) },
+            Ok(value) => WatchValue {
+                watch,
+                value: Some(value),
+                error: None,
+            },
+            Err(error) => WatchValue {
+                watch,
+                value: None,
+                error: Some(error.to_string()),
+            },
         }
     }
 
-    fn register_active_scan(&self, scan_id: u64, cancellation: CancellationToken) -> Result<(), CommandError> {
+    fn register_active_scan(
+        &self,
+        scan_id: u64,
+        cancellation: CancellationToken,
+    ) -> Result<(), CommandError> {
         let mut active = lock(&self.active_scans)?;
-        if active.contains_key(&scan_id) { return Err(CommandError::ScanBusy(scan_id)); }
+        if active.contains_key(&scan_id) {
+            return Err(CommandError::ScanBusy(scan_id));
+        }
         active.insert(scan_id, cancellation);
         Ok(())
     }
@@ -630,13 +853,31 @@ where
     }
 
     fn require_memory_read(&self) -> Result<(), CommandError> {
-        if self.policy.allow_memory_read { Ok(()) } else { Err(CommandError::PolicyDenied { capability: "memory read" }) }
+        if self.policy.allow_memory_read {
+            Ok(())
+        } else {
+            Err(CommandError::PolicyDenied {
+                capability: "memory read",
+            })
+        }
     }
     fn require_memory_write(&self) -> Result<(), CommandError> {
-        if self.policy.allow_memory_write { Ok(()) } else { Err(CommandError::PolicyDenied { capability: "memory write" }) }
+        if self.policy.allow_memory_write {
+            Ok(())
+        } else {
+            Err(CommandError::PolicyDenied {
+                capability: "memory write",
+            })
+        }
     }
     fn require_debugger(&self) -> Result<(), CommandError> {
-        if self.policy.allow_debugger { Ok(()) } else { Err(CommandError::PolicyDenied { capability: "debugger" }) }
+        if self.policy.allow_debugger {
+            Ok(())
+        } else {
+            Err(CommandError::PolicyDenied {
+                capability: "debugger",
+            })
+        }
     }
     fn require_transfer_size(&self, requested: usize) -> Result<(), CommandError> {
         if requested <= self.limits.max_memory_transfer_bytes {
@@ -674,7 +915,9 @@ fn address_to_usize(address: u64) -> Result<usize, CommandError> {
     usize::try_from(address).map_err(|_| CommandError::AddressOutOfRange(address))
 }
 fn ensure_address_range(address: usize, size: usize) -> Result<(), CommandError> {
-    address.checked_add(size).ok_or(MemoryError::AddressRangeOverflow { address, size })?;
+    address
+        .checked_add(size)
+        .ok_or(MemoryError::AddressRangeOverflow { address, size })?;
     Ok(())
 }
 
@@ -683,7 +926,11 @@ pub enum CommandError {
     #[error("{capability} is disabled by policy")]
     PolicyDenied { capability: &'static str },
     #[error("requested {requested} units for {resource}, limit is {limit}")]
-    LimitExceeded { resource: &'static str, requested: usize, limit: usize },
+    LimitExceeded {
+        resource: &'static str,
+        requested: usize,
+        limit: usize,
+    },
     #[error("address 0x{0:X} cannot be represented by this process architecture")]
     AddressOutOfRange(u64),
     #[error("scan {0} does not exist")]

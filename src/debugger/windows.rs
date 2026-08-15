@@ -2,7 +2,10 @@ use std::{
     array,
     ffi::c_void,
     mem::zeroed,
-    sync::{LazyLock, Mutex, atomic::{AtomicU32, AtomicU64, Ordering}},
+    sync::{
+        LazyLock, Mutex,
+        atomic::{AtomicU32, AtomicU64, Ordering},
+    },
 };
 
 use thiserror::Error;
@@ -11,9 +14,9 @@ use windows_sys::Win32::{
     System::{
         Diagnostics::Debug::{
             AddVectoredExceptionHandler, CONTEXT, CONTEXT_ALL_AMD64, CONTEXT_CONTROL_AMD64,
-            CONTEXT_DEBUG_REGISTERS_AMD64, EXCEPTION_CONTINUE_EXECUTION,
-            EXCEPTION_CONTINUE_SEARCH, EXCEPTION_POINTERS, GetThreadContext,
-            RemoveVectoredExceptionHandler, RtlCaptureContext, SetThreadContext,
+            CONTEXT_DEBUG_REGISTERS_AMD64, EXCEPTION_CONTINUE_EXECUTION, EXCEPTION_CONTINUE_SEARCH,
+            EXCEPTION_POINTERS, GetThreadContext, RemoveVectoredExceptionHandler,
+            RtlCaptureContext, SetThreadContext,
         },
         Threading::{
             GetCurrentThreadId, OpenThread, ResumeThread, SuspendThread, THREAD_GET_CONTEXT,
@@ -183,7 +186,9 @@ pub fn clear_hardware_breakpoint(
     context.Dr7 &= !(0b1111_u64 << control_shift);
     context.Dr6 = 0;
     if unsafe { SetThreadContext(handle.0, &context) } == 0 {
-        return Err(last_api_error("SetThreadContext(clear hardware breakpoint)"));
+        return Err(last_api_error(
+            "SetThreadContext(clear hardware breakpoint)",
+        ));
     }
     release_breakpoint(breakpoint.thread_id, breakpoint.slot);
     Ok(())
@@ -284,16 +289,33 @@ unsafe extern "system" fn vectored_handler(exception_info: *mut EXCEPTION_POINTE
 
 fn context_snapshot(thread_id: u32, context: &CONTEXT) -> RegisterSnapshot {
     let registers = [
-        ("RAX", context.Rax), ("RBX", context.Rbx), ("RCX", context.Rcx),
-        ("RDX", context.Rdx), ("RSI", context.Rsi), ("RDI", context.Rdi),
-        ("RBP", context.Rbp), ("R8", context.R8), ("R9", context.R9),
-        ("R10", context.R10), ("R11", context.R11), ("R12", context.R12),
-        ("R13", context.R13), ("R14", context.R14), ("R15", context.R15),
-        ("DR0", context.Dr0), ("DR1", context.Dr1), ("DR2", context.Dr2),
-        ("DR3", context.Dr3), ("DR6", context.Dr6), ("DR7", context.Dr7),
+        ("RAX", context.Rax),
+        ("RBX", context.Rbx),
+        ("RCX", context.Rcx),
+        ("RDX", context.Rdx),
+        ("RSI", context.Rsi),
+        ("RDI", context.Rdi),
+        ("RBP", context.Rbp),
+        ("R8", context.R8),
+        ("R9", context.R9),
+        ("R10", context.R10),
+        ("R11", context.R11),
+        ("R12", context.R12),
+        ("R13", context.R13),
+        ("R14", context.R14),
+        ("R15", context.R15),
+        ("DR0", context.Dr0),
+        ("DR1", context.Dr1),
+        ("DR2", context.Dr2),
+        ("DR3", context.Dr3),
+        ("DR6", context.Dr6),
+        ("DR7", context.Dr7),
     ]
     .into_iter()
-    .map(|(name, value)| RegisterValue { name: name.to_owned(), value })
+    .map(|(name, value)| RegisterValue {
+        name: name.to_owned(),
+        value,
+    })
     .collect();
     RegisterSnapshot {
         thread_id,
@@ -313,7 +335,11 @@ fn get_context(handle: &ThreadHandle, flags: u32) -> Result<CONTEXT, WindowsDebu
     Ok(context)
 }
 
-fn set_debug_address(context: &mut CONTEXT, slot: u8, address: u64) -> Result<(), WindowsDebuggerError> {
+fn set_debug_address(
+    context: &mut CONTEXT,
+    slot: u8,
+    address: u64,
+) -> Result<(), WindowsDebuggerError> {
     match slot {
         0 => context.Dr0 = address,
         1 => context.Dr1 = address,
@@ -352,7 +378,10 @@ struct TemporarySuspension<'a> {
     handle: Option<&'a ThreadHandle>,
 }
 impl<'a> TemporarySuspension<'a> {
-    fn maybe(handle: &'a ThreadHandle, already_suspended: bool) -> Result<Self, WindowsDebuggerError> {
+    fn maybe(
+        handle: &'a ThreadHandle,
+        already_suspended: bool,
+    ) -> Result<Self, WindowsDebuggerError> {
         if already_suspended {
             return Ok(Self { handle: None });
         }
@@ -367,7 +396,9 @@ impl<'a> TemporarySuspension<'a> {
             }
             return Err(WindowsDebuggerError::UnexpectedSuspendCount(previous));
         }
-        Ok(Self { handle: Some(handle) })
+        Ok(Self {
+            handle: Some(handle),
+        })
     }
 }
 impl Drop for TemporarySuspension<'_> {
@@ -378,8 +409,14 @@ impl Drop for TemporarySuspension<'_> {
     }
 }
 
-struct VehRegistration { handle: usize, users: usize }
-static VEH_REGISTRATION: Mutex<VehRegistration> = Mutex::new(VehRegistration { handle: 0, users: 0 });
+struct VehRegistration {
+    handle: usize,
+    users: usize,
+}
+static VEH_REGISTRATION: Mutex<VehRegistration> = Mutex::new(VehRegistration {
+    handle: 0,
+    users: 0,
+});
 
 struct EventSlot {
     sequence: AtomicU64,
@@ -405,7 +442,10 @@ struct EventRing {
 }
 impl EventRing {
     fn new() -> Self {
-        Self { next_sequence: AtomicU64::new(0), slots: array::from_fn(|_| EventSlot::new()) }
+        Self {
+            next_sequence: AtomicU64::new(0),
+            slots: array::from_fn(|_| EventSlot::new()),
+        }
     }
     fn push(&self, thread_id: u32, address: u64, kind: u32, slot: u8) {
         let sequence = self.next_sequence.fetch_add(1, Ordering::AcqRel) + 1;
@@ -416,18 +456,26 @@ impl EventRing {
         entry.slot.store(u32::from(slot), Ordering::Relaxed);
         entry.sequence.store(sequence, Ordering::Release);
     }
-    fn latest_sequence(&self) -> u64 { self.next_sequence.load(Ordering::Acquire) }
+    fn latest_sequence(&self) -> u64 {
+        self.next_sequence.load(Ordering::Acquire)
+    }
     fn read(&self, after: u64, limit: usize) -> Vec<DebuggerEvent> {
         let latest = self.latest_sequence();
         let oldest = latest.saturating_sub(EVENT_CAPACITY as u64 - 1).max(1);
         let start = after.saturating_add(1).max(oldest);
         let mut events = Vec::new();
         for sequence in start..=latest {
-            if events.len() >= limit { break; }
+            if events.len() >= limit {
+                break;
+            }
             let entry = &self.slots[(sequence as usize - 1) % EVENT_CAPACITY];
-            if entry.sequence.load(Ordering::Acquire) != sequence { continue; }
+            if entry.sequence.load(Ordering::Acquire) != sequence {
+                continue;
+            }
             let kind = match entry.kind.load(Ordering::Relaxed) {
-                1 => DebuggerEventKind::HardwareBreakpoint { slot: entry.slot.load(Ordering::Relaxed) as u8 },
+                1 => DebuggerEventKind::HardwareBreakpoint {
+                    slot: entry.slot.load(Ordering::Relaxed) as u8,
+                },
                 2 => DebuggerEventKind::SingleStep,
                 _ => continue,
             };
@@ -449,14 +497,24 @@ struct BreakpointRegistryEntry {
     slot: AtomicU32,
 }
 impl BreakpointRegistryEntry {
-    fn new() -> Self { Self { state: AtomicU32::new(0), thread_id: AtomicU32::new(0), slot: AtomicU32::new(0) } }
+    fn new() -> Self {
+        Self {
+            state: AtomicU32::new(0),
+            thread_id: AtomicU32::new(0),
+            slot: AtomicU32::new(0),
+        }
+    }
 }
 static BREAKPOINT_REGISTRY: LazyLock<[BreakpointRegistryEntry; REGISTRY_CAPACITY]> =
     LazyLock::new(|| array::from_fn(|_| BreakpointRegistryEntry::new()));
 
 fn reserve_breakpoint(thread_id: u32, slot: u8) -> Result<(), WindowsDebuggerError> {
     for entry in BREAKPOINT_REGISTRY.iter() {
-        if entry.state.compare_exchange(0, 2, Ordering::AcqRel, Ordering::Acquire).is_ok() {
+        if entry
+            .state
+            .compare_exchange(0, 2, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
+        {
             entry.thread_id.store(thread_id, Ordering::Relaxed);
             entry.slot.store(u32::from(slot), Ordering::Relaxed);
             entry.state.store(1, Ordering::Release);
@@ -487,11 +545,17 @@ fn breakpoint_is_ours(thread_id: u32, slot: u8) -> bool {
 static SINGLE_STEP_REGISTRY: LazyLock<[AtomicU32; SINGLE_STEP_CAPACITY]> =
     LazyLock::new(|| array::from_fn(|_| AtomicU32::new(0)));
 fn reserve_single_step(thread_id: u32) -> Result<(), WindowsDebuggerError> {
-    if SINGLE_STEP_REGISTRY.iter().any(|entry| entry.load(Ordering::Acquire) == thread_id) {
+    if SINGLE_STEP_REGISTRY
+        .iter()
+        .any(|entry| entry.load(Ordering::Acquire) == thread_id)
+    {
         return Err(WindowsDebuggerError::SingleStepAlreadyArmed(thread_id));
     }
     for entry in SINGLE_STEP_REGISTRY.iter() {
-        if entry.compare_exchange(0, thread_id, Ordering::AcqRel, Ordering::Acquire).is_ok() {
+        if entry
+            .compare_exchange(0, thread_id, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
+        {
             return Ok(());
         }
     }
@@ -504,7 +568,10 @@ fn release_single_step(thread_id: u32) {
 }
 fn take_single_step(thread_id: u32) -> bool {
     for entry in SINGLE_STEP_REGISTRY.iter() {
-        if entry.compare_exchange(thread_id, 0, Ordering::AcqRel, Ordering::Acquire).is_ok() {
+        if entry
+            .compare_exchange(thread_id, 0, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
+        {
             return true;
         }
     }
@@ -512,7 +579,10 @@ fn take_single_step(thread_id: u32) -> bool {
 }
 
 fn last_api_error(operation: &'static str) -> WindowsDebuggerError {
-    WindowsDebuggerError::Api { operation, code: unsafe { GetLastError() } }
+    WindowsDebuggerError::Api {
+        operation,
+        code: unsafe { GetLastError() },
+    }
 }
 
 #[derive(Debug, Error)]
@@ -521,7 +591,9 @@ pub enum WindowsDebuggerError {
     Api { operation: &'static str, code: u32 },
     #[error("refusing to suspend or mutate the current Intimatr worker thread {0}")]
     CurrentThreadOperation(u32),
-    #[error("thread {thread_id} was already externally suspended (previous count {previous_count})")]
+    #[error(
+        "thread {thread_id} was already externally suspended (previous count {previous_count})"
+    )]
     ExternallySuspended { thread_id: u32, previous_count: u32 },
     #[error("thread {0} was not suspended when Intimatr attempted to resume it")]
     NotSuspended(u32),
@@ -548,7 +620,8 @@ mod tests {
     #[test]
     fn captures_current_thread_registers_without_suspending_it() {
         let thread_id = unsafe { GetCurrentThreadId() };
-        let snapshot = snapshot_registers(thread_id, false).expect("current context should capture");
+        let snapshot =
+            snapshot_registers(thread_id, false).expect("current context should capture");
         assert_eq!(snapshot.thread_id, thread_id);
         assert_ne!(snapshot.instruction_pointer, 0);
         assert_ne!(snapshot.stack_pointer, 0);
@@ -562,6 +635,9 @@ mod tests {
         let events = read_events(before, 8);
         assert_eq!(events.len(), 2);
         assert!(events[0].sequence < events[1].sequence);
-        assert_eq!(events[1].kind, DebuggerEventKind::HardwareBreakpoint { slot: 3 });
+        assert_eq!(
+            events[1].kind,
+            DebuggerEventKind::HardwareBreakpoint { slot: 3 }
+        );
     }
 }

@@ -156,8 +156,8 @@ impl DebuggerCore {
             });
         }
 
-        let native_address = usize::try_from(address)
-            .map_err(|_| DebuggerError::AddressOutOfRange(address))?;
+        let native_address =
+            usize::try_from(address).map_err(|_| DebuggerError::AddressOutOfRange(address))?;
         native_address
             .checked_add(byte_count)
             .ok_or(DebuggerError::AddressRangeOverflow {
@@ -315,7 +315,15 @@ impl DebuggerCore {
         return Err(DebuggerError::UnsupportedPlatform);
 
         breakpoints.insert(id, breakpoint);
-        info!(id, thread_id, slot, address, ?kind, size, "installed hardware breakpoint");
+        info!(
+            id,
+            thread_id,
+            slot,
+            address,
+            ?kind,
+            size,
+            "installed hardware breakpoint"
+        );
         Ok(breakpoint)
     }
 

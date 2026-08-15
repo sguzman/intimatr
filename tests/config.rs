@@ -69,7 +69,10 @@ fn invalid_ui_page_size_is_rejected() {
 
 #[test]
 fn invalid_debugger_limits_are_rejected() {
-    let input = SAMPLE.replace("max_hardware_breakpoints = 32", "max_hardware_breakpoints = 65");
+    let input = SAMPLE.replace(
+        "max_hardware_breakpoints = 32",
+        "max_hardware_breakpoints = 65",
+    );
     let error = AppConfig::from_toml_str(&input).expect_err("breakpoint registry is bounded");
     assert!(matches!(error, ConfigError::InvalidValue(_)));
 
@@ -80,7 +83,10 @@ fn invalid_debugger_limits_are_rejected() {
 
 #[test]
 fn debugger_ui_defaults_must_fit_debugger_limits() {
-    let input = SAMPLE.replace("disassembly_default_bytes = 256", "disassembly_default_bytes = 70000");
+    let input = SAMPLE.replace(
+        "disassembly_default_bytes = 256",
+        "disassembly_default_bytes = 70000",
+    );
     let error = AppConfig::from_toml_str(&input).expect_err("UI default must fit byte limit");
     assert!(matches!(error, ConfigError::InvalidValue(_)));
 }
