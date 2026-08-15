@@ -120,7 +120,7 @@ impl DebuggerCore {
         #[cfg(windows)]
         {
             let paused = lock(&self.paused_threads)?.contains(&thread_id);
-            return windows::snapshot_registers(thread_id, paused).map_err(DebuggerError::from);
+            windows::snapshot_registers(thread_id, paused).map_err(DebuggerError::from)
         }
         #[cfg(not(windows))]
         {
@@ -254,10 +254,10 @@ impl DebuggerCore {
                 paused.remove(&thread_id);
             }
             info!(thread_id, "armed one-instruction trap flag step");
-            return Ok(ThreadControlState {
+            Ok(ThreadControlState {
                 thread_id,
                 paused_by_intimatr: false,
-            });
+            })
         }
         #[cfg(not(windows))]
         {
@@ -429,11 +429,11 @@ impl DebuggerCore {
     #[cfg(windows)]
     fn ensure_veh(&self) -> Result<(), DebuggerError> {
         use std::sync::atomic::Ordering;
-        if !self.veh_acquired.swap(true, Ordering::AcqRel) {
-            if let Err(error) = windows::acquire_vectored_handler() {
-                self.veh_acquired.store(false, Ordering::Release);
-                return Err(error.into());
-            }
+        if !self.veh_acquired.swap(true, Ordering::AcqRel)
+            && let Err(error) = windows::acquire_vectored_handler()
+        {
+            self.veh_acquired.store(false, Ordering::Release);
+            return Err(error.into());
         }
         Ok(())
     }

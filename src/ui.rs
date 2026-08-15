@@ -1139,7 +1139,7 @@ fn parse_hex_bytes(text: &str) -> Result<Vec<u8>, String> {
     if compact.is_empty() {
         return Ok(Vec::new());
     }
-    if compact.len() % 2 != 0 {
+    if !compact.len().is_multiple_of(2) {
         return Err("Hex byte input must contain an even number of digits".to_owned());
     }
     (0..compact.len())
