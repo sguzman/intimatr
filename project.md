@@ -1,6 +1,6 @@
 # Intimatr Project Specification
 
-Intimatr is a Rust-first, in-process memory research toolkit intended for offline single-player games. It is meant to feel like an embedded and programmable subset of Cheat Engine: a DLL loaded into the target process, a CE-style scanner, debugger-oriented UI, and a local RPC surface for external frontends and automation.
+Intimatr is a Rust-first, in-process memory research toolkit intended for offline single-player games. It is meant to feel like an embedded and programmable subset of Cheat Engine: a DLL loaded into the target process, a CE-style scanner and native tool UI, debugger-oriented tooling, and a local RPC surface for external frontends and automation.
 
 ## Scope
 
@@ -18,13 +18,18 @@ Game.exe
     │   └── result snapshots
     ├── shared command dispatcher
     │   ├── policy enforcement
-    │   ├── scan/watch state
+    │   ├── scan/watch/freeze state
+    │   ├── module/thread inspection
     │   └── frontend-neutral results
+    ├── native CE-style UI
+    │   ├── scanner/results
+    │   ├── watches/freezes
+    │   ├── memory viewer/editor
+    │   └── module/thread browser
     ├── debugger
-    │   ├── threads/registers
+    │   ├── registers/context
     │   ├── disassembly
     │   └── breakpoints
-    ├── in-process GUI
     └── local RPC server
          ├── loopback TCP
          ├── Windows named pipe
@@ -82,11 +87,21 @@ The configuration owns:
 - RPC transport, endpoint, client/frame/transfer/result-page limits
 - scanner tuning parameters, access requirements, result limits, alignment, and float epsilon
 - debugger behavior
-- UI behavior
+- UI enablement, initial visibility, topmost mode, hotkey, dimensions, watch refresh cadence, and scan paging
 - policy gates for read/write/patch/debugger/remote-control capabilities
 
 ## Frontend contract
 
-The in-process UI and RPC server both call the shared `CommandDispatcher`. Memory operations, scan sessions, watches, policy checks, transfer limits, and future debugger commands must be implemented once behind that boundary rather than independently in each frontend.
+The in-process UI and RPC server both call the same `CommandExecutor`/`CommandDispatcher` instance created during bootstrap. Memory operations, scan sessions, watches/freezes, module/thread enumeration, policy checks, transfer limits, and debugger commands must be implemented once behind that boundary rather than independently in each frontend.
+
+A frozen watch stores its target scalar in shared watch state. `RefreshWatches` reapplies that value through the normal policy-gated write path before reading it back. The first-party UI drives refreshes at its configured cadence, while RPC clients see and manipulate the same watch definition rather than a second frontend-specific freeze list.
 
 The RPC protocol is explicitly versioned. Version 1 uses four-byte big-endian length-prefixed JSON messages with request IDs. TCP is restricted to loopback addresses. The Windows named-pipe transport rejects remote clients. Long command execution is kept off the RPC I/O reactor so separate clients remain responsive enough to issue scan cancellation requests.
+
+## Native UI contract
+
+The first UI implementation uses eframe/egui with the Glow backend as a normal native Windows tool window owned by the loaded DLL. The event loop is created on Intimatr's dedicated post-bootstrap UI thread; `DllMain` remains limited to minimal loader-safe work.
+
+The UI dispatches commands through worker threads and receives command results back through a local response channel, keeping scans and memory operations off the render/event-loop thread. Window visibility is controlled by a configurable Windows virtual-key hotkey. Closing the window hides it; runtime shutdown closes and joins the UI thread. eframe persistence is scoped to a directory under `ui/<ExecutableName>` beside the DLL so UI/window state remains target-specific.
+
+The native UI does not depend on hooking the target renderer. Renderer interception or an overlaid game-surface UI is not required for the CE-style tool-window workflow.

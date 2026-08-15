@@ -50,13 +50,13 @@ Work is ordered by dependency: later phases should build on the shared core inst
 
 ## 4. In-process CE-style UI
 
-- [ ] Select and integrate the Rust GUI/rendering stack without doing heavy work in `DllMain`.
-- [ ] Add overlay visibility/hotkey handling from TOML.
-- [ ] Add memory scan controls and result table.
-- [ ] Add watch/freeze list backed by the shared command layer.
-- [ ] Add memory viewer/editor.
-- [ ] Add module/thread browser.
-- [ ] Add persistent UI layout/state per target executable where useful.
+- [x] Select and integrate the Rust GUI/rendering stack without doing heavy work in `DllMain`.
+- [x] Add native tool-window visibility/hotkey handling from TOML.
+- [x] Add memory scan controls and result table.
+- [x] Add watch/freeze list backed by the shared command layer.
+- [x] Add memory viewer/editor.
+- [x] Add module/thread browser.
+- [x] Add persistent UI layout/state per target executable where useful.
 
 ## 5. Debugger core and UI
 

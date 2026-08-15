@@ -1,6 +1,6 @@
 # RPC protocol
 
-Intimatr exposes the same shared command dispatcher used by the eventual in-process UI through a local RPC transport. RPC does not bypass policy: memory read/write, code patch, debugger, transfer-size, result-page, and remote-shutdown rules are enforced by the shared command layer before transport-specific code sees a result.
+Intimatr exposes the same shared command dispatcher used by the in-process UI through a local RPC transport. RPC does not bypass policy: memory read/write, code patch, debugger, transfer-size, result-page, and remote-shutdown rules are enforced by the shared command layer before transport-specific code sees a result.
 
 ## Protocol version 1
 
@@ -32,6 +32,8 @@ A successful response contains the same `request_id`:
 ```
 
 Errors use a stable string code and human-readable message. Unsupported protocol versions receive `version_mismatch` rather than being silently interpreted.
+
+The command schema includes shared memory operations, scan sessions/results/cancellation, watch management, module/thread queries, lifecycle operations, and debugger operations as they are implemented. Watch definitions include an optional `frozen` scalar. `set_watch_freeze` enables or clears that shared value; enabling a freeze remains subject to `policy.allow_memory_write`.
 
 ## TCP
 
@@ -71,6 +73,8 @@ cargo run --example rpc_client -- 127.0.0.1:31337
 
 The client handles framing, protocol version checks, request-ID matching, and remote error conversion. On Windows it can also connect to the named-pipe transport through `RpcClient::connect_named_pipe`.
 
-## Concurrency and scans
+## Concurrency, scans, and watches
 
 Connection I/O runs on a dedicated Tokio runtime owned by an Intimatr RPC thread. Command execution runs through blocking worker tasks so long memory scans do not block the I/O reactor. Scan cancellation tokens live in the shared dispatcher, allowing another connected frontend to request cancellation while a scan is active.
+
+Watch definitions and scan sessions live in the same dispatcher used by the native UI. RPC therefore observes the same watch IDs, frozen values, and scan IDs rather than maintaining transport-specific state. A `refresh_watches` command reapplies any frozen values through the normal policy-gated memory write path and returns the resulting values/errors.
