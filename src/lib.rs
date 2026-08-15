@@ -14,6 +14,7 @@ pub mod runtime;
 pub mod scanner;
 
 #[cfg(windows)]
+#[allow(clippy::manual_is_multiple_of)]
 pub mod ui;
 
 #[cfg(windows)]
