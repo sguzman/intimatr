@@ -273,7 +273,7 @@ pub enum CommandResult {
         latest_sequence: u64,
     },
     Analysis {
-        result: crate::analysis::AnalysisResult,
+        analysis: crate::analysis::AnalysisResult,
     },
     ShutdownAccepted,
 }
