@@ -203,13 +203,13 @@ impl AddressExpression {
             return Ok(Self::Absolute { address });
         }
 
-        let mut split_index = None;
-        for (index, character) in expression.char_indices().skip(1) {
-            if character == '+' || character == '-' {
-                split_index = Some((index, character));
-                break;
+        let split_index = expression.char_indices().rev().find(|&(index, character)| {
+            if index == 0 || !matches!(character, '+' | '-') {
+                return false;
             }
-        }
+            let offset_text = expression[index + character.len_utf8()..].trim();
+            !offset_text.is_empty() && parse_unsigned(offset_text).is_ok()
+        });
         let Some((index, sign)) = split_index else {
             return Ok(Self::ModuleOffset {
                 module: expression.to_owned(),
@@ -931,6 +931,30 @@ mod tests {
                 .resolve(&modules)
                 .unwrap(),
             0x140001234
+        );
+    }
+
+    #[test]
+    fn module_relative_expression_allows_hyphenated_module_names() {
+        let modules = vec![ModuleDescriptor {
+            name: "game-client.dll".to_owned(),
+            path: r"C:\Games\game-client.dll".to_owned(),
+            base: 0x180000000,
+            size: 0x100000,
+        }];
+        assert_eq!(
+            AddressExpression::parse("game-client.dll+0x40")
+                .unwrap()
+                .resolve(&modules)
+                .unwrap(),
+            0x180000040
+        );
+        assert_eq!(
+            AddressExpression::parse("game-client.dll")
+                .unwrap()
+                .resolve(&modules)
+                .unwrap(),
+            0x180000000
         );
     }
 

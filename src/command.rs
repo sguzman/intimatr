@@ -891,9 +891,26 @@ where
                     .get(&watch_id)
                     .cloned()
                     .ok_or(CommandError::WatchNotFound(watch_id))?;
+                let modules = self.analysis_modules()?;
+                let address = modules
+                    .iter()
+                    .find(|module| {
+                        watch.address >= module.base
+                            && watch.address < module.base.saturating_add(module.size)
+                    })
+                    .map_or_else(
+                        || format!("0x{:X}", watch.address),
+                        |module| {
+                            format!(
+                                "{}+0x{:X}",
+                                module.name,
+                                watch.address.saturating_sub(module.base)
+                            )
+                        },
+                    );
                 let template = SavedWatchTemplate {
                     name: name.clone(),
-                    address: format!("0x{:X}", watch.address),
+                    address,
                     value_type: watch.value_type,
                     frozen: watch.frozen,
                 };
