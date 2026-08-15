@@ -15,8 +15,7 @@ use windows_sys::Win32::{
         Diagnostics::Debug::{
             AddVectoredExceptionHandler, CONTEXT, CONTEXT_ALL_AMD64, CONTEXT_CONTROL_AMD64,
             CONTEXT_DEBUG_REGISTERS_AMD64, EXCEPTION_CONTINUE_EXECUTION, EXCEPTION_CONTINUE_SEARCH,
-            EXCEPTION_POINTERS, GetThreadContext, RemoveVectoredExceptionHandler,
-            RtlCaptureContext, SetThreadContext,
+            EXCEPTION_POINTERS, GetThreadContext, RemoveVectoredExceptionHandler, SetThreadContext,
         },
         Threading::{
             GetCurrentThreadId, OpenThread, ResumeThread, SuspendThread, THREAD_GET_CONTEXT,
@@ -41,19 +40,13 @@ pub fn snapshot_registers(
     thread_id: u32,
     already_suspended: bool,
 ) -> Result<RegisterSnapshot, WindowsDebuggerError> {
-    let current = unsafe { GetCurrentThreadId() };
-    let context = if thread_id == current {
-        let mut context: CONTEXT = unsafe { zeroed() };
-        unsafe { RtlCaptureContext(&mut context) };
-        context
-    } else {
-        let handle = ThreadHandle::open(
-            thread_id,
-            THREAD_GET_CONTEXT | THREAD_QUERY_INFORMATION | THREAD_SUSPEND_RESUME,
-        )?;
-        let _suspension = TemporarySuspension::maybe(&handle, already_suspended)?;
-        get_context(&handle, CONTEXT_ALL_AMD64)?
-    };
+    reject_current_thread(thread_id)?;
+    let handle = ThreadHandle::open(
+        thread_id,
+        THREAD_GET_CONTEXT | THREAD_QUERY_INFORMATION | THREAD_SUSPEND_RESUME,
+    )?;
+    let _suspension = TemporarySuspension::maybe(&handle, already_suspended)?;
+    let context = get_context(&handle, CONTEXT_ALL_AMD64)?;
     Ok(context_snapshot(thread_id, &context))
 }
 
@@ -618,13 +611,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn captures_current_thread_registers_without_suspending_it() {
+    fn rejects_current_thread_context_capture() {
         let thread_id = unsafe { GetCurrentThreadId() };
-        let snapshot =
-            snapshot_registers(thread_id, false).expect("current context should capture");
-        assert_eq!(snapshot.thread_id, thread_id);
-        assert_ne!(snapshot.instruction_pointer, 0);
-        assert_ne!(snapshot.stack_pointer, 0);
+        let error = snapshot_registers(thread_id, false)
+            .expect_err("debugger worker must not capture itself through thread APIs");
+        assert!(
+            matches!(error, WindowsDebuggerError::CurrentThreadOperation(id) if id == thread_id)
+        );
     }
 
     #[test]
