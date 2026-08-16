@@ -2,7 +2,7 @@ use std::{
     collections::HashMap,
     sync::{
         Mutex, MutexGuard,
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
     },
 };
 
@@ -392,6 +392,7 @@ pub struct CommandDispatcher<M> {
     watches: Mutex<HashMap<u64, WatchDefinition>>,
     next_scan_id: AtomicU64,
     next_watch_id: AtomicU64,
+    shutting_down: AtomicBool,
 }
 
 impl<M> CommandDispatcher<M>
@@ -433,6 +434,7 @@ where
             watches: Mutex::new(HashMap::new()),
             next_scan_id: AtomicU64::new(1),
             next_watch_id: AtomicU64::new(1),
+            shutting_down: AtomicBool::new(false),
         }
     }
 
@@ -442,6 +444,9 @@ where
     }
 
     pub fn execute(&self, command: Command) -> Result<CommandExecution, CommandError> {
+        if self.shutting_down.load(Ordering::Acquire) {
+            return Err(CommandError::ShuttingDown);
+        }
         let command_name = command.name();
         debug!(command = command_name, "dispatching frontend command");
 
@@ -1128,6 +1133,7 @@ where
     }
 
     fn shutdown(&self) {
+        self.shutting_down.store(true, Ordering::Release);
         if let Err(error) = self.cancel_all_scans() {
             warn!(error = %error, "failed to cancel active scans during command executor shutdown");
         }
@@ -1168,6 +1174,8 @@ pub enum CommandError {
     WatchNotFound(u64),
     #[error("shared command state mutex was poisoned")]
     StatePoisoned,
+    #[error("shared command executor is shutting down")]
+    ShuttingDown,
     #[error("{0} is defined in the command contract but is not implemented yet")]
     NotImplemented(&'static str),
     #[cfg(windows)]
@@ -1193,6 +1201,7 @@ impl CommandError {
             Self::ScanBusy(_) => "scan_busy",
             Self::WatchNotFound(_) => "watch_not_found",
             Self::StatePoisoned => "state_poisoned",
+            Self::ShuttingDown => "shutting_down",
             Self::NotImplemented(_) => "not_implemented",
             #[cfg(windows)]
             Self::Windows(_) => "platform_error",
