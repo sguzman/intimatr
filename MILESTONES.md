@@ -86,3 +86,11 @@ Work is ordered by dependency: later phases should build on the shared core inst
 - [x] Add Windows x86_64 CI builds that verify the DLL artifact.
 - [x] Add release packaging with example configs and protocol/version notes.
 - [x] Document frontend/plugin extension points and subsystem invariants.
+
+## 8. Release candidate usability
+
+- [ ] Add an archive verifier that checks release layout, version metadata, and the packaged DLL checksum.
+- [ ] Make CI validate the exact release ZIP produced by the packaging script.
+- [ ] Publish an archive-level SHA-256 sidecar alongside tagged release ZIPs.
+- [ ] Add a first-run quick start from package layout through configuration, UI scanning, RPC, persistence, and shutdown.
+- [ ] Add troubleshooting guidance for bootstrap, configuration, UI/debugger policy gates, scanning, RPC, stale addresses, and lifecycle behavior.
