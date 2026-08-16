@@ -19,6 +19,13 @@ tracing = "0.1.44"
 tracing-appender = "0.2.5"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter", "fmt"] }
 
+[dev-dependencies]
+criterion = "0.8.2"
+
+[[bench]]
+name = "scanner"
+harness = false
+
 [target.'cfg(windows)'.dependencies]
 eframe = { version = "0.36.1", default-features = false, features = ["default_fonts", "glow", "persistence"] }
 winit = { version = "0.30.13", default-features = false, features = ["rwh_06"] }
