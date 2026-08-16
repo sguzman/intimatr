@@ -49,20 +49,29 @@ jobs:
           if (-not (Test-Path $zip -PathType Leaf)) {
             throw "Release archive was not produced: $zip"
           }
+          & ./scripts/verify-release.ps1 -ArchivePath $zip -ExpectedVersion $env:PACKAGE_VERSION | Out-Null
           $name = [System.IO.Path]::GetFileNameWithoutExtension($zip)
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          $sidecar = "$zip.sha256"
+          "$hash  $([System.IO.Path]::GetFileName($zip))" | Set-Content -Path $sidecar -Encoding utf8
           "RELEASE_ZIP=$zip" >> $env:GITHUB_ENV
+          "RELEASE_SHA256=$sidecar" >> $env:GITHUB_ENV
           "RELEASE_NAME=$name" >> $env:GITHUB_ENV
 
       - name: Upload packaged artifact
         uses: actions/upload-artifact@v7
         with:
           name: ${{ env.RELEASE_NAME }}
-          path: ${{ env.RELEASE_ZIP }}
+          path: |
+            ${{ env.RELEASE_ZIP }}
+            ${{ env.RELEASE_SHA256 }}
           if-no-files-found: error
 
       - name: Publish GitHub release
         if: github.ref_type == 'tag'
         uses: softprops/action-gh-release@v3
         with:
-          files: ${{ env.RELEASE_ZIP }}
+          files: |
+            ${{ env.RELEASE_ZIP }}
+            ${{ env.RELEASE_SHA256 }}
           generate_release_notes: true
