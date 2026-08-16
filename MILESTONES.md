@@ -80,9 +80,9 @@ Work is ordered by dependency: later phases should build on the shared core inst
 
 ## 7. Hardening and releases
 
-- [ ] Benchmark large scans and optimize allocation/chunking hot paths.
-- [ ] Add bounded queues/backpressure between scanner, UI, debugger, and RPC tasks.
-- [ ] Add crash-safe shutdown and log flushing.
-- [ ] Add Windows x86_64 CI builds that verify the DLL artifact.
-- [ ] Add release packaging with example configs and protocol/version notes.
-- [ ] Document frontend/plugin extension points and subsystem invariants.
+- [x] Benchmark large scans and optimize allocation/chunking hot paths.
+- [x] Add bounded queues/backpressure between scanner, UI, debugger, and RPC tasks.
+- [x] Add crash-safe shutdown and log flushing.
+- [x] Add Windows x86_64 CI builds that verify the DLL artifact.
+- [x] Add release packaging with example configs and protocol/version notes.
+- [x] Document frontend/plugin extension points and subsystem invariants.

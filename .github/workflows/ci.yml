@@ -24,13 +24,13 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: cargo clippy --locked --all-targets --all-features -- -D warnings
 
       - name: Test
-        run: cargo test --all-targets --all-features
+        run: cargo test --locked --all-targets --all-features
 
       - name: Build x86_64 Windows DLL
-        run: cargo build --release --lib --target x86_64-pc-windows-msvc
+        run: cargo build --locked --release --lib --target x86_64-pc-windows-msvc
 
       - name: Verify DLL artifact
         shell: pwsh
