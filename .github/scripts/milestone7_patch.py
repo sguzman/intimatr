@@ -1,0 +1,272 @@
+from pathlib import Path
+
+
+def replace_once(text: str, old: str, new: str, label: str) -> str:
+    if old not in text:
+        raise SystemExit(f"missing marker: {label}")
+    return text.replace(old, new, 1)
+
+
+# Runtime configuration for the shared bounded command pool.
+path = Path("src/config.rs")
+text = path.read_text()
+text = replace_once(
+    text,
+    "pub struct AppConfig {\n    pub target: TargetConfig,\n",
+    "pub struct AppConfig {\n    pub target: TargetConfig,\n    #[serde(default)]\n    pub runtime: RuntimeConfig,\n",
+    "AppConfig runtime field",
+)
+target_validation = '''        if self.target.executable.trim().is_empty() {
+            return Err(ConfigError::InvalidValue(
+                "target.executable must not be empty",
+            ));
+        }
+'''
+runtime_validation = target_validation + '''        if self.runtime.command_workers == 0 || self.runtime.command_workers > 32 {
+            return Err(ConfigError::InvalidValue(
+                "runtime.command_workers must be between 1 and 32",
+            ));
+        }
+        if self.runtime.command_queue_capacity == 0
+            || self.runtime.command_queue_capacity > 65_536
+        {
+            return Err(ConfigError::InvalidValue(
+                "runtime.command_queue_capacity must be between 1 and 65536",
+            ));
+        }
+'''
+text = replace_once(text, target_validation, runtime_validation, "runtime validation")
+runtime_struct = '''#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RuntimeConfig {
+    #[serde(default = "default_command_workers")]
+    pub command_workers: usize,
+    #[serde(default = "default_command_queue_capacity")]
+    pub command_queue_capacity: usize,
+}
+
+impl Default for RuntimeConfig {
+    fn default() -> Self {
+        Self {
+            command_workers: default_command_workers(),
+            command_queue_capacity: default_command_queue_capacity(),
+        }
+    }
+}
+
+'''
+text = replace_once(
+    text,
+    "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]\npub struct TargetConfig",
+    runtime_struct + "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]\npub struct TargetConfig",
+    "RuntimeConfig insertion",
+)
+text = replace_once(
+    text,
+    "fn default_chunk_size() -> usize {\n",
+    "fn default_command_workers() -> usize {\n    4\n}\nfn default_command_queue_capacity() -> usize {\n    64\n}\nfn default_chunk_size() -> usize {\n",
+    "runtime defaults",
+)
+path.write_text(text)
+
+# Reuse scan buffers instead of allocating a Vec for every chunk.
+path = Path("src/scanner/engine.rs")
+text = path.read_text()
+text = replace_once(
+    text,
+    "    let mut candidates = Vec::new();\n\n    info!(\n",
+    "    let mut candidates = Vec::with_capacity(options.max_results.min(4096));\n    let mut buffer = Vec::with_capacity(options.chunk_size_bytes.saturating_add(width.saturating_sub(1)));\n\n    info!(\n",
+    "scanner reusable buffer declaration",
+)
+text = replace_once(
+    text,
+    "            let mut buffer = vec![0_u8; read_len];\n\n            match source.read_exact(cursor, &mut buffer) {\n",
+    "            buffer.resize(read_len, 0);\n\n            match source.read_exact(cursor, &mut buffer) {\n",
+    "scanner per-chunk allocation",
+)
+path.write_text(text)
+
+# Apply the same allocation discipline to AOB scanning.
+path = Path("src/analysis.rs")
+text = path.read_text()
+text = replace_once(
+    text,
+    "    let mut addresses = Vec::new();\n    let mut read_failures = 0_u64;\n    let mut truncated = false;\n",
+    "    let mut addresses = Vec::with_capacity(options.max_results.min(4096));\n    let mut read_failures = 0_u64;\n    let mut truncated = false;\n    let mut buffer = Vec::with_capacity(chunk_size.saturating_add(overlap));\n",
+    "AOB reusable buffer declaration",
+)
+text = replace_once(
+    text,
+    "            let mut buffer = vec![0_u8; read_len];\n            if let Err(error) = source.read_exact(cursor, &mut buffer) {\n",
+    "            buffer.resize(read_len, 0);\n            if let Err(error) = source.read_exact(cursor, &mut buffer) {\n",
+    "AOB per-chunk allocation",
+)
+path.write_text(text)
+
+# Explicit log-worker drain on orderly shutdown.
+path = Path("src/logging.rs")
+text = path.read_text()
+text = replace_once(
+    text,
+    "pub struct LoggingGuard {\n    _file_guard: WorkerGuard,\n}\n",
+    "pub struct LoggingGuard {\n    file_guard: Option<WorkerGuard>,\n}\n\nimpl LoggingGuard {\n    pub fn flush(&mut self) {\n        if let Some(guard) = self.file_guard.take() {\n            drop(guard);\n        }\n    }\n}\n",
+    "LoggingGuard flush",
+)
+text = replace_once(
+    text,
+    "    Ok(LoggingGuard {\n        _file_guard: file_guard,\n    })\n",
+    "    Ok(LoggingGuard {\n        file_guard: Some(file_guard),\n    })\n",
+    "LoggingGuard construction",
+)
+path.write_text(text)
+
+# Runtime owns subsystem stop order; RPC no longer shuts the executor itself.
+path = Path("src/rpc/server.rs")
+text = path.read_text()
+text = text.replace(
+    "    shutdown_connections(executor, &mut tasks).await;",
+    "    shutdown_connections(&mut tasks).await;",
+)
+old_shutdown = '''async fn shutdown_connections(executor: Arc<dyn CommandExecutor>, tasks: &mut JoinSet<()>) {
+    executor.shutdown();
+    while let Some(result) = tasks.join_next().await {
+        if let Err(error) = result {
+            warn!(error = %error, "RPC client task failed during shutdown");
+        }
+    }
+}
+'''
+new_shutdown = '''async fn shutdown_connections(tasks: &mut JoinSet<()>) {
+    while let Some(result) = tasks.join_next().await {
+        if let Err(error) = result {
+            warn!(error = %error, "RPC client task failed during shutdown");
+        }
+    }
+}
+'''
+text = replace_once(text, old_shutdown, new_shutdown, "RPC shutdown ownership")
+path.write_text(text)
+
+# Wire the bounded executor into runtime and make shutdown ordering explicit.
+path = Path("src/runtime.rs")
+text = path.read_text()
+text = replace_once(
+    text,
+    "use crate::{\n    command::{CommandDispatcher, CommandExecutor, CommandLimits, PostAction},\n",
+    "use crate::{\n    backpressure::{BoundedCommandExecutor, ExecutorPoolError},\n    command::{CommandDispatcher, CommandExecutor, CommandLimits, PostAction},\n",
+    "runtime backpressure import",
+)
+start = text.index("pub fn shutdown() -> Result<(), RuntimeError> {")
+end = text.index("pub(crate) fn mark_attached()", start)
+new_shutdown_fn = '''pub fn shutdown() -> Result<(), RuntimeError> {
+    let should_cleanup = LIFECYCLE.begin_shutdown()?;
+    if !should_cleanup {
+        return Ok(());
+    }
+
+    info!(state = ?LIFECYCLE.state(), "Intimatr shutdown started");
+
+    let mut context = {
+        let mut guard = CONTEXT.lock().map_err(|_| RuntimeError::ContextPoisoned)?;
+        guard.take()
+    };
+
+    if let Some(context) = context.as_mut() {
+        #[cfg(windows)]
+        {
+            if let Some(mut rpc_server) = context._rpc_server.take()
+                && let Err(error) = rpc_server.stop()
+            {
+                warn!(error = %error, "failed to stop RPC server during shutdown");
+            }
+            if let Some(mut debugger_ui) = context._debugger_ui.take()
+                && let Err(error) = debugger_ui.stop()
+            {
+                warn!(error = %error, "failed to stop debugger UI during shutdown");
+            }
+            if let Some(mut ui) = context._ui.take()
+                && let Err(error) = ui.stop()
+            {
+                warn!(error = %error, "failed to stop main UI during shutdown");
+            }
+            context.command_executor.shutdown();
+        }
+    } else {
+        warn!("Intimatr shutdown found no active runtime context");
+    }
+
+    LIFECYCLE.mark_stopped()?;
+    info!(state = ?LIFECYCLE.state(), "Intimatr shutdown complete");
+
+    if let Some(context) = context.as_mut() {
+        context._logging_guard.flush();
+    }
+    drop(context);
+    Ok(())
+}
+
+'''
+text = text[:start] + new_shutdown_fn + text[end:]
+text = replace_once(
+    text,
+    "        rpc_enabled = config.rpc.enabled,\n        rpc_transport = ?config.rpc.transport,\n",
+    "        rpc_enabled = config.rpc.enabled,\n        rpc_transport = ?config.rpc.transport,\n        command_workers = config.runtime.command_workers,\n        command_queue_capacity = config.runtime.command_queue_capacity,\n",
+    "runtime queue logging",
+)
+text = replace_once(
+    text,
+    "    let command_executor = create_command_executor(&config, &module_directory);\n",
+    "    let command_executor = create_command_executor(&config, &module_directory)?;\n",
+    "runtime executor construction",
+)
+fn_start = text.index("#[cfg(windows)]\nfn create_command_executor(")
+fn_end = text.index("#[cfg(windows)]\nfn start_rpc_if_enabled", fn_start)
+new_create = '''#[cfg(windows)]
+fn create_command_executor(
+    config: &AppConfig,
+    module_directory: &Path,
+) -> Result<Arc<dyn CommandExecutor>, RuntimeError> {
+    let analysis_directory = module_directory
+        .join("analysis")
+        .join(&config.target.executable);
+    let dispatcher: Arc<dyn CommandExecutor> = Arc::new(
+        CommandDispatcher::new_with_debugger(
+            CurrentProcessMemory::new(),
+            config.scanner.clone(),
+            config.debugger.clone(),
+            config.policy.clone(),
+            CommandLimits {
+                max_memory_transfer_bytes: config.rpc.max_memory_transfer_bytes,
+                max_scan_results_per_page: config.rpc.max_scan_results_per_page,
+            },
+        )
+        .with_analysis_directory(analysis_directory),
+    );
+    let bounded = BoundedCommandExecutor::new(
+        dispatcher,
+        config.runtime.command_workers,
+        config.runtime.command_queue_capacity,
+    )?;
+    let executor: Arc<dyn CommandExecutor> = bounded;
+    Ok(executor)
+}
+
+'''
+text = text[:fn_start] + new_create + text[fn_end:]
+text = replace_once(
+    text,
+    "    #[cfg(windows)]\n    #[error(transparent)]\n    Windows(#[from] WindowsError),\n",
+    "    #[cfg(windows)]\n    #[error(transparent)]\n    ExecutorPool(#[from] ExecutorPoolError),\n    #[cfg(windows)]\n    #[error(transparent)]\n    Windows(#[from] WindowsError),\n",
+    "RuntimeError executor pool",
+)
+path.write_text(text)
+
+# Surface the runtime queue controls in the per-executable TOML example.
+path = Path("config/ExampleGame.exe.toml")
+text = path.read_text()
+text = replace_once(
+    text,
+    "[target]\nexecutable = \"ExampleGame.exe\"\n\n",
+    "[target]\nexecutable = \"ExampleGame.exe\"\n\n[runtime]\ncommand_workers = 4\ncommand_queue_capacity = 64\n\n",
+    "sample runtime config",
+)
+path.write_text(text)
