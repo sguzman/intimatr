@@ -67,20 +67,29 @@ try {
     }
 
     $versionFile = Join-Path $tempRoot "VERSION.txt"
-    $versionText = Get-Content $versionFile -Raw
-    if ($versionText -notmatch '(?m)^Intimatr v([^\r\n]+)$') {
+    $versionLines = Get-Content $versionFile
+
+    $versionLine = $versionLines | Where-Object { $_ -match '^Intimatr v\S.*$' } | Select-Object -First 1
+    if (-not $versionLine) {
         throw "VERSION.txt does not contain an Intimatr version line"
     }
-    $packagedVersion = $Matches[1].Trim()
+    $versionMatch = [regex]::Match($versionLine, '^Intimatr v(.+?)\s*$')
+    if (-not $versionMatch.Success) {
+        throw "VERSION.txt has an invalid Intimatr version line: $versionLine"
+    }
+    $packagedVersion = $versionMatch.Groups[1].Value.Trim()
 
     if ($ExpectedVersion -and $packagedVersion -ne $ExpectedVersion) {
         throw "Packaged version '$packagedVersion' does not match expected version '$ExpectedVersion'"
     }
 
-    if ($versionText -notmatch '(?m)^RPC protocol: [0-9]+$') {
+    $protocolLine = $versionLines | Where-Object { $_ -match '^RPC protocol: [0-9]+\s*$' } | Select-Object -First 1
+    if (-not $protocolLine) {
         throw "VERSION.txt does not contain an RPC protocol version"
     }
-    if ($versionText -notmatch '(?m)^Analysis workspace format: [0-9]+$') {
+
+    $workspaceLine = $versionLines | Where-Object { $_ -match '^Analysis workspace format: [0-9]+\s*$' } | Select-Object -First 1
+    if (-not $workspaceLine) {
         throw "VERSION.txt does not contain an analysis workspace version"
     }
 
