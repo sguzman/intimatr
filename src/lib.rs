@@ -4,6 +4,7 @@
 //! frontends can all share the same configuration and scanner semantics.
 
 pub mod analysis;
+pub mod backpressure;
 pub mod command;
 pub mod config;
 pub mod debugger;
