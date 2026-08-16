@@ -41,18 +41,25 @@ if (Test-Path $zip) {
 }
 New-Item -ItemType Directory -Force -Path $docs, $config | Out-Null
 
+$releaseDocs = @(
+    "quickstart.md",
+    "troubleshooting.md",
+    "rpc.md",
+    "ui.md",
+    "debugger.md",
+    "analysis.md",
+    "performance.md",
+    "extensions.md",
+    "versioning.md"
+)
+
 $requiredFiles = @(
     "README.md",
     "project.md",
-    "config/ExampleGame.exe.toml",
-    "docs/rpc.md",
-    "docs/ui.md",
-    "docs/debugger.md",
-    "docs/analysis.md",
-    "docs/performance.md",
-    "docs/extensions.md",
-    "docs/versioning.md"
+    "config/ExampleGame.exe.toml"
 )
+$requiredFiles += $releaseDocs | ForEach-Object { Join-Path "docs" $_ }
+
 foreach ($file in $requiredFiles) {
     if (-not (Test-Path $file -PathType Leaf)) {
         throw "Required release file is missing: $file"
@@ -67,7 +74,7 @@ if (Test-Path $pdb -PathType Leaf) {
 Copy-Item "config/ExampleGame.exe.toml" $config
 Copy-Item "README.md" $root
 Copy-Item "project.md" $root
-foreach ($doc in @("rpc.md", "ui.md", "debugger.md", "analysis.md", "performance.md", "extensions.md", "versioning.md")) {
+foreach ($doc in $releaseDocs) {
     Copy-Item (Join-Path "docs" $doc) $docs
 }
 
