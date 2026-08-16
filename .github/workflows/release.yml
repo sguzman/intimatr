@@ -45,37 +45,11 @@ jobs:
       - name: Package distribution
         shell: pwsh
         run: |
-          $name = "intimatr-v$env:PACKAGE_VERSION-windows-x86_64"
-          $root = Join-Path "dist" $name
-          $docs = Join-Path $root "docs"
-          $config = Join-Path $root "config"
-          New-Item -ItemType Directory -Force -Path $docs, $config | Out-Null
-
-          Copy-Item "target/x86_64-pc-windows-msvc/release/intimatr.dll" $root
-          $pdb = "target/x86_64-pc-windows-msvc/release/intimatr.pdb"
-          if (Test-Path $pdb) { Copy-Item $pdb $root }
-          Copy-Item "config/ExampleGame.exe.toml" $config
-          Copy-Item "README.md" $root
-          Copy-Item "project.md" $root
-          Copy-Item "docs/rpc.md" $docs
-          Copy-Item "docs/ui.md" $docs
-          Copy-Item "docs/debugger.md" $docs
-          Copy-Item "docs/analysis.md" $docs
-          Copy-Item "docs/performance.md" $docs
-          Copy-Item "docs/extensions.md" $docs
-          Copy-Item "docs/versioning.md" $docs
-
-          @"
-          Intimatr v$env:PACKAGE_VERSION
-          Platform: Windows x86_64 (MSVC)
-          RPC protocol: 1
-          Analysis workspace format: 1
-          Scope: offline/single-player memory research
-          "@ | Set-Content -Path (Join-Path $root "VERSION.txt") -Encoding utf8
-
-          $zip = "dist/$name.zip"
-          Compress-Archive -Path "$root/*" -DestinationPath $zip -Force
-          if (-not (Test-Path $zip -PathType Leaf)) { throw "Release archive was not created" }
+          $zip = & ./scripts/package-release.ps1 -Version $env:PACKAGE_VERSION
+          if (-not (Test-Path $zip -PathType Leaf)) {
+            throw "Release archive was not produced: $zip"
+          }
+          $name = [System.IO.Path]::GetFileNameWithoutExtension($zip)
           "RELEASE_ZIP=$zip" >> $env:GITHUB_ENV
           "RELEASE_NAME=$name" >> $env:GITHUB_ENV
 

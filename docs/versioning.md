@@ -6,6 +6,8 @@ Intimatr has three version surfaces that should not be conflated: the Rust packa
 
 `Cargo.toml` is the source of truth for the package version. Release tags use `v<package-version>`; for example, package version `0.1.0` is released from tag `v0.1.0`.
 
+Because Intimatr is shipped as an executable DLL/tool rather than only as a reusable Rust library, the repository also commits `Cargo.lock`. Release and CI builds therefore use one reviewed dependency graph instead of silently resolving a different compatible graph on a later day. Updating dependencies is an explicit repository change that can be tested and benchmarked before release.
+
 The release workflow rejects a tag whose version does not match `Cargo.toml`. A successful tagged release builds the Windows x86_64 DLL, validates the source, packages the example configuration and protocol/extension documentation, uploads the ZIP as a workflow artifact, and attaches the same ZIP to the GitHub release.
 
 ## RPC protocol version
@@ -32,6 +34,6 @@ Saved scalar scans contain process-address snapshots and are not promised to sur
 
 ## Release compatibility notes
 
-Each packaged release includes a `VERSION.txt` summary containing package version, platform, RPC protocol version, workspace version, and project scope. Detailed command semantics live in `docs/rpc.md`; analysis persistence semantics live in `docs/analysis.md`; architectural extension constraints live in `docs/extensions.md`.
+Each packaged release includes a `VERSION.txt` summary containing package version, platform, RPC protocol version, workspace version, and project scope, plus a SHA-256 checksum for the packaged DLL. Detailed command semantics live in `docs/rpc.md`; analysis persistence semantics live in `docs/analysis.md`; architectural extension constraints live in `docs/extensions.md`.
 
 Until the package reaches a declared stable compatibility policy, consumers should pin the Intimatr package/release version as well as checking the protocol/workspace versions they depend on. Version fields exist so incompatibility is explicit rather than accidental.

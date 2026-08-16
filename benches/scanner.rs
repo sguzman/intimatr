@@ -11,6 +11,7 @@ use intimatr::{
 };
 
 const BASE: usize = 0x1000_0000;
+// Keep this workload stable so Milestone 7 throughput runs remain directly comparable.
 const LARGE_SCAN_BYTES: usize = 32 * 1024 * 1024;
 
 struct SyntheticMemory {

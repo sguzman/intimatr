@@ -45,6 +45,15 @@ jobs:
           }
           Write-Host "Verified $dll ($($item.Length) bytes)"
 
+      - name: Package release layout smoke test
+        shell: pwsh
+        run: |
+          $zip = & ./scripts/package-release.ps1 -Version "ci-${{ github.run_number }}"
+          if (-not (Test-Path $zip -PathType Leaf)) {
+            throw "Packaging smoke test did not produce an archive: $zip"
+          }
+          Write-Host "Verified release package $zip"
+
       - name: Upload DLL artifact
         uses: actions/upload-artifact@v7
         with:
