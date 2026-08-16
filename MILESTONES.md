@@ -89,8 +89,8 @@ Work is ordered by dependency: later phases should build on the shared core inst
 
 ## 8. Release candidate usability
 
-- [ ] Add an archive verifier that checks release layout, version metadata, and the packaged DLL checksum.
-- [ ] Make CI validate the exact release ZIP produced by the packaging script.
-- [ ] Publish an archive-level SHA-256 sidecar alongside tagged release ZIPs.
-- [ ] Add a first-run quick start from package layout through configuration, UI scanning, RPC, persistence, and shutdown.
-- [ ] Add troubleshooting guidance for bootstrap, configuration, UI/debugger policy gates, scanning, RPC, stale addresses, and lifecycle behavior.
+- [x] Add an archive verifier that checks release layout, version metadata, and the packaged DLL checksum.
+- [x] Make CI validate the exact release ZIP produced by the packaging script.
+- [x] Publish an archive-level SHA-256 sidecar alongside tagged release ZIPs.
+- [x] Add a first-run quick start from package layout through configuration, UI scanning, RPC, persistence, and shutdown.
+- [x] Add troubleshooting guidance for bootstrap, configuration, UI/debugger policy gates, scanning, RPC, stale addresses, and lifecycle behavior.
