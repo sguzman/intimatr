@@ -31,7 +31,7 @@ pub struct BoundedCommandExecutor {
     sender: SyncSender<WorkItem>,
     workers: Mutex<Vec<JoinHandle<()>>>,
     submit_lock: Mutex<()>,
-    stopping: AtomicBool,
+    stopping: Arc<AtomicBool>,
     queue_capacity: usize,
 }
 
@@ -50,28 +50,31 @@ impl BoundedCommandExecutor {
 
         let (sender, receiver) = mpsc::sync_channel(queue_capacity);
         let receiver = Arc::new(Mutex::new(receiver));
+        let stopping = Arc::new(AtomicBool::new(false));
         let mut workers = Vec::with_capacity(worker_count);
         for index in 0..worker_count {
             let worker_receiver = Arc::clone(&receiver);
             let worker_inner = Arc::clone(&inner);
+            let worker_stopping = Arc::clone(&stopping);
             let handle = thread::Builder::new()
                 .name(format!("intimatr-command-{index}"))
-                .spawn(move || run_worker(index, worker_inner, worker_receiver))
+                .spawn(move || {
+                    run_worker(index, worker_inner, worker_receiver, worker_stopping);
+                })
                 .map_err(ExecutorPoolError::ThreadSpawn)?;
             workers.push(handle);
         }
 
         info!(
             worker_count,
-            queue_capacity,
-            "bounded shared command executor started"
+            queue_capacity, "bounded shared command executor started"
         );
         Ok(Arc::new(Self {
             inner,
             sender,
             workers: Mutex::new(workers),
             submit_lock: Mutex::new(()),
-            stopping: AtomicBool::new(false),
+            stopping,
             queue_capacity,
         }))
     }
@@ -131,8 +134,13 @@ impl CommandExecutor for BoundedCommandExecutor {
             .map_err(|_| CommandError::StatePoisoned)?;
         drop(submit_guard);
 
-        debug!(command = command_name, "submitted command to bounded executor");
-        response_rx.recv().map_err(|_| CommandError::StatePoisoned)?
+        debug!(
+            command = command_name,
+            "submitted command to bounded executor"
+        );
+        response_rx
+            .recv()
+            .map_err(|_| CommandError::StatePoisoned)?
     }
 
     fn shutdown(&self) {
@@ -162,6 +170,7 @@ fn run_worker(
     index: usize,
     inner: Arc<dyn CommandExecutor>,
     receiver: Arc<Mutex<Receiver<WorkItem>>>,
+    stopping: Arc<AtomicBool>,
 ) {
     loop {
         let item = match receiver.lock() {
@@ -173,7 +182,11 @@ fn run_worker(
         };
         match item {
             Ok(WorkItem::Execute { command, response }) => {
-                let result = inner.execute(command);
+                let result = if stopping.load(Ordering::Acquire) {
+                    Err(CommandError::StatePoisoned)
+                } else {
+                    inner.execute(command)
+                };
                 let _ = response.send(result);
             }
             Ok(WorkItem::Stop) | Err(_) => break,

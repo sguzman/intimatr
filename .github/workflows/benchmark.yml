@@ -3,6 +3,7 @@ name: Scanner Benchmarks
 on:
   push:
     branches:
+      - main
       - milestone-7-hardening
     paths:
       - Cargo.toml
@@ -31,6 +32,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: scanner-benchmark-report
+          name: scanner-benchmark-report-${{ github.sha }}
           path: target/criterion
           if-no-files-found: ignore

@@ -18,6 +18,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+          targets: x86_64-pc-windows-msvc
 
       - name: Format
         run: cargo fmt --all -- --check
@@ -28,5 +29,25 @@ jobs:
       - name: Test
         run: cargo test --all-targets --all-features
 
-      - name: Build DLL
-        run: cargo build --release --lib
+      - name: Build x86_64 Windows DLL
+        run: cargo build --release --lib --target x86_64-pc-windows-msvc
+
+      - name: Verify DLL artifact
+        shell: pwsh
+        run: |
+          $dll = "target/x86_64-pc-windows-msvc/release/intimatr.dll"
+          if (-not (Test-Path $dll -PathType Leaf)) {
+            throw "Expected DLL artifact was not produced: $dll"
+          }
+          $item = Get-Item $dll
+          if ($item.Length -le 0) {
+            throw "DLL artifact is empty: $dll"
+          }
+          Write-Host "Verified $dll ($($item.Length) bytes)"
+
+      - name: Upload DLL artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: intimatr-windows-x86_64-${{ github.sha }}
+          path: target/x86_64-pc-windows-msvc/release/intimatr.dll
+          if-no-files-found: error

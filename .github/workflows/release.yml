@@ -1,0 +1,94 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+          targets: x86_64-pc-windows-msvc
+
+      - name: Resolve package version
+        shell: pwsh
+        run: |
+          $match = Select-String -Path Cargo.toml -Pattern '^version = "([^"]+)"' | Select-Object -First 1
+          if (-not $match) { throw "Could not resolve package version from Cargo.toml" }
+          $version = $match.Matches[0].Groups[1].Value
+          if ($env:GITHUB_REF_TYPE -eq "tag" -and $env:GITHUB_REF_NAME -ne "v$version") {
+            throw "Tag $env:GITHUB_REF_NAME does not match Cargo.toml version v$version"
+          }
+          "PACKAGE_VERSION=$version" >> $env:GITHUB_ENV
+
+      - name: Validate source
+        run: |
+          cargo fmt --all -- --check
+          cargo clippy --all-targets --all-features -- -D warnings
+          cargo test --all-targets --all-features
+
+      - name: Build release DLL
+        run: cargo build --release --lib --target x86_64-pc-windows-msvc
+
+      - name: Package distribution
+        shell: pwsh
+        run: |
+          $name = "intimatr-v$env:PACKAGE_VERSION-windows-x86_64"
+          $root = Join-Path "dist" $name
+          $docs = Join-Path $root "docs"
+          $config = Join-Path $root "config"
+          New-Item -ItemType Directory -Force -Path $docs, $config | Out-Null
+
+          Copy-Item "target/x86_64-pc-windows-msvc/release/intimatr.dll" $root
+          $pdb = "target/x86_64-pc-windows-msvc/release/intimatr.pdb"
+          if (Test-Path $pdb) { Copy-Item $pdb $root }
+          Copy-Item "config/ExampleGame.exe.toml" $config
+          Copy-Item "README.md" $root
+          Copy-Item "project.md" $root
+          Copy-Item "docs/rpc.md" $docs
+          Copy-Item "docs/ui.md" $docs
+          Copy-Item "docs/debugger.md" $docs
+          Copy-Item "docs/analysis.md" $docs
+          Copy-Item "docs/performance.md" $docs
+          Copy-Item "docs/extensions.md" $docs
+          Copy-Item "docs/versioning.md" $docs
+
+          @"
+          Intimatr v$env:PACKAGE_VERSION
+          Platform: Windows x86_64 (MSVC)
+          RPC protocol: 1
+          Analysis workspace format: 1
+          Scope: offline/single-player memory research
+          "@ | Set-Content -Path (Join-Path $root "VERSION.txt") -Encoding utf8
+
+          $zip = "dist/$name.zip"
+          Compress-Archive -Path "$root/*" -DestinationPath $zip -Force
+          if (-not (Test-Path $zip -PathType Leaf)) { throw "Release archive was not created" }
+          "RELEASE_ZIP=$zip" >> $env:GITHUB_ENV
+          "RELEASE_NAME=$name" >> $env:GITHUB_ENV
+
+      - name: Upload packaged artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ env.RELEASE_NAME }}
+          path: ${{ env.RELEASE_ZIP }}
+          if-no-files-found: error
+
+      - name: Publish GitHub release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v3
+        with:
+          files: ${{ env.RELEASE_ZIP }}
+          generate_release_notes: true
