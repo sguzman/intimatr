@@ -12,6 +12,8 @@ use tracing::{debug, info};
 pub struct AppConfig {
     pub target: TargetConfig,
     #[serde(default)]
+    pub runtime: RuntimeConfig,
+    #[serde(default)]
     pub logging: LoggingConfig,
     #[serde(default)]
     pub rpc: RpcConfig,
@@ -78,6 +80,17 @@ impl AppConfig {
         if self.target.executable.trim().is_empty() {
             return Err(ConfigError::InvalidValue(
                 "target.executable must not be empty",
+            ));
+        }
+        if self.runtime.command_workers == 0 || self.runtime.command_workers > 32 {
+            return Err(ConfigError::InvalidValue(
+                "runtime.command_workers must be between 1 and 32",
+            ));
+        }
+        if self.runtime.command_queue_capacity == 0 || self.runtime.command_queue_capacity > 65_536
+        {
+            return Err(ConfigError::InvalidValue(
+                "runtime.command_queue_capacity must be between 1 and 65536",
             ));
         }
         if self.scanner.chunk_size_bytes == 0 {
@@ -245,6 +258,23 @@ fn executable_file_name(path: &Path) -> Result<&str, ConfigError> {
         .and_then(|name| name.to_str())
         .filter(|name| !name.is_empty())
         .ok_or_else(|| ConfigError::InvalidExecutablePath(path.to_path_buf()))
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RuntimeConfig {
+    #[serde(default = "default_command_workers")]
+    pub command_workers: usize,
+    #[serde(default = "default_command_queue_capacity")]
+    pub command_queue_capacity: usize,
+}
+
+impl Default for RuntimeConfig {
+    fn default() -> Self {
+        Self {
+            command_workers: default_command_workers(),
+            command_queue_capacity: default_command_queue_capacity(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -526,6 +556,12 @@ fn default_max_memory_transfer_bytes() -> usize {
 }
 fn default_max_scan_results_per_page() -> usize {
     4096
+}
+fn default_command_workers() -> usize {
+    4
+}
+fn default_command_queue_capacity() -> usize {
+    64
 }
 fn default_chunk_size() -> usize {
     1024 * 1024

@@ -1,6 +1,10 @@
 [target]
 executable = "ExampleGame.exe"
 
+[runtime]
+command_workers = 4
+command_queue_capacity = 64
+
 [logging]
 filter = "intimatr=trace"
 directory = "logs"

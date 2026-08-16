@@ -8,7 +8,15 @@ use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitEx
 use crate::config::LoggingConfig;
 
 pub struct LoggingGuard {
-    _file_guard: WorkerGuard,
+    file_guard: Option<WorkerGuard>,
+}
+
+impl LoggingGuard {
+    pub fn flush(&mut self) {
+        if let Some(guard) = self.file_guard.take() {
+            drop(guard);
+        }
+    }
 }
 
 pub fn init(config: &LoggingConfig) -> Result<LoggingGuard, LoggingError> {
@@ -53,7 +61,7 @@ pub fn init(config: &LoggingConfig) -> Result<LoggingGuard, LoggingError> {
     );
 
     Ok(LoggingGuard {
-        _file_guard: file_guard,
+        file_guard: Some(file_guard),
     })
 }
 

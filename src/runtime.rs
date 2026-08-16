@@ -14,6 +14,7 @@ use crate::{
 
 #[cfg(windows)]
 use crate::{
+    backpressure::{BoundedCommandExecutor, ExecutorPoolError},
     command::{CommandDispatcher, CommandExecutor, CommandLimits, PostAction},
     debugger_ui::{DebuggerUiError, DebuggerUiHandle},
     platform::windows::{self, WindowsError, memory::CurrentProcessMemory},
@@ -58,14 +59,31 @@ pub fn shutdown() -> Result<(), RuntimeError> {
 
     info!(state = ?LIFECYCLE.state(), "Intimatr shutdown started");
 
-    let context = {
+    let mut context = {
         let mut guard = CONTEXT.lock().map_err(|_| RuntimeError::ContextPoisoned)?;
         guard.take()
     };
 
-    if let Some(context) = context.as_ref() {
+    if let Some(context) = context.as_mut() {
         #[cfg(windows)]
-        context.command_executor.shutdown();
+        {
+            if let Some(mut rpc_server) = context._rpc_server.take()
+                && let Err(error) = rpc_server.stop()
+            {
+                warn!(error = %error, "failed to stop RPC server during shutdown");
+            }
+            if let Some(mut debugger_ui) = context._debugger_ui.take()
+                && let Err(error) = debugger_ui.stop()
+            {
+                warn!(error = %error, "failed to stop debugger UI during shutdown");
+            }
+            if let Some(mut ui) = context._ui.take()
+                && let Err(error) = ui.stop()
+            {
+                warn!(error = %error, "failed to stop main UI during shutdown");
+            }
+            context.command_executor.shutdown();
+        }
     } else {
         warn!("Intimatr shutdown found no active runtime context");
     }
@@ -73,6 +91,9 @@ pub fn shutdown() -> Result<(), RuntimeError> {
     LIFECYCLE.mark_stopped()?;
     info!(state = ?LIFECYCLE.state(), "Intimatr shutdown complete");
 
+    if let Some(context) = context.as_mut() {
+        context._logging_guard.flush();
+    }
     drop(context);
     Ok(())
 }
@@ -171,6 +192,8 @@ fn bootstrap_inner(
         log_directory = %config.logging.directory.display(),
         rpc_enabled = config.rpc.enabled,
         rpc_transport = ?config.rpc.transport,
+        command_workers = config.runtime.command_workers,
+        command_queue_capacity = config.runtime.command_queue_capacity,
         debugger_enabled = config.debugger.enabled,
         debugger_ui_enabled = config.debugger.ui_enabled,
         debugger_ui_toggle_key = %config.debugger.ui_toggle_key,
@@ -184,7 +207,7 @@ fn bootstrap_inner(
     );
 
     #[cfg(windows)]
-    let command_executor = create_command_executor(&config, &module_directory);
+    let command_executor = create_command_executor(&config, &module_directory)?;
     #[cfg(windows)]
     let rpc_server = start_rpc_if_enabled(&config, Arc::clone(&command_executor))?;
     #[cfg(windows)]
@@ -214,11 +237,11 @@ fn bootstrap_inner(
 fn create_command_executor(
     config: &AppConfig,
     module_directory: &Path,
-) -> Arc<dyn CommandExecutor> {
+) -> Result<Arc<dyn CommandExecutor>, RuntimeError> {
     let analysis_directory = module_directory
         .join("analysis")
         .join(&config.target.executable);
-    Arc::new(
+    let dispatcher: Arc<dyn CommandExecutor> = Arc::new(
         CommandDispatcher::new_with_debugger(
             CurrentProcessMemory::new(),
             config.scanner.clone(),
@@ -230,7 +253,14 @@ fn create_command_executor(
             },
         )
         .with_analysis_directory(analysis_directory),
-    )
+    );
+    let bounded = BoundedCommandExecutor::new(
+        dispatcher,
+        config.runtime.command_workers,
+        config.runtime.command_queue_capacity,
+    )?;
+    let executor: Arc<dyn CommandExecutor> = bounded;
+    Ok(executor)
 }
 
 #[cfg(windows)]
@@ -342,6 +372,9 @@ pub enum RuntimeError {
     Lifecycle(#[from] LifecycleError),
     #[error(transparent)]
     Logging(#[from] LoggingError),
+    #[cfg(windows)]
+    #[error(transparent)]
+    ExecutorPool(#[from] ExecutorPoolError),
     #[cfg(windows)]
     #[error(transparent)]
     Windows(#[from] WindowsError),

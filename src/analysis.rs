@@ -113,9 +113,10 @@ pub fn scan_pattern<S: MemorySource + ?Sized>(
     let filter = RegionFilter::from(scanner_config);
     let chunk_size = scanner_config.chunk_size_bytes.max(pattern.len());
     let overlap = pattern.len().saturating_sub(1);
-    let mut addresses = Vec::new();
+    let mut addresses = Vec::with_capacity(options.max_results.min(4096));
     let mut read_failures = 0_u64;
     let mut truncated = false;
+    let mut buffer = Vec::with_capacity(chunk_size.saturating_add(overlap));
 
     let mut regions = source.regions()?;
     regions.sort_unstable_by_key(|region| region.base);
@@ -131,7 +132,7 @@ pub fn scan_pattern<S: MemorySource + ?Sized>(
             if read_len < pattern.len() {
                 break;
             }
-            let mut buffer = vec![0_u8; read_len];
+            buffer.resize(read_len, 0);
             if let Err(error) = source.read_exact(cursor, &mut buffer) {
                 read_failures = read_failures.saturating_add(1);
                 warn!(address = cursor, size = read_len, error = %error, "pattern scan skipped unreadable chunk");

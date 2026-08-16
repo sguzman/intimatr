@@ -285,7 +285,12 @@ where
         regions_considered: regions.len() as u64,
         ..ScanStats::default()
     };
-    let mut candidates = Vec::new();
+    let mut candidates = Vec::with_capacity(options.max_results.min(4096));
+    let mut buffer = Vec::with_capacity(
+        options
+            .chunk_size_bytes
+            .saturating_add(width.saturating_sub(1)),
+    );
 
     info!(
         ?value_type,
@@ -333,7 +338,7 @@ where
             let logical_span = scan_span.min(remaining);
             let overlap = width.saturating_sub(1);
             let read_len = remaining.min(logical_span.saturating_add(overlap));
-            let mut buffer = vec![0_u8; read_len];
+            buffer.resize(read_len, 0);
 
             match source.read_exact(cursor, &mut buffer) {
                 Ok(()) => {

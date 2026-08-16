@@ -189,7 +189,7 @@ async fn run_tcp(
         }
     }
 
-    shutdown_connections(executor, &mut tasks).await;
+    shutdown_connections(&mut tasks).await;
     info!(%endpoint, "TCP RPC server stopped");
     Ok(())
 }
@@ -255,7 +255,7 @@ async fn run_named_pipe(
         }
     }
 
-    shutdown_connections(executor, &mut tasks).await;
+    shutdown_connections(&mut tasks).await;
     info!(pipe = %pipe_name, "named-pipe RPC server stopped");
     Ok(())
 }
@@ -366,8 +366,7 @@ async fn handle_request(
     }
 }
 
-async fn shutdown_connections(executor: Arc<dyn CommandExecutor>, tasks: &mut JoinSet<()>) {
-    executor.shutdown();
+async fn shutdown_connections(tasks: &mut JoinSet<()>) {
     while let Some(result) = tasks.join_next().await {
         if let Err(error) = result {
             warn!(error = %error, "RPC client task failed during shutdown");
