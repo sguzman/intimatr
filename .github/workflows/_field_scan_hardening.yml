@@ -1,0 +1,58 @@
+name: Field scan hardening transformer
+
+on:
+  push:
+    branches:
+      - agent/field-scan-hardening
+    paths:
+      - .github/workflows/_field_scan_hardening.yml
+
+permissions:
+  contents: write
+
+jobs:
+  transform:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout field-hardening branch
+        uses: actions/checkout@v7
+        with:
+          ref: agent/field-scan-hardening
+          fetch-depth: 0
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+          targets: x86_64-pc-windows-msvc
+
+      - name: Apply field-test scan hardening
+        run: python scripts/_apply_field_scan_hardening.py
+
+      - name: Format
+        run: cargo fmt --all
+
+      - name: Clippy
+        run: cargo clippy --locked --all-targets --all-features -- -D warnings
+
+      - name: Test
+        run: cargo test --locked --all-targets --all-features
+
+      - name: Build x86_64 Windows DLL
+        run: cargo build --locked --release --lib --target x86_64-pc-windows-msvc
+
+      - name: Remove one-shot transformer
+        shell: pwsh
+        run: |
+          Remove-Item scripts/_apply_field_scan_hardening.py
+          Remove-Item .github/workflows/_field_scan_hardening.yml
+
+      - name: Commit validated hardening changes
+        shell: pwsh
+        run: |
+          git config user.name "Intimatr automation"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git status --short
+          git commit -m "harden field scan performance and progress"
+          git push origin HEAD:agent/field-scan-hardening
