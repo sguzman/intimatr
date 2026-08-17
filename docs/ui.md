@@ -30,7 +30,7 @@ scan_page_size = 256
 
 The scan panel exposes every current typed predicate: unknown initial, exact/not-equal, numeric comparisons, inclusive range, changed/unchanged, increased/decreased, and delta scans. Supported value types are `i8`, `i16`, `i32`, `i64`, `u8`, `u16`, `u32`, `u64`, `f32`, and `f64`.
 
-First and next scans run off the UI event loop through command-worker threads. Results are paged through `ScanResults`, and an address can be added directly to the shared watch list.
+First and next scans run off the UI event loop through command-worker threads. While a scan is active, the UI polls frontend-neutral active-scan progress through the shared command layer and shows bytes scanned, total bytes, current result count, approximate throughput, and an in-place cancel action. Unrelated tab errors do not hide the separate running-scan indicator. Results are paged through `ScanResults`, and an address can be added directly to the shared watch list.
 
 ### Watches
 

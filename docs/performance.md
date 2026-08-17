@@ -33,6 +33,14 @@ The important invariant is unchanged: chunk overlap still covers values/patterns
 
 This optimization intentionally stays below the `MemorySource` abstraction. Synthetic benchmarks and `CurrentProcessMemory` exercise the same scanner implementation, so performance changes do not introduce a Windows-only second scanner.
 
+## Parallel scalar scans
+
+Field testing against a large real-world process exposed that the original scalar first/next scan path still traversed work serially even though the command dispatcher itself had multiple workers. Scalar scans now split first-scan chunks and next-scan candidate batches across a dedicated scanner worker group.
+
+`scanner.worker_threads` controls that group independently from `[runtime].command_workers`. `0` selects automatic parallelism (capped at 16 workers); explicit values from 1 through 64 force a per-target scanner worker count. Result candidates are sorted by address after worker merge so ordinary non-truncated scans retain stable ordering.
+
+The shared command layer now exposes active scan progress snapshots. Native UI progress polling therefore does not bypass policy or create a second scanner implementation, and first scans can be cancelled through the same cancellation token path as next scans.
+
 ## Backpressure and memory pressure
 
 Runtime command work is routed through the bounded shared command executor. The worker count and queue capacity live in each target's TOML under `[runtime]`. When producers outpace the configured queue, submission blocks instead of spawning an unbounded amount of command work inside the target process.

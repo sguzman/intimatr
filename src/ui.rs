@@ -20,8 +20,8 @@ use winit::platform::windows::EventLoopBuilderExtWindows;
 
 use crate::{
     command::{
-        Command, CommandExecutor, CommandResult, ModuleInfo, ScanCandidateInfo, ScanSummary,
-        ThreadInfo, WatchValue,
+        ActiveScanInfo, Command, CommandExecutor, CommandResult, ModuleInfo, ScanCandidateInfo,
+        ScanSummary, ThreadInfo, WatchValue,
     },
     config::UiConfig,
     scanner::{ScalarValue, ScanPredicate, ValueType},
@@ -29,6 +29,7 @@ use crate::{
 
 const UI_STATE_KEY: &str = "intimatr.ui.state";
 const HOTKEY_POLL_INTERVAL: Duration = Duration::from_millis(50);
+const SCAN_PROGRESS_POLL_INTERVAL: Duration = Duration::from_millis(100);
 const MIN_WINDOW_SIZE: [f32; 2] = [820.0, 520.0];
 
 pub struct UiHandle {
@@ -169,6 +170,7 @@ enum UiTaskKind {
     NextScan,
     ScanResults,
     CancelScan,
+    ActiveScans,
     AddWatch,
     SetWatchFreeze,
     RemoveWatch,
@@ -207,6 +209,9 @@ struct IntimatrApp {
     scan_results: Vec<ScanCandidateInfo>,
     scan_total: usize,
     scan_page: usize,
+    active_scan: Option<ActiveScanInfo>,
+    scan_started_at: Option<Instant>,
+    last_scan_progress_refresh: Instant,
 
     watch_address: String,
     watch_value_type: ValueType,
@@ -260,6 +265,9 @@ impl IntimatrApp {
             scan_results: Vec::new(),
             scan_total: 0,
             scan_page: 0,
+            active_scan: None,
+            scan_started_at: None,
+            last_scan_progress_refresh: Instant::now(),
             watch_address: persisted.watch_address,
             watch_value_type: persisted.watch_value_type,
             watch_label: persisted.watch_label,
@@ -307,6 +315,9 @@ impl IntimatrApp {
             self.pending.remove(&response.kind);
             match response.result {
                 Ok(result) => self.handle_result(response.kind, result),
+                Err(error) if response.kind == UiTaskKind::ActiveScans => {
+                    warn!(error = %error, "failed to poll active scan progress");
+                }
                 Err(error) => self.status = error,
             }
         }
@@ -315,6 +326,8 @@ impl IntimatrApp {
     fn handle_result(&mut self, kind: UiTaskKind, result: CommandResult) {
         match result {
             CommandResult::Scan { summary } => {
+                self.active_scan = None;
+                self.scan_started_at = None;
                 self.scan_summary = Some(summary);
                 self.scan_total = summary.result_count;
                 self.scan_page = 0;
@@ -341,6 +354,18 @@ impl IntimatrApp {
                 } else {
                     format!("Scan {scan_id} was not active")
                 };
+            }
+            CommandResult::ActiveScans { scans } => {
+                self.active_scan = if let Some(summary) = self.scan_summary {
+                    scans
+                        .iter()
+                        .copied()
+                        .find(|scan| scan.scan_id == summary.scan_id)
+                        .or_else(|| scans.last().copied())
+                } else {
+                    scans.last().copied()
+                };
+                self.last_scan_progress_refresh = Instant::now();
             }
             CommandResult::WatchAdded { watch } => {
                 self.status = format!("Added watch {} at 0x{:X}", watch.id, watch.address);
@@ -519,6 +544,11 @@ impl IntimatrApp {
                                 predicate,
                             },
                         );
+                        self.active_scan = None;
+                        self.scan_started_at = Some(Instant::now());
+                        self.last_scan_progress_refresh = Instant::now()
+                            .checked_sub(SCAN_PROGRESS_POLL_INTERVAL)
+                            .unwrap_or_else(Instant::now);
                         self.status = "First scan running…".to_owned();
                     }
                     Ok(_) => {
@@ -548,24 +578,66 @@ impl IntimatrApp {
                                 predicate,
                             },
                         );
+                        self.active_scan = None;
+                        self.scan_started_at = Some(Instant::now());
+                        self.last_scan_progress_refresh = Instant::now()
+                            .checked_sub(SCAN_PROGRESS_POLL_INTERVAL)
+                            .unwrap_or_else(Instant::now);
                         self.status = format!("Refining scan {}…", summary.scan_id);
                     }
                     Err(error) => self.status = error,
                 }
             }
 
-            if self.pending.contains(&UiTaskKind::NextScan)
-                && let Some(summary) = self.scan_summary
-                && ui.button("Cancel next scan").clicked()
+            if scanning
+                && let Some(active) = self.active_scan
+                && ui.button("Cancel scan").clicked()
             {
                 self.submit(
                     UiTaskKind::CancelScan,
                     Command::CancelScan {
-                        scan_id: summary.scan_id,
+                        scan_id: active.scan_id,
                     },
                 );
             }
         });
+
+        let scanning = self.pending.contains(&UiTaskKind::FirstScan)
+            || self.pending.contains(&UiTaskKind::NextScan);
+        if scanning {
+            ui.horizontal(|ui| {
+                ui.spinner();
+                if let Some(active) = self.active_scan {
+                    let fraction = if active.total_bytes == 0 {
+                        0.0
+                    } else {
+                        (active.bytes_scanned as f32 / active.total_bytes as f32).clamp(0.0, 1.0)
+                    };
+                    let elapsed = self
+                        .scan_started_at
+                        .map(|started| started.elapsed().as_secs_f64())
+                        .unwrap_or(0.0);
+                    let mib_scanned = active.bytes_scanned as f64 / (1024.0 * 1024.0);
+                    let mib_total = active.total_bytes as f64 / (1024.0 * 1024.0);
+                    let speed = if elapsed > 0.0 {
+                        mib_scanned / elapsed
+                    } else {
+                        0.0
+                    };
+                    ui.add(
+                        egui::ProgressBar::new(fraction)
+                            .show_percentage()
+                            .desired_width(280.0),
+                    );
+                    ui.label(format!(
+                        "{mib_scanned:.0}/{mib_total:.0} MiB · {} results · {speed:.0} MiB/s",
+                        active.results
+                    ));
+                } else {
+                    ui.label("Preparing scan…");
+                }
+            });
+        }
 
         if let Some(summary) = self.scan_summary {
             ui.label(format!(
@@ -824,7 +896,7 @@ impl IntimatrApp {
             if ui.button("Refresh threads").clicked() {
                 self.submit(UiTaskKind::ListThreads, Command::ListThreads);
             }
-            ui.label("Register/context inspection lands in Milestone 5.");
+            ui.label("Thread enumeration requires debugger policy to be enabled.");
         });
         egui::ScrollArea::vertical().show(ui, |ui| {
             egui::Grid::new("threads")
@@ -872,6 +944,16 @@ impl eframe::App for IntimatrApp {
             self.request_watch_refresh();
         }
 
+        let scanning = self.pending.contains(&UiTaskKind::FirstScan)
+            || self.pending.contains(&UiTaskKind::NextScan);
+        if scanning
+            && self.last_scan_progress_refresh.elapsed() >= SCAN_PROGRESS_POLL_INTERVAL
+            && !self.pending.contains(&UiTaskKind::ActiveScans)
+        {
+            self.submit(UiTaskKind::ActiveScans, Command::ActiveScans);
+            self.last_scan_progress_refresh = Instant::now();
+        }
+
         context.request_repaint_after(HOTKEY_POLL_INTERVAL);
     }
 
@@ -886,6 +968,11 @@ impl eframe::App for IntimatrApp {
                 ToolTab::Threads => self.render_threads(ui),
             }
             ui.separator();
+            let scanning = self.pending.contains(&UiTaskKind::FirstScan)
+                || self.pending.contains(&UiTaskKind::NextScan);
+            if scanning {
+                ui.strong("Scan status: running");
+            }
             ui.label(format!("Status: {}", self.status));
         });
     }
@@ -1183,6 +1270,7 @@ fn task_label(kind: UiTaskKind) -> &'static str {
         UiTaskKind::NextScan => "next scan",
         UiTaskKind::ScanResults => "scan results",
         UiTaskKind::CancelScan => "scan cancellation",
+        UiTaskKind::ActiveScans => "active scan progress",
         UiTaskKind::AddWatch => "add watch",
         UiTaskKind::SetWatchFreeze => "watch freeze",
         UiTaskKind::RemoveWatch => "remove watch",

@@ -64,6 +64,7 @@ impl MemorySource for SyntheticMemory {
 fn options() -> ScanOptions {
     ScanOptions {
         chunk_size_bytes: 7,
+        worker_threads: 4,
         alignment: 4,
         max_results: 100,
         float_epsilon: 1.0e-6,
@@ -136,6 +137,34 @@ fn unknown_initial_value_can_be_refined_by_changed_and_decreased() {
         .expect("decreased scan should succeed");
     assert_eq!(decreased.candidates.len(), 1);
     assert_eq!(decreased.candidates[0].address, BASE + 4);
+}
+
+#[test]
+fn parallel_and_serial_first_scans_return_the_same_candidates() {
+    let memory = SyntheticMemory::from_i32(&[7, 1, 7, 2, 7, 3, 7, 4]);
+    let mut serial_options = options();
+    serial_options.worker_threads = 1;
+    let mut parallel_options = options();
+    parallel_options.worker_threads = 4;
+
+    let serial = first_scan(
+        &memory,
+        ValueType::I32,
+        ScanPredicate::Exact(ScalarValue::Signed(7)),
+        serial_options,
+        &CancellationToken::new(),
+    )
+    .expect("serial scan should succeed");
+    let parallel = first_scan(
+        &memory,
+        ValueType::I32,
+        ScanPredicate::Exact(ScalarValue::Signed(7)),
+        parallel_options,
+        &CancellationToken::new(),
+    )
+    .expect("parallel scan should succeed");
+
+    assert_eq!(serial.candidates, parallel.candidates);
 }
 
 #[test]

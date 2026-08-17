@@ -94,3 +94,12 @@ Work is ordered by dependency: later phases should build on the shared core inst
 - [x] Publish an archive-level SHA-256 sidecar alongside tagged release ZIPs.
 - [x] Add a first-run quick start from package layout through configuration, UI scanning, RPC, persistence, and shutdown.
 - [x] Add troubleshooting guidance for bootstrap, configuration, UI/debugger policy gates, scanning, RPC, stale addresses, and lifecycle behavior.
+
+## 9. Field-test scan hardening
+
+- [x] Parallelize scalar first scans across memory chunks with a dedicated configurable worker group.
+- [x] Parallelize historical next scans across candidate batches while preserving sorted result ordering.
+- [x] Expose live active-scan progress through the shared command layer.
+- [x] Show live progress/throughput and a persistent running-scan indicator in the native UI.
+- [x] Allow cancellation of both first and next scans from the native UI.
+- [x] Keep unrelated UI errors from obscuring whether a scan is still active.

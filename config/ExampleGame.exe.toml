@@ -24,6 +24,7 @@ max_scan_results_per_page = 4096
 
 [scanner]
 chunk_size_bytes = 1048576
+worker_threads = 0
 alignment = 1
 max_results = 2000000
 float_epsilon = 0.000001

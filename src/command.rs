@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     sync::{
-        Mutex, MutexGuard,
+        Arc, Mutex, MutexGuard,
         atomic::{AtomicBool, AtomicU64, Ordering},
     },
 };
@@ -20,7 +20,7 @@ use crate::{
     memory::{MemoryError, MemoryTarget, WritePolicy, read_scalar, write_scalar},
     scanner::{
         CancellationToken, ScalarValue, ScanCandidate, ScanError, ScanOptions, ScanPredicate,
-        ScanSession, ScanStats, ValueType, first_scan,
+        ScanProgress, ScanSession, ScanStats, ValueType, first_scan_with_progress,
     },
 };
 
@@ -84,6 +84,7 @@ pub enum Command {
     CancelScan {
         scan_id: u64,
     },
+    ActiveScans,
     DeleteScan {
         scan_id: u64,
     },
@@ -157,6 +158,7 @@ impl Command {
             Self::ScanSummary { .. } => "scan_summary",
             Self::ScanResults { .. } => "scan_results",
             Self::CancelScan { .. } => "cancel_scan",
+            Self::ActiveScans => "active_scans",
             Self::DeleteScan { .. } => "delete_scan",
             Self::AddWatch { .. } => "add_watch",
             Self::SetWatchFreeze { .. } => "set_watch_freeze",
@@ -217,6 +219,9 @@ pub enum CommandResult {
     ScanCancellation {
         scan_id: u64,
         was_active: bool,
+    },
+    ActiveScans {
+        scans: Vec<ActiveScanInfo>,
     },
     ScanDeleted {
         scan_id: u64,
@@ -306,6 +311,15 @@ impl From<&ScanCandidate> for ScanCandidateInfo {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ActiveScanInfo {
+    pub scan_id: u64,
+    pub bytes_scanned: u64,
+    pub total_bytes: u64,
+    pub results: usize,
+    pub read_failures: u64,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct ScanSummary {
     pub scan_id: u64,
@@ -379,6 +393,12 @@ pub trait CommandExecutor: Send + Sync {
     fn shutdown(&self) {}
 }
 
+#[derive(Clone)]
+struct ActiveScanState {
+    cancellation: CancellationToken,
+    progress: Arc<Mutex<ScanProgress>>,
+}
+
 pub struct CommandDispatcher<M> {
     memory: M,
     scanner_config: ScannerConfig,
@@ -388,7 +408,7 @@ pub struct CommandDispatcher<M> {
     analysis: Mutex<crate::analysis::AnalysisWorkspace>,
     analysis_directory: Option<std::path::PathBuf>,
     scans: Mutex<HashMap<u64, ScanSession>>,
-    active_scans: Mutex<HashMap<u64, CancellationToken>>,
+    active_scans: Mutex<HashMap<u64, ActiveScanState>>,
     watches: Mutex<HashMap<u64, WatchDefinition>>,
     next_scan_id: AtomicU64,
     next_watch_id: AtomicU64,
@@ -532,13 +552,20 @@ where
                 self.require_memory_read()?;
                 let scan_id = self.next_scan_id.fetch_add(1, Ordering::Relaxed);
                 let cancellation = CancellationToken::new();
-                self.register_active_scan(scan_id, cancellation.clone())?;
-                let result = first_scan(
+                let progress = Arc::new(Mutex::new(ScanProgress::default()));
+                self.register_active_scan(scan_id, cancellation.clone(), Arc::clone(&progress))?;
+                let progress_sink = Arc::clone(&progress);
+                let result = first_scan_with_progress(
                     &self.memory,
                     value_type,
                     predicate,
                     ScanOptions::from(&self.scanner_config),
                     &cancellation,
+                    move |update| {
+                        if let Ok(mut current) = progress_sink.lock() {
+                            *current = update;
+                        }
+                    },
                 );
                 self.remove_active_scan(scan_id)?;
                 let session = result?;
@@ -553,12 +580,19 @@ where
                     .cloned()
                     .ok_or(CommandError::ScanNotFound(scan_id))?;
                 let cancellation = CancellationToken::new();
-                self.register_active_scan(scan_id, cancellation.clone())?;
-                let result = previous.next_scan(
+                let progress = Arc::new(Mutex::new(ScanProgress::default()));
+                self.register_active_scan(scan_id, cancellation.clone(), Arc::clone(&progress))?;
+                let progress_sink = Arc::clone(&progress);
+                let result = previous.next_scan_with_progress(
                     &self.memory,
                     predicate,
                     ScanOptions::from(&self.scanner_config),
                     &cancellation,
+                    move |update| {
+                        if let Ok(mut current) = progress_sink.lock() {
+                            *current = update;
+                        }
+                    },
                 );
                 self.remove_active_scan(scan_id)?;
                 let session = result?;
@@ -606,7 +640,9 @@ where
                 })
             }
             Command::CancelScan { scan_id } => {
-                let cancellation = lock(&self.active_scans)?.get(&scan_id).cloned();
+                let cancellation = lock(&self.active_scans)?
+                    .get(&scan_id)
+                    .map(|state| state.cancellation.clone());
                 let was_active = cancellation.is_some();
                 if let Some(cancellation) = cancellation {
                     cancellation.cancel();
@@ -616,6 +652,22 @@ where
                     scan_id,
                     was_active,
                 })
+            }
+            Command::ActiveScans => {
+                let active = lock(&self.active_scans)?;
+                let mut scans = Vec::with_capacity(active.len());
+                for (&scan_id, state) in active.iter() {
+                    let current = *lock(&state.progress)?;
+                    scans.push(ActiveScanInfo {
+                        scan_id,
+                        bytes_scanned: current.bytes_scanned,
+                        total_bytes: current.total_bytes,
+                        results: current.results,
+                        read_failures: current.read_failures,
+                    });
+                }
+                scans.sort_unstable_by_key(|scan| scan.scan_id);
+                CommandExecution::immediate(CommandResult::ActiveScans { scans })
             }
             Command::DeleteScan { scan_id } => {
                 if lock(&self.active_scans)?.contains_key(&scan_id) {
@@ -1025,7 +1077,10 @@ where
     }
 
     pub fn cancel_all_scans(&self) -> Result<usize, CommandError> {
-        let cancellations: Vec<_> = lock(&self.active_scans)?.values().cloned().collect();
+        let cancellations: Vec<_> = lock(&self.active_scans)?
+            .values()
+            .map(|state| state.cancellation.clone())
+            .collect();
         for cancellation in &cancellations {
             cancellation.cancel();
         }
@@ -1070,12 +1125,19 @@ where
         &self,
         scan_id: u64,
         cancellation: CancellationToken,
+        progress: Arc<Mutex<ScanProgress>>,
     ) -> Result<(), CommandError> {
         let mut active = lock(&self.active_scans)?;
         if active.contains_key(&scan_id) {
             return Err(CommandError::ScanBusy(scan_id));
         }
-        active.insert(scan_id, cancellation);
+        active.insert(
+            scan_id,
+            ActiveScanState {
+                cancellation,
+                progress,
+            },
+        );
         Ok(())
     }
 

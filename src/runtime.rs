@@ -194,6 +194,7 @@ fn bootstrap_inner(
         rpc_transport = ?config.rpc.transport,
         command_workers = config.runtime.command_workers,
         command_queue_capacity = config.runtime.command_queue_capacity,
+        scanner_worker_threads = config.scanner.worker_threads,
         debugger_enabled = config.debugger.enabled,
         debugger_ui_enabled = config.debugger.ui_enabled,
         debugger_ui_toggle_key = %config.debugger.ui_toggle_key,

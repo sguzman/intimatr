@@ -98,6 +98,11 @@ impl AppConfig {
                 "scanner.chunk_size_bytes must be greater than zero",
             ));
         }
+        if self.scanner.worker_threads > 64 {
+            return Err(ConfigError::InvalidValue(
+                "scanner.worker_threads must be 0 (auto) or between 1 and 64",
+            ));
+        }
         if self.scanner.alignment == 0 {
             return Err(ConfigError::InvalidValue(
                 "scanner.alignment must be greater than zero",
@@ -355,6 +360,8 @@ pub enum RpcTransport {
 pub struct ScannerConfig {
     #[serde(default = "default_chunk_size")]
     pub chunk_size_bytes: usize,
+    #[serde(default = "default_scanner_worker_threads")]
+    pub worker_threads: usize,
     #[serde(default = "default_alignment")]
     pub alignment: usize,
     #[serde(default = "default_max_results")]
@@ -375,6 +382,7 @@ impl Default for ScannerConfig {
     fn default() -> Self {
         Self {
             chunk_size_bytes: default_chunk_size(),
+            worker_threads: default_scanner_worker_threads(),
             alignment: default_alignment(),
             max_results: default_max_results(),
             float_epsilon: default_float_epsilon(),
@@ -565,6 +573,9 @@ fn default_command_queue_capacity() -> usize {
 }
 fn default_chunk_size() -> usize {
     1024 * 1024
+}
+fn default_scanner_worker_threads() -> usize {
+    0
 }
 fn default_alignment() -> usize {
     1

@@ -67,6 +67,7 @@ impl MemorySource for SyntheticMemory {
 fn scanner_options() -> ScanOptions {
     ScanOptions {
         chunk_size_bytes: 1024 * 1024,
+        worker_threads: 0,
         alignment: 4,
         max_results: 4096,
         float_epsilon: 1.0e-6,
@@ -82,6 +83,7 @@ fn scanner_options() -> ScanOptions {
 fn scanner_config() -> intimatr::config::ScannerConfig {
     intimatr::config::ScannerConfig {
         chunk_size_bytes: 1024 * 1024,
+        worker_threads: 0,
         alignment: 1,
         max_results: 4096,
         float_epsilon: 1.0e-6,
