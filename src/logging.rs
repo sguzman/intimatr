@@ -14,14 +14,9 @@ use crate::config::LoggingConfig;
 
 pub struct LoggingGuard {
     file_guard: Option<WorkerGuard>,
-    file_path: PathBuf,
 }
 
 impl LoggingGuard {
-    pub fn file_path(&self) -> &Path {
-        &self.file_path
-    }
-
     pub fn flush(&mut self) {
         if let Some(guard) = self.file_guard.take() {
             drop(guard);
@@ -40,7 +35,6 @@ pub fn init(config: &LoggingConfig) -> Result<LoggingGuard, LoggingError> {
         .unwrap_or_default()
         .as_millis();
     let run_file_name = build_run_file_name(&config.file_name, run_millis, process::id());
-    let file_path = config.directory.join(&run_file_name);
 
     let file_appender = tracing_appender::rolling::never(&config.directory, &run_file_name);
     let (file_writer, file_guard) = tracing_appender::non_blocking(file_appender);
@@ -80,7 +74,6 @@ pub fn init(config: &LoggingConfig) -> Result<LoggingGuard, LoggingError> {
 
     Ok(LoggingGuard {
         file_guard: Some(file_guard),
-        file_path,
     })
 }
 
