@@ -22,6 +22,27 @@ patch(
     expected=2,
 )
 
+# Progress events use a rendezvous channel. A worker reaches the coordinator at
+# a chunk/batch boundary before claiming more work, which keeps cancellation
+# requested by a progress consumer responsive even when worker threads are much
+# faster than the coordinator on tiny synthetic scans.
+patch(
+    "src/scanner/engine.rs",
+    "mpsc::{self, Sender},",
+    "mpsc::{self, SyncSender},",
+)
+patch(
+    "src/scanner/engine.rs",
+    "let (event_tx, event_rx) = mpsc::channel();",
+    "let (event_tx, event_rx) = mpsc::sync_channel(0);",
+    expected=2,
+)
+patch(
+    "src/scanner/engine.rs",
+    "struct WorkerDone(Sender<WorkerEvent>);",
+    "struct WorkerDone(SyncSender<WorkerEvent>);",
+)
+
 # Inside each scoped worker these names are already references to the shared
 # atomics; do not take a redundant second reference when reserving a result.
 patch(
