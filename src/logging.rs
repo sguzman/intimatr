@@ -1,4 +1,9 @@
-use std::{fs, io, path::PathBuf};
+use std::{
+    fs, io,
+    path::{Path, PathBuf},
+    process,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use thiserror::Error;
 use tracing::info;
@@ -9,9 +14,14 @@ use crate::config::LoggingConfig;
 
 pub struct LoggingGuard {
     file_guard: Option<WorkerGuard>,
+    file_path: PathBuf,
 }
 
 impl LoggingGuard {
+    pub fn file_path(&self) -> &Path {
+        &self.file_path
+    }
+
     pub fn flush(&mut self) {
         if let Some(guard) = self.file_guard.take() {
             drop(guard);
@@ -25,7 +35,14 @@ pub fn init(config: &LoggingConfig) -> Result<LoggingGuard, LoggingError> {
         source,
     })?;
 
-    let file_appender = tracing_appender::rolling::never(&config.directory, &config.file_name);
+    let run_millis = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    let run_file_name = build_run_file_name(&config.file_name, run_millis, process::id());
+    let file_path = config.directory.join(&run_file_name);
+
+    let file_appender = tracing_appender::rolling::never(&config.directory, &run_file_name);
     let (file_writer, file_guard) = tracing_appender::non_blocking(file_appender);
     let filter = EnvFilter::try_new(&config.filter)
         .map_err(|error| LoggingError::InvalidFilter(error.to_string()))?;
@@ -54,7 +71,8 @@ pub fn init(config: &LoggingConfig) -> Result<LoggingGuard, LoggingError> {
 
     info!(
         directory = %config.directory.display(),
-        file = %config.file_name,
+        configured_file = %config.file_name,
+        run_file = %run_file_name,
         filter = %config.filter,
         console = config.console,
         "Intimatr logging initialized"
@@ -62,7 +80,23 @@ pub fn init(config: &LoggingConfig) -> Result<LoggingGuard, LoggingError> {
 
     Ok(LoggingGuard {
         file_guard: Some(file_guard),
+        file_path,
     })
+}
+
+fn build_run_file_name(configured: &str, run_millis: u128, process_id: u32) -> String {
+    let configured = Path::new(configured);
+    let stem = configured
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .filter(|stem| !stem.is_empty())
+        .unwrap_or("intimatr");
+    let suffix = format!("{run_millis}-pid{process_id}");
+
+    match configured.extension().and_then(|extension| extension.to_str()) {
+        Some(extension) if !extension.is_empty() => format!("{stem}-{suffix}.{extension}"),
+        _ => format!("{stem}-{suffix}"),
+    }
 }
 
 #[derive(Debug, Error)]
@@ -77,4 +111,25 @@ pub enum LoggingError {
     InvalidFilter(String),
     #[error("failed to initialize tracing subscriber: {0}")]
     Initialize(String),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::build_run_file_name;
+
+    #[test]
+    fn run_log_name_preserves_configured_extension() {
+        assert_eq!(
+            build_run_file_name("intimatr.log", 1_234_567, 42),
+            "intimatr-1234567-pid42.log"
+        );
+    }
+
+    #[test]
+    fn run_log_name_works_without_extension() {
+        assert_eq!(
+            build_run_file_name("session", 99, 7),
+            "session-99-pid7"
+        );
+    }
 }
