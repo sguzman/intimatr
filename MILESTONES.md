@@ -103,3 +103,4 @@ Work is ordered by dependency: later phases should build on the shared core inst
 - [x] Show live progress/throughput and a persistent running-scan indicator in the native UI.
 - [x] Allow cancellation of both first and next scans from the native UI.
 - [x] Keep unrelated UI errors from obscuring whether a scan is still active.
+- [x] Isolate every process run into its own diagnostic log file so field-test logs never append across launches.
