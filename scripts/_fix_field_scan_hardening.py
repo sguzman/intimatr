@@ -22,6 +22,39 @@ patch(
     expected=2,
 )
 
+# Inside each scoped worker these names are already references to the shared
+# atomics; do not take a redundant second reference when reserving a result.
+patch(
+    "src/scanner/engine.rs",
+    """                                    )? && reserve_result_slot(
+                                        &accepted_results,
+                                        options.max_results,
+                                        &truncated,
+                                        &stop,
+                                    ) {""",
+    """                                    )? && reserve_result_slot(
+                                        accepted_results,
+                                        options.max_results,
+                                        truncated,
+                                        stop,
+                                    ) {""",
+)
+patch(
+    "src/scanner/engine.rs",
+    """                                    && reserve_result_slot(
+                                        &accepted_results,
+                                        options.max_results,
+                                        &truncated,
+                                        &stop,
+                                    )""",
+    """                                    && reserve_result_slot(
+                                        accepted_results,
+                                        options.max_results,
+                                        truncated,
+                                        stop,
+                                    )""",
+)
+
 # The original transformer computed this inside egui's horizontal closure.
 # Recompute it in the outer render_scan scope before rendering progress.
 patch(
