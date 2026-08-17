@@ -60,3 +60,5 @@ jobs:
           git status --short
           git commit -m "harden field scan performance and progress"
           git push origin HEAD:agent/field-scan-hardening
+
+# retry 3: strict Clippy borrow cleanup
