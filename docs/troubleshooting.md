@@ -4,11 +4,28 @@ Use this guide from the outside in: first prove the DLL loaded, then prove confi
 
 ## No Intimatr log appears
 
-Expected default path:
+Expected default directory:
 
 ```text
-<intimatr directory>/logs/intimatr.log
+<intimatr directory>/logs/
 ```
+
+Each process run gets its own file. With the default `file_name = "intimatr.log"`, files are named like:
+
+```text
+intimatr-<unix-milliseconds>-pid<process-id>.log
+```
+
+The configured `file_name` supplies the base name and extension; Intimatr adds a unique run suffix so a new launch never appends diagnostics to an older launch's file.
+
+For normal use prefer:
+
+```toml
+[logging]
+filter = "intimatr=info"
+```
+
+Use `trace` only for short diagnostic sessions because it intentionally records high-volume internal activity.
 
 If no log file is created at all, the most likely problem is before normal Intimatr runtime startup: the DLL was not loaded, the host rejected the loading mechanism, or the bootstrap thread never reached logging initialization.
 
@@ -179,7 +196,7 @@ Enable it only when you explicitly want an RPC client to be able to request runt
 
 ## The process terminated before logs finished flushing
 
-Intimatr performs orderly shutdown and explicitly drains the non-blocking tracing worker, but an operating-system kill or abrupt process termination can preempt user-space cleanup. Treat the last complete log entry as the final reliable lifecycle boundary.
+Intimatr performs orderly shutdown and explicitly drains the non-blocking tracing worker, but an operating-system kill or abrupt process termination can preempt user-space cleanup. Treat the last complete entry in that run's isolated log as the final reliable lifecycle boundary.
 
 ## Verify a packaged release
 
