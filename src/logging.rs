@@ -86,7 +86,10 @@ fn build_run_file_name(configured: &str, run_millis: u128, process_id: u32) -> S
         .unwrap_or("intimatr");
     let suffix = format!("{run_millis}-pid{process_id}");
 
-    match configured.extension().and_then(|extension| extension.to_str()) {
+    match configured
+        .extension()
+        .and_then(|extension| extension.to_str())
+    {
         Some(extension) if !extension.is_empty() => format!("{stem}-{suffix}.{extension}"),
         _ => format!("{stem}-{suffix}"),
     }
@@ -120,9 +123,6 @@ mod tests {
 
     #[test]
     fn run_log_name_works_without_extension() {
-        assert_eq!(
-            build_run_file_name("session", 99, 7),
-            "session-99-pid7"
-        );
+        assert_eq!(build_run_file_name("session", 99, 7), "session-99-pid7");
     }
 }
