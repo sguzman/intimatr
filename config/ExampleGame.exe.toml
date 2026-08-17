@@ -6,7 +6,7 @@ command_workers = 4
 command_queue_capacity = 64
 
 [logging]
-filter = "intimatr=trace"
+filter = "intimatr=info"
 directory = "logs"
 file_name = "intimatr.log"
 console = false
