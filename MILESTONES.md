@@ -134,8 +134,8 @@ Work is ordered by dependency: later phases should build on the shared core inst
 - [ ] INT-1304 🧷 Authoritative status and recovery.
 
 ## 14. Bottles deployment manager 🍾
-**Status:** pending. **Weight:** 23/100 expansion points.
-- [ ] INT-1401 🔭 Discover native Bottles and games.
+**Status:** active (0/23 points verified; native read-only inventory implemented, real Bottles QA pending). **Weight:** 23/100 expansion points.
+- [ ] INT-1401 🔭 Discover native Bottles and games (active; parser/CLI code committed, real discovery not yet verified).
 - [ ] INT-1402 🧲 Include/exclude filters.
 - [ ] INT-1403 📋 Non-mutating plan; apply/status operations.
 - [ ] INT-1404 🔌 Verified normal-launch DLL loading.
@@ -164,4 +164,4 @@ Work is ordered by dependency: later phases should build on the shared core inst
 
 **Expanded roadmap and precise task acceptance criteria:** [Speed Control and Bottles Integration Roadmap](docs/speed-control-roadmap.md).
 
-**Progress basis:** Milestones 0–9 retain their historical checked state and are not included in the new 100-point expansion denominator. All milestone 10–17 deliverables started pending. The repository baseline inspection INT-1001 is verified against source and historical CI, earning 3/100 weighted points; Linux-hosted PE build and explicit already-running Wine-process attachment are now firm requirements, with M14 reweighted to accommodate INT-1407 while retaining the 100-point overall denominator; expansion progress is **13%** (previous 7%, delta +6 percentage points) after verifying INT-1201 global speed profile and INT-1301 modulation state machine in Linux CI. The pure virtual clock and Linux-hosted x86-64 GNU DLL cross-build have been verified through CI; no Windows timer hook or Wine process attachment is verified. Planning/documentation alone does not complete the features. Confirmed changes must satisfy each leaf item's tests and evidence before gaining weighted credit.
+**Progress basis:** Milestones 0–9 retain their historical checked state and are not included in the new 100-point expansion denominator. All milestone 10–17 deliverables started pending. The repository baseline inspection INT-1001 is verified against source and historical CI, earning 3/100 weighted points; Linux-hosted PE build and explicit already-running Wine-process attachment are now firm requirements, with M14 reweighted to accommodate INT-1407 while retaining the 100-point overall denominator; expansion progress is **13%** (previous session 3%, delta +10 percentage points) after verifying INT-1101 pure clock, INT-1201 global speed profile and INT-1301 modulation state machine. INT-1401 has source and CI in progress but earns no weight until real native Bottles inventory is validated. The pure virtual clock and Linux-hosted x86-64 GNU DLL cross-build have been verified through CI; no Windows timer hook or Wine process attachment is verified. Planning/documentation alone does not complete the features. Confirmed changes must satisfy each leaf item's tests and evidence before gaining weighted credit.
