@@ -86,7 +86,7 @@ jobs:
       - name: Verify portable virtual-clock core on Linux
         run: |
           cargo fmt --all -- --check
-          cargo test --locked --lib speed::tests
+          cargo test --locked --lib speed
 
       - name: Strict Clippy for Windows GNU target from Linux
         run: cargo clippy --locked --target x86_64-pc-windows-gnu --all-targets --all-features -- -D warnings
