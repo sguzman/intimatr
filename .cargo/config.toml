@@ -1,0 +1,5 @@
+# Cross-compile the Windows DLL on Linux (including Arch/EndeavourOS).
+# The output remains a PE Windows DLL to be loaded into a Wine process.
+# The native Linux Bottles manager will be a separate host-target binary.
+[target.x86_64-pc-windows-gnu]
+linker = "x86_64-w64-mingw32-gcc"
