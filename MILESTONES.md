@@ -120,15 +120,15 @@ Work is ordered by dependency: later phases should build on the shared core inst
 - [ ] INT-1105 🎮 Offline Wine game proof.
 
 ## 12. Shared configuration and profiles ⚙️
-**Status:** pending. **Weight:** 12/100 expansion points.
-- [ ] INT-1201 🗂️ Global versioned speed profile.
+**Status:** active (3/12 points verified). **Weight:** 12/100 expansion points.
+- [x] INT-1201 🗂️ Global versioned speed profile (validated TOML, Linux CI 41357980641).
 - [ ] INT-1202 🧩 Per-bottle/per-game matching.
 - [ ] INT-1203 🔗 Wine-visible shared configuration path.
 - [ ] INT-1204 🔄 Reload, validation, persistence.
 
 ## 13. Hotkeys and speed modulation ⌨️
-**Status:** pending. **Weight:** 10/100 expansion points.
-- [ ] INT-1301 🎚️ Step/preset/toggle/reset state machine.
+**Status:** active (3/10 points verified). **Weight:** 10/100 expansion points.
+- [x] INT-1301 🎚️ Step/preset/toggle/reset state machine (Linux CI 41358317446 core unit tests).
 - [ ] INT-1302 ✋ Hold-to-modulate and optional startup speed.
 - [ ] INT-1303 🔑 Configurable, conflict-aware hotkeys.
 - [ ] INT-1304 🧷 Authoritative status and recovery.
@@ -164,4 +164,4 @@ Work is ordered by dependency: later phases should build on the shared core inst
 
 **Expanded roadmap and precise task acceptance criteria:** [Speed Control and Bottles Integration Roadmap](docs/speed-control-roadmap.md).
 
-**Progress basis:** Milestones 0–9 retain their historical checked state and are not included in the new 100-point expansion denominator. All milestone 10–17 deliverables started pending. The repository baseline inspection INT-1001 is verified against source and historical CI, earning 3/100 weighted points; Linux-hosted PE build and explicit already-running Wine-process attachment are now firm requirements, with M14 reweighted to accommodate INT-1407 while retaining the 100-point overall denominator; expansion progress is **7%** (previous 3%, delta +4 percentage points) after verifying INT-1101 pure clock with Linux CI 41357696793. The pure virtual clock and Linux-hosted x86-64 GNU DLL cross-build have been verified through CI; no Windows timer hook or Wine process attachment is verified. Planning/documentation alone does not complete the features. Confirmed changes must satisfy each leaf item's tests and evidence before gaining weighted credit.
+**Progress basis:** Milestones 0–9 retain their historical checked state and are not included in the new 100-point expansion denominator. All milestone 10–17 deliverables started pending. The repository baseline inspection INT-1001 is verified against source and historical CI, earning 3/100 weighted points; Linux-hosted PE build and explicit already-running Wine-process attachment are now firm requirements, with M14 reweighted to accommodate INT-1407 while retaining the 100-point overall denominator; expansion progress is **13%** (previous 7%, delta +6 percentage points) after verifying INT-1201 global speed profile and INT-1301 modulation state machine in Linux CI. The pure virtual clock and Linux-hosted x86-64 GNU DLL cross-build have been verified through CI; no Windows timer hook or Wine process attachment is verified. Planning/documentation alone does not complete the features. Confirmed changes must satisfy each leaf item's tests and evidence before gaining weighted credit.
