@@ -58,7 +58,13 @@ impl SpeedControlState {
     /// Move to the next strictly slower configured preset.
     pub fn decrease(&mut self) -> f64 {
         let current = self.effective_multiplier();
-        if let Some(previous) = self.steps.iter().rev().copied().find(|step| *step < current) {
+        if let Some(previous) = self
+            .steps
+            .iter()
+            .rev()
+            .copied()
+            .find(|step| *step < current)
+        {
             self.activate(previous);
         }
         self.effective_multiplier()
