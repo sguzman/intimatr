@@ -62,3 +62,50 @@ jobs:
           name: intimatr-windows-x86_64-${{ github.sha }}
           path: target/x86_64-pc-windows-msvc/release/intimatr.dll
           if-no-files-found: error
+
+
+  # Build a Windows PE DLL on a Linux host. This is the artifact Wine will
+  # eventually load into an opted-in game process; it is not a Linux .so.
+  linux-wine-cross:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install stable Rust and Windows GNU target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+          targets: x86_64-pc-windows-gnu
+
+      - name: Install MinGW-w64 linker
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-mingw-w64-x86-64
+
+      - name: Verify portable Rust core on Linux
+        run: |
+          cargo fmt --all -- --check
+          cargo clippy --locked --all-targets --all-features -- -D warnings
+          cargo test --locked --all-targets --all-features
+
+      - name: Cross-build Wine-target Windows DLL on Linux
+        run: cargo build --locked --release --lib --target x86_64-pc-windows-gnu
+
+      - name: Verify Windows PE x86-64 DLL artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          dll="target/x86_64-pc-windows-gnu/release/intimatr.dll"
+          test -s "$dll"
+          file "$dll"
+          file "$dll" | grep -Eq 'PE32\\+ executable .*x86-64.*DLL'
+          x86_64-w64-mingw32-objdump -f "$dll"
+          sha256sum "$dll"
+
+      - name: Upload Linux-cross-built Windows DLL
+        uses: actions/upload-artifact@v7
+        with:
+          name: intimatr-wine-windows-x86_64-${{ github.sha }}
+          path: target/x86_64-pc-windows-gnu/release/intimatr.dll
+          if-no-files-found: error
