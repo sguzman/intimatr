@@ -152,7 +152,9 @@ mod tests {
     fn does_not_silently_discard_malformed_program_records() {
         assert!(parse_registered_programs("[]").unwrap().is_empty());
         assert!(matches!(
-            parse_registered_programs(r#"[{"name":"","executable":"game.exe","path":"C:\\Game.exe"}]"#),
+            parse_registered_programs(
+                r#"[{"name":"","executable":"game.exe","path":"C:\\Game.exe"}]"#
+            ),
             Err(BottlesInventoryError::InvalidProgram)
         ));
         assert!(parse_registered_programs(r#"[{"name":"Game"}]"#).is_err());
