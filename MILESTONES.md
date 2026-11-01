@@ -112,8 +112,8 @@ Work is ordered by dependency: later phases should build on the shared core inst
 - [ ] INT-1003 🍷 Prove Bottles/Wine loader and configuration-path strategy.
 
 ## 11. Time virtualization engine ⏩
-**Status:** pending. **Weight:** 19/100 expansion points.
-- [ ] INT-1101 🧮 Pure virtual clock model.
+**Status:** active (4/19 points verified). **Weight:** 19/100 expansion points.
+- [x] INT-1101 🧮 Pure virtual clock model (Linux CI 41357696793, cross-target build and synthetic tests).
 - [ ] INT-1102 🪝 Windows timing-hook backend.
 - [ ] INT-1103 🧭 Clock consistency and live multiplier transitions.
 - [ ] INT-1104 🧯 Safe hook lifecycle and fallback.
@@ -164,4 +164,4 @@ Work is ordered by dependency: later phases should build on the shared core inst
 
 **Expanded roadmap and precise task acceptance criteria:** [Speed Control and Bottles Integration Roadmap](docs/speed-control-roadmap.md).
 
-**Progress basis:** Milestones 0–9 retain their historical checked state and are not included in the new 100-point expansion denominator. All milestone 10–17 deliverables started pending. The repository baseline inspection INT-1001 is verified against source and historical CI, earning 3/100 weighted points; Linux-hosted PE build and explicit already-running Wine-process attachment are now firm requirements, with M14 reweighted to accommodate INT-1407 while retaining the 100-point overall denominator; expansion progress is **3%** (previous 0%, delta +3 percentage points). A pure virtual clock implementation and Linux cross-build CI have been committed but not yet verified as complete; no speed-control runtime hooking/attachment is verified. Planning/documentation alone does not complete the features. Confirmed changes must satisfy each leaf item's tests and evidence before gaining weighted credit.
+**Progress basis:** Milestones 0–9 retain their historical checked state and are not included in the new 100-point expansion denominator. All milestone 10–17 deliverables started pending. The repository baseline inspection INT-1001 is verified against source and historical CI, earning 3/100 weighted points; Linux-hosted PE build and explicit already-running Wine-process attachment are now firm requirements, with M14 reweighted to accommodate INT-1407 while retaining the 100-point overall denominator; expansion progress is **7%** (previous 3%, delta +4 percentage points) after verifying INT-1101 pure clock with Linux CI 41357696793. The pure virtual clock and Linux-hosted x86-64 GNU DLL cross-build have been verified through CI; no Windows timer hook or Wine process attachment is verified. Planning/documentation alone does not complete the features. Confirmed changes must satisfy each leaf item's tests and evidence before gaining weighted credit.
