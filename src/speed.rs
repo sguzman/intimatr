@@ -64,11 +64,7 @@ impl VirtualClock {
     ///
     /// Rejected multipliers leave the clock unchanged. Profile-specific
     /// minimum/maximum limits belong to configuration validation.
-    pub fn set_multiplier(
-        &mut self,
-        real_ticks: u64,
-        multiplier: f64,
-    ) -> Result<u64, ClockError> {
+    pub fn set_multiplier(&mut self, real_ticks: u64, multiplier: f64) -> Result<u64, ClockError> {
         if !multiplier.is_finite() || multiplier <= 0.0 {
             return Err(ClockError::InvalidMultiplier);
         }
