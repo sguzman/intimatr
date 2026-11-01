@@ -106,8 +106,8 @@ Work is ordered by dependency: later phases should build on the shared core inst
 - [x] Isolate every process run into its own diagnostic log file so field-test logs never append across launches.
 
 ## 10. Speed-control expansion — feasibility and design 🔍
-**Status:** pending. **Weight:** 9/100 expansion points.
-- [ ] INT-1001 🔎 Inventory regression baseline and integration seams.
+**Status:** active (3/9 points verified). **Weight:** 9/100 expansion points.
+- [x] INT-1001 🔎 Inventory regression baseline and integration seams.
 - [ ] INT-1002 ⏱️ Prove timing-hook strategy and clock continuity contract.
 - [ ] INT-1003 🍷 Prove Bottles/Wine loader and configuration-path strategy.
 
@@ -163,4 +163,4 @@ Work is ordered by dependency: later phases should build on the shared core inst
 
 **Expanded roadmap and precise task acceptance criteria:** [Speed Control and Bottles Integration Roadmap](docs/speed-control-roadmap.md).
 
-**Progress basis:** Milestones 0–9 retain their historical checked state and are not included in the new 100-point expansion denominator. All milestone 10–17 deliverables start pending; verified expansion implementation remains **0%**. Planning/documentation alone does not complete the features. Confirmed changes must satisfy each leaf item's tests and evidence before gaining weighted credit.
+**Progress basis:** Milestones 0–9 retain their historical checked state and are not included in the new 100-point expansion denominator. All milestone 10–17 deliverables started pending. The repository baseline inspection INT-1001 is verified against source and historical CI, earning 3/100 weighted points; expansion progress is **3%** (previous 0%, delta +3 percentage points). No speed-control runtime implementation is verified. Planning/documentation alone does not complete the features. Confirmed changes must satisfy each leaf item's tests and evidence before gaining weighted credit.
