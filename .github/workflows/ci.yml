@@ -99,7 +99,7 @@ jobs:
           dll="target/x86_64-pc-windows-gnu/release/intimatr.dll"
           test -s "$dll"
           file "$dll"
-          file "$dll" | grep -Eq 'PE32\\+ executable .*x86-64.*DLL'
+          file "$dll" | grep -Eq 'PE32[+].*DLL.*x86-64'
           x86_64-w64-mingw32-objdump -f "$dll"
           sha256sum "$dll"
 
