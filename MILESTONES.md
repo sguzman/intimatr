@@ -139,8 +139,9 @@ Work is ordered by dependency: later phases should build on the shared core inst
 - [ ] INT-1402 🧲 Include/exclude filters.
 - [ ] INT-1403 📋 Non-mutating plan; apply/status operations.
 - [ ] INT-1404 🔌 Verified normal-launch DLL loading.
-- [ ] INT-1405 🛟 Idempotence, backups and rollback.
-- [ ] INT-1406 🧱 32-/64-bit and runner compatibility reporting.
+- [ ] INT-1405 🛟 Idempotence, backups and rollback (including process attach).
+- [ ] INT-1406 🧱 32-/64-bit, Linux GNU build and runner compatibility reporting.
+- [ ] INT-1407 🧷 Explicit attach to already-running Wine processes via native Linux manager.
 
 ## 15. Unified UI/RPC 🖥️
 **Status:** pending. **Weight:** 7/100 expansion points.
@@ -158,9 +159,9 @@ Work is ordered by dependency: later phases should build on the shared core inst
 ## 17. Documentation and acceptance 📦
 **Status:** pending. **Weight:** 5/100 expansion points.
 - [ ] INT-1701 📚 Configuration/usage/troubleshooting reference.
-- [ ] INT-1702 📦 Verified distributables and CI/package contents.
+- [ ] INT-1702 📦 Linux-built Windows PE DLL, native Linux CLI, and verified CI/package contents.
 - [ ] INT-1703 🏁 End-to-end owner acceptance checkpoint.
 
 **Expanded roadmap and precise task acceptance criteria:** [Speed Control and Bottles Integration Roadmap](docs/speed-control-roadmap.md).
 
-**Progress basis:** Milestones 0–9 retain their historical checked state and are not included in the new 100-point expansion denominator. All milestone 10–17 deliverables started pending. The repository baseline inspection INT-1001 is verified against source and historical CI, earning 3/100 weighted points; expansion progress is **3%** (previous 0%, delta +3 percentage points). No speed-control runtime implementation is verified. Planning/documentation alone does not complete the features. Confirmed changes must satisfy each leaf item's tests and evidence before gaining weighted credit.
+**Progress basis:** Milestones 0–9 retain their historical checked state and are not included in the new 100-point expansion denominator. All milestone 10–17 deliverables started pending. The repository baseline inspection INT-1001 is verified against source and historical CI, earning 3/100 weighted points; Linux-hosted PE build and explicit already-running Wine-process attachment are now firm requirements, with M14 reweighted to accommodate INT-1407 while retaining the 100-point overall denominator; expansion progress is **3%** (previous 0%, delta +3 percentage points). A pure virtual clock implementation and Linux cross-build CI have been committed but not yet verified as complete; no speed-control runtime hooking/attachment is verified. Planning/documentation alone does not complete the features. Confirmed changes must satisfy each leaf item's tests and evidence before gaining weighted credit.
