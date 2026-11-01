@@ -33,6 +33,20 @@ Both paths require repeatable tests of actual DLL load, startup, shutdown, game 
 
 The existing Intimatr `DllMain` only bootstraps when loaded; **it is not itself an injector**. Likewise, the current per-exe config resides beside the DLL and has not yet been made global. Both features need new implementation and tests. Do not deploy the incomplete DLL to an entire library.
 
+## Live-process attachment: proposed testable mechanism
+
+An ordinary Linux process cannot use a Wine Windows-process handle as if it were a native Linux PID. The native Rust manager should identify the **bottle, prefix and Windows executable**, then launch a small **cross-compiled PE helper** under that same Wine prefix/runner. That helper can use Windows process APIs to enumerate/open the opted-in process and request a normal Windows `LoadLibraryW` load. This is a *design candidate*, not a verified implementation.
+
+The helper must operate only on a uniquely identified process chosen by the user and report how it matched the target (executable identity, prefix identity, bitness, process handle). It should validate the DLL's PE architecture before loading, avoid assuming that function addresses are identical across processes, wait for a positive module/Intimatr-ready handshake, return structured errors, and support a no-mutation plan mode. It should not deploy stealth, manual mapping, APC evasion, anti-cheat bypass or general-purpose attach to unrelated processes.
+
+**Why not simply use WINEDLLOVERRIDES?** Wine's own documentation describes this as choosing native/builtin *load order for an already requested DLL*. It is not proof that a game loads Intimatr. Game-local proxy DLLs can be a fallback only if they do not conflict with existing files and a clear rollback is possible. A direct Wine-compatible PE loader is a better candidate for attaching after the game starts.
+
+**Compatibility caution:** historical Wine implementations have differed in cross-bitness remote-thread support, especially legacy WoW64 mode. Do not treat same-architecture test success as proof that a 64-bit helper can attach to a 32-bit target. Separate 32-/64-bit helpers or explicit unsupported reporting are required.
+
+**Proof-of-attach acceptance:** build PE helper on Linux; run under a disposable or test bottle; identify an offline Windows test process already running in that prefix; load an innocuous Intimatr test DLL; verify module presence and exported readiness state; repeat/no-op duplicate attach; reject wrong-bottle, wrong-architecture, protected and ambiguous targets; then validate normal load/cleanup in a real selected offline game. Until this passes, the CLI must not report a game as attached.
+
+Related technical references (research, not imported project code): [proton-injector implementation and documentation](https://github.com/jokelbaf/proton-injector), [Wine API-side loader example in decant](https://github.com/RobbyV2/decant/blob/main/docs/ARCHITECTURE.md), [historical Wine cross-bitness remote-thread limitation](https://list.winehq.org/hyperkitty/list/wine-bugs%40list.winehq.org/thread/ROQNGR7JMYKWAIEH3TKKAKZKRLFG22KX/).
+
 ## Bottles discovery and config notes
 
 Bottles exposes `bottles-cli` with `list`, `programs`, `edit`, `run` and other subcommands; a native (non-Flatpak) install should use the installed CLI command directly, with capability detection rather than assuming an installation path. Registered program inventory alone may not find a manually launched EXE; the future scanner will distinguish verified registered games from inferred candidates.
