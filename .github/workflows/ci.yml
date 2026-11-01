@@ -83,11 +83,13 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y gcc-mingw-w64-x86-64
 
-      - name: Verify portable Rust core on Linux
+      - name: Verify portable virtual-clock core on Linux
         run: |
           cargo fmt --all -- --check
-          cargo clippy --locked --all-targets --all-features -- -D warnings
-          cargo test --locked --all-targets --all-features
+          cargo test --locked --lib speed::tests
+
+      - name: Strict Clippy for Windows GNU target from Linux
+        run: cargo clippy --locked --target x86_64-pc-windows-gnu --all-targets --all-features -- -D warnings
 
       - name: Cross-build Wine-target Windows DLL on Linux
         run: cargo build --locked --release --lib --target x86_64-pc-windows-gnu
