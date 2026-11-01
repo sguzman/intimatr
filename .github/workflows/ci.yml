@@ -87,6 +87,13 @@ jobs:
         run: |
           cargo fmt --all -- --check
           cargo test --locked --lib speed
+          cargo test --locked --lib bottles
+
+      - name: Build native Linux Bottles inventory CLI
+        run: |
+          cargo build --locked --release --bin intimatr-bottles
+          test -s target/release/intimatr-bottles
+          file target/release/intimatr-bottles | grep -q 'ELF 64-bit'
 
       - name: Strict Clippy for Windows GNU target from Linux
         run: cargo clippy --locked --target x86_64-pc-windows-gnu --all-targets --all-features -- -D warnings
@@ -110,4 +117,11 @@ jobs:
         with:
           name: intimatr-wine-windows-x86_64-${{ github.sha }}
           path: target/x86_64-pc-windows-gnu/release/intimatr.dll
+          if-no-files-found: error
+
+      - name: Upload native Linux Bottles inventory CLI
+        uses: actions/upload-artifact@v7
+        with:
+          name: intimatr-bottles-linux-x86_64-${{ github.sha }}
+          path: target/release/intimatr-bottles
           if-no-files-found: error
