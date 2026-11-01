@@ -22,6 +22,18 @@ Expected output path: `target/x86_64-pc-windows-gnu/release/intimatr.dll`, a **P
 
 The original Windows MSVC build remains a supported regression target and is not removed. The new Linux CI job performs native core format/Clippy/tests, cross-builds the Windows GNU DLL, verifies its PE type and publishes a CI artifact. It must pass before we claim the Linux build is verified. GNU-built DLLs may have runtime dependencies that differ from MSVC builds: check actual imports and packaging in later compatibility work, do not assume them away.
 
+## Read-only native Bottles inventory (first CLI slice)
+
+A native Rust executable is available at `src/bin/intimatr-bottles.rs`. After the host Rust build, this **does not install or attach a DLL**:
+
+```fish
+cargo run --locked --bin intimatr-bottles -- scan
+```
+
+It invokes the installed non-Flatpak `bottles-cli --json list bottles`, then `bottles-cli --json programs -b <bottle-name>` for each reported bottle, with no shell interpolation and no game modifications. The result is a JSON array of bottle names and **registered** program metadata. Manual/unregistered EXEs are not silently claimed as discovered. Empty and malformed lists are handled as distinct states; CLI errors are surfaced rather than being treated as empty libraries.
+
+The portable decoding logic is in [src/bottles.rs](../src/bottles.rs), with tests based on Bottles' published program JSON examples and synthetic list shapes. The Bottles documentation has not established a single exhaustive list-bottles JSON schema. **A scan on a real native Bottles installation remains an acceptance gate for INT-1401**, including validation of the names and paths returned. CI can prove parsing and compile a Linux executable; it cannot substitute for the end-user's Bottles process inventory.
+
 ## Loading/attaching from a Linux host
 
 The deployment CLI is a **Linux native Rust application**; the payload is the cross-compiled Windows DLL. The project's loader must offer two distinct user-visible paths where supported:
