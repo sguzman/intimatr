@@ -83,9 +83,7 @@ impl SpeedSettings {
             ));
         }
         if self.steps.is_empty() {
-            return Err(SpeedProfileError::Invalid(
-                "speed steps cannot be empty",
-            ));
+            return Err(SpeedProfileError::Invalid("speed steps cannot be empty"));
         }
         if self
             .steps
