@@ -5,6 +5,7 @@
 
 pub mod analysis;
 pub mod backpressure;
+pub mod bottles;
 pub mod command;
 pub mod config;
 pub mod debugger;
