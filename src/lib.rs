@@ -15,6 +15,7 @@ pub mod platform;
 pub mod rpc;
 pub mod runtime;
 pub mod scanner;
+pub mod speed;
 
 #[cfg(windows)]
 pub mod debugger_ui;
