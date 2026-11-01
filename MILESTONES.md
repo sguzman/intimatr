@@ -104,3 +104,63 @@ Work is ordered by dependency: later phases should build on the shared core inst
 - [x] Allow cancellation of both first and next scans from the native UI.
 - [x] Keep unrelated UI errors from obscuring whether a scan is still active.
 - [x] Isolate every process run into its own diagnostic log file so field-test logs never append across launches.
+
+## 10. Speed-control expansion — feasibility and design 🔍
+**Status:** pending. **Weight:** 9/100 expansion points.
+- [ ] INT-1001 🔎 Inventory regression baseline and integration seams.
+- [ ] INT-1002 ⏱️ Prove timing-hook strategy and clock continuity contract.
+- [ ] INT-1003 🍷 Prove Bottles/Wine loader and configuration-path strategy.
+
+## 11. Time virtualization engine ⏩
+**Status:** pending. **Weight:** 19/100 expansion points.
+- [ ] INT-1101 🧮 Pure virtual clock model.
+- [ ] INT-1102 🪝 Windows timing-hook backend.
+- [ ] INT-1103 🧭 Clock consistency and live multiplier transitions.
+- [ ] INT-1104 🧯 Safe hook lifecycle and fallback.
+- [ ] INT-1105 🎮 Offline Wine game proof.
+
+## 12. Shared configuration and profiles ⚙️
+**Status:** pending. **Weight:** 12/100 expansion points.
+- [ ] INT-1201 🗂️ Global versioned speed profile.
+- [ ] INT-1202 🧩 Per-bottle/per-game matching.
+- [ ] INT-1203 🔗 Wine-visible shared configuration path.
+- [ ] INT-1204 🔄 Reload, validation, persistence.
+
+## 13. Hotkeys and speed modulation ⌨️
+**Status:** pending. **Weight:** 10/100 expansion points.
+- [ ] INT-1301 🎚️ Step/preset/toggle/reset state machine.
+- [ ] INT-1302 ✋ Hold-to-modulate and optional startup speed.
+- [ ] INT-1303 🔑 Configurable, conflict-aware hotkeys.
+- [ ] INT-1304 🧷 Authoritative status and recovery.
+
+## 14. Bottles deployment manager 🍾
+**Status:** pending. **Weight:** 23/100 expansion points.
+- [ ] INT-1401 🔭 Discover native Bottles and games.
+- [ ] INT-1402 🧲 Include/exclude filters.
+- [ ] INT-1403 📋 Non-mutating plan; apply/status operations.
+- [ ] INT-1404 🔌 Verified normal-launch DLL loading.
+- [ ] INT-1405 🛟 Idempotence, backups and rollback.
+- [ ] INT-1406 🧱 32-/64-bit and runner compatibility reporting.
+
+## 15. Unified UI/RPC 🖥️
+**Status:** pending. **Weight:** 7/100 expansion points.
+- [ ] INT-1501 🧠 Shared command and RPC interface.
+- [ ] INT-1502 🪟 Native egui controls and appearance/keyboard QA.
+- [ ] INT-1503 📟 Status without keeping the scanner foregrounded.
+
+## 16. Verification and hardening 🧪
+**Status:** pending. **Weight:** 15/100 expansion points.
+- [ ] INT-1601 🧫 Deterministic core/config/input tests.
+- [ ] INT-1602 🍷 Real Bottles/Wine compatibility matrix.
+- [ ] INT-1603 🩺 Scanner/debugger/RPC regression evidence.
+- [ ] INT-1604 🔐 Failure recovery and rollback QA.
+
+## 17. Documentation and acceptance 📦
+**Status:** pending. **Weight:** 5/100 expansion points.
+- [ ] INT-1701 📚 Configuration/usage/troubleshooting reference.
+- [ ] INT-1702 📦 Verified distributables and CI/package contents.
+- [ ] INT-1703 🏁 End-to-end owner acceptance checkpoint.
+
+**Expanded roadmap and precise task acceptance criteria:** [Speed Control and Bottles Integration Roadmap](docs/speed-control-roadmap.md).
+
+**Progress basis:** Milestones 0–9 retain their historical checked state and are not included in the new 100-point expansion denominator. All milestone 10–17 deliverables start pending; verified expansion implementation remains **0%**. Planning/documentation alone does not complete the features. Confirmed changes must satisfy each leaf item's tests and evidence before gaining weighted credit.
