@@ -28,7 +28,9 @@ fn main() {
 fn run() -> Result<(), String> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args == ["--help"] || args == ["-h"] {
-        println!("Usage: intimatr-bottles scan\nRead-only JSON inventory of Bottles-registered programs.");
+        println!(
+            "Usage: intimatr-bottles scan\nRead-only JSON inventory of Bottles-registered programs."
+        );
         return Ok(());
     }
     if args != ["scan"] {
