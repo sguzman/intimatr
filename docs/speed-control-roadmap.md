@@ -1,0 +1,106 @@
+# ⚡ Intimatr — Speed Control and Bottles Integration Roadmap
+
+**Scope:** additive expansion of the established offline/single-player Windows DLL memory-research toolkit. Original milestones 0–9 remain intact; the work below is tracked as milestones 10–17. No existing scanner, debugger, UI, RPC, or release functionality is being restarted or claimed to have changed.
+
+**User outcome:** configure game-time speed once, adjust it with common hotkeys, optionally override speeds per game, and opt selected Bottles games into Intimatr through a discoverable, safe, reversible deployment manager. An executable being selected for deployment does **not** establish that its DLL has loaded or that its speed has changed: those are separate verified states.
+
+**Primary environment:** native Bottles on Linux/Wayland, using Wine; preserve existing native Windows behavior. The first integration target is supported 64-bit offline games; the roadmap explicitly investigates and, where feasible, implements 32-bit loading/packaging so relevant Bottles games are not silently skipped. Any genuinely unsupported game must be identified rather than advertised as working.
+
+**Non-goals:** anti-cheat bypass or evasive injection; online/multiplayer manipulation; unrestricted hooking of every Wine process; replacing Wine/Bottles/runners; modifying the target game's own DLLs or unrelated files without a managed reversible plan; replacing the existing scanner/debugger; overlay/render-hook work where a native tool window suffices.
+
+## 🧭 Architectural and compatibility contract
+
+- **Preserve Intimatr:** keep the current Rust DLL/bootstrap, minimal DllMain, central CommandExecutor / CommandDispatcher, versioned RPC, existing per-executable configuration, native egui tool windows, and the project MIT license. Route speed commands through the shared command boundary; do not create competing UI or RPC state.
+- **Separate three responsibilities:** the Windows DLL owns clock virtualization; a native Linux Rust CLI owns Bottles discovery/deployment; shared TOML configuration owns speed profiles and selection policy. Avoid a background daemon unless actual requirements later establish a need.
+- **Configuration precedence (proposed):** built-in safe defaults → global user profile → bottle override → game override → ephemeral session/hotkey state. Preserve the existing config/<ExecutableName>.toml contract for all legacy features. Define where portable global speed configuration is resolved on Linux and how the DLL reads it inside Wine without guessing environment mappings. No user's local profile paths belong in the public repository.
+- **Safety:** default effective speed 1.0× until explicitly enabled/configured for a game; positive finite speed bounds; no modification if installation conflicts; backups and an ownership manifest for every modified asset; apply only to the selection made by the user. If the game is protected or anti-cheat-enabled, skip rather than circumvent defenses.
+- **Loader realism:** Wine DLL overrides choose native/builtin handling, but do not by themselves cause an arbitrary DLL to be loaded. Prove the actual loader path in a supported game, and require positive runtime evidence before marking a game “active.” A portable install/config integration must not promise universal loading.
+- **Experience:** one consistent speed-control vocabulary (increase/decrease, reset, toggle, optional hold preset); minimal screen disruption; optionally report effective speed in the existing Intimatr UI. Shortcuts are configurable and must not be assumed to work globally under Wayland.
+- **Identity/accessibility:** preserve the project's existing name and visual identity; for changed graphical controls use immediately effective Light/Dark/System (default System), keyboard access, readable labels, and no unnecessary motion.
+- **Documentation/publication:** public roadmap and docs describe technical design and tests, not private conversations, personal machine paths, private troubleshooting, or user data. If evaluating upstream speedhack-rs, take ideas from documentation, not unreviewed copied code; assess license/attribution before importing source.
+
+## 📊 Progress accounting and evidence
+
+Expansion denominator = **100 weighted implementation-and-verification points**. Each leaf task has a unique stable ID, emoji, weight, dependency, objective completion criterion, and status. Milestone weight = sum of its leaf tasks; overall percentage = verified leaf weights / 100. A documented plan does not fulfill implementation tasks. All new tasks initially **pending**; verified new-feature delivery baseline **0%**, previous **0%**, delta **+0 percentage points**. Existing milestone 0–9 checkmarks are historical and excluded from this expansion denominator; they are not being reset.
+
+Statuses: **pending**, **active**, **blocked**, **verified complete**. A task is verified complete only after its acceptance evidence is recorded in the relevant commit/CI/runtime notes. Rebaseline only when required work is discovered, record prior and new denominators, and never hide unfinished runtime QA or force an arbitrary increase. At each development round, show the overall progress bar, previous/current/delta, touched unfinished milestone/task bars, concrete checks, commits, blockers, and next work. Suppress already announced verified-complete items in later routine reports.
+
+### Milestone 10 — 🔍 Feasibility and design contract (9 points)
+Deliverable: an evidence-backed choice of timing and loading implementations, with boundaries that preserve existing Intimatr architecture. **Status: pending.**
+
+- [ ] **INT-1001 🔎 — Baseline and regression inventory (3 pts).** Dep: none. Inventory relevant DLL lifecycle, configuration, command/RPC, UI, current Windows build, package artifacts, CI and release rules; record precise integration seams and existing regression gates. **Done:** links to exact files and a reproducible baseline verification summary, not inferred success.
+- [ ] **INT-1002 ⏱️ — Clock and compatibility design spike (3 pts).** Dep: 1001. Compare safe Windows clock interception approaches under native Windows/Wine, which APIs require virtualization, hook delay/recursion handling, clock continuity, thread behavior and failure modes. **Done:** tested synthetic proof or documented failed candidates, chosen API set, and explicitly bounded supported behavior.
+- [ ] **INT-1003 🍷 — Loader and path design spike (3 pts).** Dep: 1001. Verify Bottles CLI discovery, real executable location, Wine DLL lookup/override behavior, launch paths, file-conflict handling, 64-/32-bit needs and the global config path visible to the Windows DLL. **Done:** one proven or reproducibly rejected loading strategy per target class and recorded fallback/unsupported policy.
+
+### Milestone 11 — ⏩ Time virtualization engine (19 points)
+Deliverable: a safe, switchable in-process game-time speed engine, retaining monotonic virtual time and original Intimatr operation. **Status: pending.**
+
+- [ ] **INT-1101 🧮 — Pure virtual clock model (4 pts).** Dep: 1002. Implement virtual-time anchor/base monotonic logic with positive finite multiplier, clamping and unchanged 1× behavior. **Done:** deterministic tests for normal speed, 0.25×, 2×, repeated transitions and boundary timestamps.
+- [ ] **INT-1102 🪝 — Windows timing API backend (5 pts).** Dep: 1101, 1002. Implement and scope the selected timing hooks, trampoline/original-call access, thread-safe state changes, recursion handling and cleanup outside loader lock. **Done:** native Windows smoke test demonstrating interception while retaining the original call path; failures are reported rather than ignored.
+- [ ] **INT-1103 🧭 — Clock consistency and transitions (4 pts).** Dep: 1102. Coordinate APIs using different units/frequencies; preserve continuity across speed changes, reset/toggle, repeated calls, concurrent threads, large uptime and wrap behavior where applicable. **Done:** tests show no backward time jumps at transitions and document what cannot be guaranteed.
+- [ ] **INT-1104 🧯 — Hook lifecycle and graceful degradation (3 pts).** Dep: 1102. Prevent double-hooking, recover from partial installs, support delayed activation, clean stop and stable 1× fallback. **Done:** injected test process survives hook failure, reconfiguration and orderly shutdown without leaving Intimatr in a falsely “active” state.
+- [ ] **INT-1105 🎮 — First actual offline-game proof (3 pts).** Dep: 1103, 1104, 1003. Demonstrate measurable 0.5× / 1× / 2× changes in a compatible offline Windows game launched through Wine (plus unmodified control run). **Done:** observed timing results, game/runner environment, side effects and limitations recorded.
+
+### Milestone 12 — ⚙️ Shared configuration and profiles (12 points)
+Deliverable: one global speed scheme with optional precise bottle/game overrides and deterministic configuration precedence. **Status: pending.**
+
+- [ ] **INT-1201 🗂️ — Global speed schema (3 pts).** Dep: 1003, 1101. Define versioned TOML for enablement, initial/base speed, allowed min/max, ordered modulation steps, toggle behavior and safe default 1×. **Done:** documented sample and validation of finite/positive values, steps, duplicates, out-of-range defaults and missing fields.
+- [ ] **INT-1202 🧩 — Per-bottle and per-game matching (3 pts).** Dep: 1201, 1401. Support opt-in/exclusion and overrides by canonical bottle identity and executable identity/path, resolving duplicate game EXE names without ambiguity. **Done:** deterministic precedence/matching fixtures, including case and path normalization and conflicting rules.
+- [ ] **INT-1203 🔗 — Wine/Windows config resolution (3 pts).** Dep: 1201, 1003. Give DLL a predictable way to obtain shared config through the supported loader, while keeping pre-existing config/<ExecutableName>.toml working and not requiring copies per game. **Done:** end-to-end config resolution across multiple game directories in a test bottle.
+- [ ] **INT-1204 🔄 — Runtime reload and persistence rules (3 pts).** Dep: 1202, 1203, 1103. Validate and atomically apply profile changes, distinguish saved startup settings from session speed, reject malformed edits without losing last valid settings. **Done:** tests for live reload, invalid files, interrupted writes and deterministic state after restart.
+
+### Milestone 13 — ⌨️ Modulation controls and hotkeys (10 points)
+Deliverable: predictable shared controls in participating games. **Status: pending.**
+
+- [ ] **INT-1301 🎚️ — Speed state machine (3 pts).** Dep: 1101, 1201. Support next/previous user-defined step, exact preset, return to 1× and toggle between 1× and most recent active speed. **Done:** deterministic transition tests, bounds and no ambiguous state after reload.
+- [ ] **INT-1302 ✋ — Optional hold-to-modulate and startup state (2 pts).** Dep: 1301. Support configurable held-key temporary multiplier and optional bounded startup speed/duration, with explicit on/off defaults. **Done:** release/timeout/focus-loss restores the expected previous speed and does not leave the game accelerated.
+- [ ] **INT-1303 🔑 — Keybinding grammar and input ownership (3 pts).** Dep: 1301, 1003. Parse modifiers/keys, detect collisions including the existing Insert/F10 UI hotkeys, handle repeats and focus, and specify Wine/Wayland limitations. **Done:** binding/dispatch tests and verified focused-game hotkeys without relying on unsupported Wayland global key grabs.
+- [ ] **INT-1304 🧷 — Status and safe recovery (2 pts).** Dep: 1302, 1303. Expose current effective speed, active profile, last binding action, reset and disabled/unavailable status. **Done:** stable visible or queryable feedback and recovery to 1× after missing configuration, hotkey conflicts or failed hooks.
+
+### Milestone 14 — 🍾 Bottles discovery and managed deployment (23 points)
+Deliverable: a native Rust management CLI that can select all or filtered games, safely arrange DLL loading, and undo its own changes. **Status: pending.**
+
+- [ ] **INT-1401 🔭 — Bottles inventory (4 pts).** Dep: 1003. Implement CLI discovery of native Bottles prefixes and registered executables, resolve launch targets where possible, and report uncertainty instead of silently guessing; do not assume all loose EXEs are registered. **Done:** fixture-based scans plus tested CLI discovery, including empty/missing/renamed bottles.
+- [ ] **INT-1402 🧲 — Selection filters (4 pts).** Dep: 1401. Include/exclude by bottle, registered program, executable name and path, with explicit all-games opt-in and precedence between allow/deny filters. **Done:** dry-run selection fixtures for mixed installations, duplicates, nested games and conflicting patterns.
+- [ ] **INT-1403 📋 — Plan / apply / status contract (4 pts).** Dep: 1402, 1003. Add discovery-only scan, non-mutating plan, explicit apply and clear status showing selected, installed, loaded-tested, unsupported, excluded and conflict states separately. **Done:** readable and machine-readable reports; plan makes zero disk/registry mutations.
+- [ ] **INT-1404 🔌 — Managed game loader integration (4 pts).** Dep: 1403, 1104, 1203. Use only a demonstrated launch-time DLL loading strategy with suitable per-game/per-bottle settings, native/builtin overrides where actually needed, and no stealth/anti-cheat evasion. **Done:** a selected supported game actually loads the intended DLL through its ordinary Bottles launch; adding an override alone never counts as proof.
+- [ ] **INT-1405 🛟 — Idempotence, conflict handling and rollback (4 pts).** Dep: 1404. Track exact files/settings changed with an ownership manifest; refuse to overwrite unrelated DLLs; preserve previous values; transactional best-effort apply with retry and exact rollback of owned changes. **Done:** repeat apply unchanged, simulated partial failure recoverable, restore-by-manifest, and no mutations to excluded games.
+- [ ] **INT-1406 🧱 — Architecture and version compatibility (3 pts).** Dep: 1404. Detect 32-/64-bit mismatches, Wine runner changes, available binaries and dependencies. Build/ship a compatible 32-bit path if feasible; otherwise report explicit unsupported cases rather than loading wrong-architecture DLLs. **Done:** native/runner compatibility matrix and no false positives for incompatible games.
+
+### Milestone 15 — 🖥️ Unified Intimatr UI and RPC (7 points)
+Deliverable: speed controls through the existing Intimatr surfaces, without parallel state. **Status: pending.**
+
+- [ ] **INT-1501 🧠 — CommandExecutor and RPC contract (3 pts).** Dep: 1103, 1301, 1204. Add speed get/set/step/toggle/reset/status commands and results with policy/validation and compatible versioning. **Done:** native UI and RPC client see identical speed and errors in tests.
+- [ ] **INT-1502 🪟 — Native speed-control panel (2 pts).** Dep: 1501. Add an unobtrusive panel in the existing egui UI showing effective speed, profile, controls, errors and a reset; implement Light/Dark/System default System in affected UI paths. **Done:** keyboard-operable controls and real Windows UI interaction checked.
+- [ ] **INT-1503 📟 — Usable status without foreground UI (2 pts).** Dep: 1501, 1304. Allow users to query running-session speed and hotkey/profile state without opening the full scanner, using the existing RPC/UI boundary; avoid mandatory on-screen renderer hooks. **Done:** console/client query returns authoritative current state from an instrumented game.
+
+### Milestone 16 — 🧪 Runtime verification and compatibility hardening (15 points)
+Deliverable: repeatable real-world evidence that speed and deployment work without breaking original Intimatr behavior. **Status: pending.**
+
+- [ ] **INT-1601 🧫 — Deterministic/unit and property testing (4 pts).** Dep: 1103, 1204, 1303. Cover virtual clock precision and monotonicity, speed boundaries, concurrency, hotkey transitions, parser precedence, invalid configs and cancellation/failure paths. **Done:** automated tests pass and report edge-case coverage.
+- [ ] **INT-1602 🍷 — Wine/Bottles field matrix (4 pts).** Dep: 1406, 1503. Test native Bottles with its selected runner, representative launcher styles, focus/hotkey behavior under Wayland, 32-/64-bit when supported, speed change during game, and clean exit/relaunch. **Done:** matrix distinguishes verified compatible, incompatible and untested cases; measured in-game speed and regressions recorded.
+- [ ] **INT-1603 🩺 — Existing functionality regression (3 pts).** Dep: 1502, 1405. Run applicable Rust formatting, strict Clippy, tests and Windows build; exercise scan/UI/debugger/RPC startup and lifecycle smoke paths; verify native Windows target has not regressed. **Done:** evidence for each gate, and no known release-blocking regression.
+- [ ] **INT-1604 🔐 — Failure injection and recovery QA (4 pts).** Dep: 1405, 1204, 1104. Simulate partial deployment, pre-existing proxy DLL, protected/multiplayer exclusion, missing runner, read-only path, bad profile, hook incompatibility, crashing game and reboot/relaunch. **Done:** safe fail-closed status, recoverable backups, rollback verified, and no silent file/registry damage.
+
+### Milestone 17 — 📦 Documentation, distribution and acceptance (5 points)
+Deliverable: a recoverable release candidate with user-operable setup. **Status: pending.**
+
+- [ ] **INT-1701 📚 — User/developer documentation (2 pts).** Dep: 1405, 1502, 1602. Update concise README links, configuration reference, Bottles CLI usage, filtering, installation, known limitations, troubleshooting and copyright/license notices; keep detailed design in docs. **Done:** cold-start instructions match supported binaries and actual runtime behavior.
+- [ ] **INT-1702 📦 — CI and release artifacts (2 pts).** Dep: 1406, 1603. Extend the existing Windows DLL package and verification workflow to include supported binaries, native Linux CLI, examples, checksums and version notes. **Done:** CI validates exact artifact contents and a clean installation/upgrade/rollback path.
+- [ ] **INT-1703 🏁 — End-to-end acceptance checkpoint (1 pt).** Dep: 1701, 1702, 1604. Demonstrate: choose a bottle/game → preview plan → apply safely → launch game normally → confirm DLL loaded → modulate speed with shared bindings → override game profile → reset → undo deployment, while original scanner/debugger remain functional. **Done:** evidence and limitations recorded at exact commit; request owner approval before publishing a new release tag.
+
+## 🧵 Dependencies and critical path
+
+**Phase A — Research:** M10 → prove timing and loading feasibility before promising broad compatibility.
+
+**Phase B — Engine and control:** M11 clock core → M12 configuration and M13 input state machine; some parser and test tasks can proceed while hooking is under development.
+
+**Phase C — Deployment and surfaces:** M14 discovery/plan can progress from M10 independently; actual apply depends on a working loader. M15 consumes the shared engine, not duplicated UI state.
+
+**Phase D — Real-system acceptance:** M16 runs throughout development and closes only with native Windows and Linux/Wine/Bottles evidence; M17 finalizes documents, verified distributables, installation and reversible deployment.
+
+## ✅ Definition of done for the expansion
+
+The expansion is **100% verified** only when supported offline games launched normally through Bottles actually load Intimatr; a single central configuration and per-bottle/per-game overrides yield the specified speed; shared shortcuts modulate speed predictably; a Rust manager can scan, filter, plan, apply, report and undo its own work; existing Intimatr capabilities still pass their required checks; unsupported cases are explicit; necessary install/QA/release artifacts are verified and committed. A build or roadmap alone is not feature completion.
+
+**Initial checkpoint:** new scope approved in conversation; no new implementation verified. **Expansion overall: 0% (previous 0%, delta +0 pp).** Historical milestones 0–9 retained. Next actionable item: **INT-1001 🔎** baseline inspection/verification, then **INT-1002 / INT-1003** feasibility spikes. No release/tag authorization is implied by roadmap publication.
