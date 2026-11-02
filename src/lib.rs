@@ -21,8 +21,8 @@ pub mod runtime;
 pub mod scanner;
 pub mod speed;
 pub mod speed_config;
-pub mod speed_policy;
 pub mod speed_controls;
+pub mod speed_policy;
 pub mod speed_session;
 pub mod speed_timers;
 

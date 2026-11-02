@@ -72,7 +72,9 @@ pub struct ResolvedSpeed {
 fn bottle_key(name: &str) -> Result<String, SpeedProfileError> {
     let name = name.trim();
     if name.is_empty()
-        || name.chars().any(|c| c.is_control() || c == '/' || c == '\\')
+        || name
+            .chars()
+            .any(|c| c.is_control() || c == '/' || c == '\\')
     {
         return Err(SpeedProfileError::Invalid("invalid bottle identity"));
     }
@@ -107,7 +109,9 @@ fn game_path_key(path: &str) -> Result<String, SpeedProfileError> {
         components.push(part);
     }
     if components.is_empty() {
-        return Err(SpeedProfileError::Invalid("executable path lacks a filename"));
+        return Err(SpeedProfileError::Invalid(
+            "executable path lacks a filename",
+        ));
     }
     Ok(format!(
         "{}:/{}",
@@ -286,13 +290,10 @@ enabled = true
 
     #[test]
     fn rejects_case_and_slash_equivalent_duplicate_overrides() {
-        let duplicate_bottle = format!(
-            "{PROFILE}\n[[bottles]]\nname = 'gAmEs'\n"
-        );
+        let duplicate_bottle = format!("{PROFILE}\n[[bottles]]\nname = 'gAmEs'\n");
         assert!(SharedSpeedConfig::parse(&duplicate_bottle).is_err());
-        let duplicate_game = format!(
-            "{PROFILE}\n[[games]]\nbottle = 'games'\npath = 'c:/GAMES/one/game.exe'\n"
-        );
+        let duplicate_game =
+            format!("{PROFILE}\n[[games]]\nbottle = 'games'\npath = 'c:/GAMES/one/game.exe'\n");
         assert!(SharedSpeedConfig::parse(&duplicate_game).is_err());
     }
 
@@ -305,10 +306,12 @@ enabled = true
             r"\\server\share\Game.exe",
             r"C:Game.exe",
         ] {
-            assert!(SharedSpeedConfig::parse(PROFILE)
-                .unwrap()
-                .resolve_for("Games", path)
-                .is_err());
+            assert!(
+                SharedSpeedConfig::parse(PROFILE)
+                    .unwrap()
+                    .resolve_for("Games", path)
+                    .is_err()
+            );
         }
         let invalid = format!(
             "{PROFILE}\n[[games]]\nbottle = 'Games'\npath = 'c:/games/fresh.exe'\n[games.speed]\ninitial_multiplier = 20.0\n"
