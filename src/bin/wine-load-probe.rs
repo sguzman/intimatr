@@ -388,8 +388,7 @@ mod windows_probe {
             }
             let status: serde_json::Value = serde_json::from_slice(&output.stdout)
                 .map_err(|error| format!("bad speed RPC response: {error}"))?;
-            if status["preview_multiplier"] != expected
-                || status["clock_applied_to_game"] != false
+            if status["preview_multiplier"] != expected || status["clock_applied_to_game"] != false
             {
                 return Err(format!(
                     "RPC response did not reflect fixture preview at {expected}x: {status}"
