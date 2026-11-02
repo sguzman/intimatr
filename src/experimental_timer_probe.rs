@@ -260,8 +260,7 @@ unsafe fn patch_slot(slot: usize, expected: usize, replacement: usize) -> PatchO
 fn restore_slots(slots: &mut [HookSlot]) -> bool {
     let mut clean = true;
     for hook in slots.iter_mut().filter(|hook| hook.active) {
-        let outcome =
-            unsafe { patch_slot(hook.address, hook.replacement, hook.original) };
+        let outcome = unsafe { patch_slot(hook.address, hook.replacement, hook.original) };
         if outcome.swapped {
             hook.active = false;
         } else {
@@ -384,9 +383,9 @@ pub fn probe_hook_count() -> u32 {
         .lock()
         .ok()
         .and_then(|guard| {
-            guard.as_ref().map(|active| {
-                active.slots.iter().filter(|slot| slot.active).count() as u32
-            })
+            guard
+                .as_ref()
+                .map(|active| active.slots.iter().filter(|slot| slot.active).count() as u32)
         })
         .unwrap_or(0)
 }

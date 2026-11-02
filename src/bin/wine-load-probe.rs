@@ -31,9 +31,8 @@ mod windows_probe {
         fn drop(&mut self) {
             // Errors while a hook is installed must never unload a DLL whose
             // callbacks could still be referenced by this executable.
-            let disable = unsafe {
-                GetProcAddress(self.0, c"intimatr_timer_probe_disable".as_ptr().cast())
-            };
+            let disable =
+                unsafe { GetProcAddress(self.0, c"intimatr_timer_probe_disable".as_ptr().cast()) };
             let count = unsafe {
                 GetProcAddress(self.0, c"intimatr_timer_probe_hook_count".as_ptr().cast())
             };
@@ -248,7 +247,9 @@ mod windows_probe {
             unsafe { std::mem::transmute(resolve(&module, c"intimatr_timer_probe_fail_after")?) };
         for stage in [0, 1, 2] {
             if unsafe { fail_after(stage) } != 0 || unsafe { hook_count() } != 0 {
-                return Err(format!("fault-injected rollback failed after {stage} imports"));
+                return Err(format!(
+                    "fault-injected rollback failed after {stage} imports"
+                ));
             }
         }
         println!("Wine timer import rollback verified after 0/1/2 attempted hooks");
