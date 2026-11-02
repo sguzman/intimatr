@@ -30,10 +30,15 @@ mod windows_client {
 
     fn parse(args: &[String]) -> Result<(Endpoint, SpeedRequest), String> {
         let (transport, address, action, preset) = match args {
-            [transport, address, action] => (transport.as_str(), address.as_str(), action.as_str(), None),
-            [transport, address, action, preset] => {
-                (transport.as_str(), address.as_str(), action.as_str(), Some(preset.as_str()))
+            [transport, address, action] => {
+                (transport.as_str(), address.as_str(), action.as_str(), None)
             }
+            [transport, address, action, preset] => (
+                transport.as_str(),
+                address.as_str(),
+                action.as_str(),
+                Some(preset.as_str()),
+            ),
             _ => return Err(USAGE.to_owned()),
         };
         let endpoint = match transport {
@@ -53,7 +58,10 @@ mod windows_client {
                     .parse()
                     .map_err(|_| "TCP endpoint must be a numeric IP address and port")?;
                 if !socket.ip().is_loopback() || socket.port() == 0 {
-                    return Err("TCP speed commands require an explicit loopback address and nonzero port".into());
+                    return Err(
+                        "TCP speed commands require an explicit loopback address and nonzero port"
+                            .into(),
+                    );
                 }
                 Endpoint::Tcp(socket)
             }
@@ -66,7 +74,9 @@ mod windows_client {
             ("toggle", None) => SpeedRequest::Toggle,
             ("reset", None) => SpeedRequest::Reset,
             ("preset", Some(raw)) => {
-                let multiplier: f64 = raw.parse().map_err(|_| "preset must be a finite positive number")?;
+                let multiplier: f64 = raw
+                    .parse()
+                    .map_err(|_| "preset must be a finite positive number")?;
                 if !multiplier.is_finite() || multiplier <= 0.0 {
                     return Err("preset must be a finite positive number".into());
                 }
@@ -120,7 +130,10 @@ mod windows_client {
             ));
             assert!(matches!(
                 parse(&args(&["--tcp", "[::1]:4000", "preset", "2.0"])),
-                Ok((Endpoint::Tcp(_), SpeedRequest::SelectPreset { multiplier: 2.0 }))
+                Ok((
+                    Endpoint::Tcp(_),
+                    SpeedRequest::SelectPreset { multiplier: 2.0 }
+                ))
             ));
             assert!(matches!(
                 parse(&args(&["--pipe", "intimatr-Game", "reset"])),
