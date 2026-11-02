@@ -111,6 +111,10 @@ pub struct ProcessProgramMatch {
     pub process_architecture_verified: bool,
     pub process_architecture_source: Option<String>,
     pub architecture_consistent: Option<bool>,
+    /// True only when BOTH the live process and file are confirmed x86-64.
+    /// False means both were observed but this x86-64 DLL cannot fit.
+    /// None means architecture proof is incomplete.
+    pub x64_dll_compatible: Option<bool>,
     pub registered_program_name: Option<String>,
     pub status: &'static str,
     pub safe_to_attach: bool,
@@ -138,8 +142,17 @@ pub fn match_registered_programs(
             .as_ref()
             .zip(process.pe_image_architecture.as_ref())
             .map(|(observed, file)| observed == file);
+        let x64_dll_compatible = process
+            .process_architecture
+            .as_deref()
+            .zip(process.pe_image_architecture.as_deref())
+            .map(|(process_machine, file_machine)| {
+                process_machine == "x86_64" && file_machine == "x86_64"
+            });
         let status = if architecture_consistent == Some(false) {
             "process_file_architecture_conflict"
+        } else if x64_dll_compatible == Some(false) {
+            "unsupported_x64_dll_architecture"
         } else if !process.image_query_verified {
             "image_path_unknown"
         } else if let Some(path) = process.full_image_path.as_deref() {
@@ -175,6 +188,7 @@ pub fn match_registered_programs(
             process_architecture_verified: process.process_architecture_verified,
             process_architecture_source: process.process_architecture_source.clone(),
             architecture_consistent,
+            x64_dll_compatible,
             registered_program_name: found,
             status,
             safe_to_attach: false,
@@ -328,6 +342,21 @@ mod tests {
         ] {
             assert!(WindowsProcessSnapshot::parse(&invalid).is_err());
         }
+    }
+
+    #[test]
+    fn blocks_x86_process_even_when_file_and_registered_executable_agree() {
+        let input = r#"{"operation":"read_only_wine_windows_processes","attachment_attempted":false,"processes":[{"windows_pid":55,"reported_executable":"Game.exe","full_image_path":"C:\\Game.exe","image_query_verified":true,"pe_image_architecture":"x86","pe_image_verified":true,"process_architecture":"x86","process_architecture_verified":true,"process_architecture_source":"is_wow64_process2","safe_to_attach":false}]}"#;
+        let snapshot = WindowsProcessSnapshot::parse(input).unwrap();
+        let result = match_registered_programs(
+            &bottle(&[("Game", r"C:\Game.exe")]),
+            &snapshot,
+        );
+        assert_eq!(result.matches[0].architecture_consistent, Some(true));
+        assert_eq!(result.matches[0].x64_dll_compatible, Some(false));
+        assert_eq!(result.matches[0].status, "unsupported_x64_dll_architecture");
+        assert!(result.matches[0].registered_program_name.is_none());
+        assert!(!result.matches[0].safe_to_attach);
     }
 
     #[test]
