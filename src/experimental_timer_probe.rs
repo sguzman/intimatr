@@ -12,13 +12,14 @@ use std::{
     ptr,
     sync::{
         Mutex, OnceLock,
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering},
     },
 };
 
 use crate::{
     speed_config::SpeedSettings,
     speed_session::{SpeedAction, SpeedSession},
+    speed_timers::TimerSnapshot,
 };
 
 const PAGE_READWRITE: u32 = 0x04;
@@ -58,6 +59,46 @@ struct ProbeHooks {
 
 static HOOKS: OnceLock<Mutex<Option<ProbeHooks>>> = OnceLock::new();
 
+// Published only while owning HOOKS. Contended API reads return the last
+// scaled sample rather than a raw counter that could jump backwards at 2x.
+static VIRTUAL_READY: AtomicBool = AtomicBool::new(false);
+static LAST_QPC: AtomicU64 = AtomicU64::new(0);
+static LAST_TICK64: AtomicU64 = AtomicU64::new(0);
+static LAST_TICK32: AtomicU32 = AtomicU32::new(0);
+static LAST_WINMM: AtomicU32 = AtomicU32::new(0);
+
+fn publish(snapshot: TimerSnapshot) {
+    LAST_QPC.store(snapshot.performance_counter, Ordering::Relaxed);
+    LAST_TICK64.store(snapshot.tick_count64, Ordering::Relaxed);
+    LAST_TICK32.store(snapshot.tick_count, Ordering::Relaxed);
+    LAST_WINMM.store(snapshot.time_get_time, Ordering::Relaxed);
+    VIRTUAL_READY.store(true, Ordering::Release);
+}
+
+fn last_or<T: Copy>(value: &impl LastValue<T>, real: T) -> T {
+    if VIRTUAL_READY.load(Ordering::Acquire) {
+        value.read_last()
+    } else {
+        real
+    }
+}
+
+trait LastValue<T> {
+    fn read_last(&self) -> T;
+}
+
+impl LastValue<u64> for AtomicU64 {
+    fn read_last(&self) -> u64 {
+        self.load(Ordering::Relaxed)
+    }
+}
+
+impl LastValue<u32> for AtomicU32 {
+    fn read_last(&self) -> u32 {
+        self.load(Ordering::Relaxed)
+    }
+}
+
 fn hooks() -> &'static Mutex<Option<ProbeHooks>> {
     HOOKS.get_or_init(|| Mutex::new(None))
 }
@@ -71,22 +112,25 @@ fn native_qpc() -> Option<u64> {
 }
 
 unsafe extern "system" fn intercepted_qpc(value: *mut i64) -> i32 {
-    // Never unwind across the Windows ABI. Falling back to the real kernel32
-    // import keeps a failed lock/initialization from corrupting the target.
     if value.is_null() {
         return 0;
     }
     let Some(real) = native_qpc() else {
         return 0;
     };
-    let virtual_ticks = match hooks().try_lock() {
-        Ok(mut guard) => guard
-            .as_mut()
-            .map(|active| active.session.sample(real).performance_counter)
-            .unwrap_or(real),
-        Err(_) => real,
+    let scaled = match hooks().try_lock() {
+        Ok(mut guard) => {
+            if let Some(active) = guard.as_mut() {
+                let sample = active.session.sample(real);
+                publish(sample);
+                sample.performance_counter
+            } else {
+                last_or(&LAST_QPC, real)
+            }
+        }
+        Err(_) => last_or(&LAST_QPC, real),
     };
-    unsafe { value.write(virtual_ticks.min(i64::MAX as u64) as i64) };
+    unsafe { value.write(scaled.min(i64::MAX as u64) as i64) };
     1
 }
 
@@ -95,11 +139,16 @@ unsafe extern "system" fn intercepted_tick_count64() -> u64 {
         return unsafe { GetTickCount64() };
     };
     match hooks().try_lock() {
-        Ok(mut guard) => guard
-            .as_mut()
-            .map(|active| active.session.sample(real).tick_count64)
-            .unwrap_or_else(|| unsafe { GetTickCount64() }),
-        Err(_) => unsafe { GetTickCount64() },
+        Ok(mut guard) => {
+            if let Some(active) = guard.as_mut() {
+                let sample = active.session.sample(real);
+                publish(sample);
+                sample.tick_count64
+            } else {
+                last_or(&LAST_TICK64, unsafe { GetTickCount64() })
+            }
+        }
+        Err(_) => last_or(&LAST_TICK64, unsafe { GetTickCount64() }),
     }
 }
 
@@ -108,11 +157,16 @@ unsafe extern "system" fn intercepted_tick_count() -> u32 {
         return unsafe { GetTickCount() };
     };
     match hooks().try_lock() {
-        Ok(mut guard) => guard
-            .as_mut()
-            .map(|active| active.session.sample(real).tick_count)
-            .unwrap_or_else(|| unsafe { GetTickCount() }),
-        Err(_) => unsafe { GetTickCount() },
+        Ok(mut guard) => {
+            if let Some(active) = guard.as_mut() {
+                let sample = active.session.sample(real);
+                publish(sample);
+                sample.tick_count
+            } else {
+                last_or(&LAST_TICK32, unsafe { GetTickCount() })
+            }
+        }
+        Err(_) => last_or(&LAST_TICK32, unsafe { GetTickCount() }),
     }
 }
 
@@ -121,11 +175,16 @@ unsafe extern "system" fn intercepted_time_get_time() -> u32 {
         return unsafe { timeGetTime() };
     };
     match hooks().try_lock() {
-        Ok(mut guard) => guard
-            .as_mut()
-            .map(|active| active.session.sample(real).time_get_time)
-            .unwrap_or_else(|| unsafe { timeGetTime() }),
-        Err(_) => unsafe { timeGetTime() },
+        Ok(mut guard) => {
+            if let Some(active) = guard.as_mut() {
+                let sample = active.session.sample(real);
+                publish(sample);
+                sample.time_get_time
+            } else {
+                last_or(&LAST_WINMM, unsafe { timeGetTime() })
+            }
+        }
+        Err(_) => last_or(&LAST_WINMM, unsafe { timeGetTime() }),
     }
 }
 
@@ -356,7 +415,8 @@ fn enable_probe_with_fault(fail_after: Option<usize>) -> bool {
         return false;
     };
     // Sample before hooking; the tracked timeline is continuous.
-    session.sample(now);
+    let baseline = session.sample(now);
+    publish(baseline);
     let mut installed = Vec::with_capacity(slots.len());
     let mut complete = true;
     for (slot, original, replacement) in slots {
@@ -392,6 +452,8 @@ fn enable_probe_with_fault(fail_after: Option<usize>) -> bool {
                 session,
                 slots: installed,
             });
+        } else {
+            VIRTUAL_READY.store(false, Ordering::Release);
         }
         false
     }
@@ -407,10 +469,12 @@ pub fn set_probe_rate(multiplier: f64) -> bool {
     let Some(real) = native_qpc() else {
         return false;
     };
-    active
-        .session
-        .apply(real, SpeedAction::SelectPreset(multiplier))
-        .is_ok()
+    if let Ok(snapshot) = active.session.apply(real, SpeedAction::SelectPreset(multiplier)) {
+        publish(snapshot);
+        true
+    } else {
+        false
+    }
 }
 
 pub fn probe_hook_count() -> u32 {
@@ -436,6 +500,7 @@ pub fn disable_probe() -> bool {
         return false;
     }
     *guard = None;
+    VIRTUAL_READY.store(false, Ordering::Release);
     true
 }
 

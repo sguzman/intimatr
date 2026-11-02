@@ -15,6 +15,7 @@ mod windows_probe {
         path::Path,
         thread,
         time::Duration,
+        sync::{Arc, Barrier},
     };
 
     #[link(name = "kernel32")]
@@ -198,6 +199,58 @@ mod windows_probe {
         measure_millisecond_timers(rate)?;
         Ok(())
     }
+    fn stress_concurrent_timers(set_rate: RateFn) -> Result<(), String> {
+        let threads = 4_usize;
+        let gate = Arc::new(Barrier::new(threads + 1));
+        let mut workers = Vec::new();
+        for _ in 0..threads {
+            let start = Arc::clone(&gate);
+            workers.push(thread::spawn(move || -> Result<(), String> {
+                start.wait();
+                let mut last_qpc = unsafe { imported_qpc()? };
+                let mut last_tick64 = unsafe { GetTickCount64() };
+                let mut last_tick32 = unsafe { GetTickCount() };
+                let mut last_winmm = unsafe { timeGetTime() };
+                for _ in 0..15_000 {
+                    let qpc = unsafe { imported_qpc()? };
+                    let tick64 = unsafe { GetTickCount64() };
+                    let tick32 = unsafe { GetTickCount() };
+                    let winmm = unsafe { timeGetTime() };
+                    if qpc < last_qpc
+                        || tick64 < last_tick64
+                        || tick32 < last_tick32
+                        || winmm < last_winmm
+                    {
+                        return Err("one of the four virtual timer APIs moved backward".to_owned());
+                    }
+                    last_qpc = qpc;
+                    last_tick64 = tick64;
+                    last_tick32 = tick32;
+                    last_winmm = winmm;
+                }
+                Ok(())
+            }));
+        }
+        gate.wait();
+        for i in 0..30 {
+            let rate = if i % 2 == 0 { 0.5 } else { 2.0 };
+            if unsafe { set_rate(rate) } == 0 {
+                return Err("could not change speed during concurrent timer reads".to_owned());
+            }
+            thread::sleep(Duration::from_millis(1));
+        }
+        for worker in workers {
+            worker
+                .join()
+                .map_err(|_| "timer stress worker panicked".to_owned())??;
+        }
+        if unsafe { set_rate(1.0) } == 0 {
+            return Err("could not reset speed after concurrency test".to_owned());
+        }
+        println!("Wine timer concurrency: 4 workers x 15000 samples, 30 rate updates, no backward jumps");
+        Ok(())
+    }
+
     type ShutdownFn = unsafe extern "system" fn() -> i32;
 
     unsafe fn resolve(module: &LoadedModule, name: &'static CStr) -> Result<*const c_void, String> {
@@ -302,6 +355,7 @@ mod windows_probe {
         measure_rate(0.5, set_rate)?;
         measure_rate(2.0, set_rate)?;
         measure_rate(1.0, set_rate)?;
+        stress_concurrent_timers(set_rate)?;
         if unsafe { hook_disable() } == 0 || unsafe { hook_count() } != 0 {
             return Err("experimental timer import restoration failed".into());
         }
