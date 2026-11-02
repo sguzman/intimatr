@@ -10,8 +10,11 @@ fn main() {
 
 #[cfg(windows)]
 mod windows {
-    use std::{ffi::c_void, mem::{size_of, zeroed}};
     use serde::Serialize;
+    use std::{
+        ffi::c_void,
+        mem::{size_of, zeroed},
+    };
 
     type Handle = *mut c_void;
     const TH32CS_SNAPPROCESS: u32 = 0x0000_0002;
@@ -72,7 +75,10 @@ mod windows {
     }
 
     fn utf16_z(values: &[u16]) -> String {
-        let length = values.iter().position(|value| *value == 0).unwrap_or(values.len());
+        let length = values
+            .iter()
+            .position(|value| *value == 0)
+            .unwrap_or(values.len());
         String::from_utf16_lossy(&values[..length])
     }
 
@@ -84,9 +90,8 @@ mod windows {
         let owned = OwnedHandle(handle);
         let mut buffer = [0_u16; 2048];
         let mut length = buffer.len() as u32;
-        if unsafe {
-            QueryFullProcessImageNameW(owned.0, 0, buffer.as_mut_ptr(), &mut length)
-        } == 0 {
+        if unsafe { QueryFullProcessImageNameW(owned.0, 0, buffer.as_mut_ptr(), &mut length) } == 0
+        {
             return None;
         }
         Some(String::from_utf16_lossy(&buffer[..length as usize]))
