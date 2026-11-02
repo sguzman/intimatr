@@ -21,6 +21,7 @@ use crate::{
     speed_commands::{SpeedPreviewError, SpeedPreviewExecutor},
     speed_input::InputSnapshot,
     speed_input_windows::WindowsHotkeyInput,
+    speed_window::FocusedWindowEpoch,
 };
 
 const POLL_INTERVAL: Duration = Duration::from_millis(50);
@@ -70,11 +71,16 @@ impl SpeedHotkeyWorker {
 
 fn run_worker(preview: Arc<SpeedPreviewExecutor>, keys: Vec<u16>, stop: Arc<AtomicBool>) {
     debug!("focused game speed preview monitoring started");
+    let mut epoch = FocusedWindowEpoch::default();
     while !stop.load(Ordering::Acquire) {
         // Refresh the window decision every tick. If a launcher, dialog or
         // tool window introduces ambiguity, no keyboard state is observed.
-        let snapshot = WindowsHotkeyInput::from_unique_game_window(&keys)
-            .map_or_else(|_| InputSnapshot::default(), |reader| reader.poll());
+        let candidate = WindowsHotkeyInput::from_unique_game_window(&keys)
+            .ok()
+            .map(|reader| (reader.window_identity(), reader.poll()));
+        // If the approved HWND changes without an intervening unfocused tick,
+        // synthesize one focus loss before accepting the new window's keys.
+        let snapshot = epoch.observe(candidate);
         if let Err(error) = preview.sample_input(snapshot) {
             warn!(error = %error, "focused speed preview stopped on shared-state error");
             break;

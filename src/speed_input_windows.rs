@@ -105,6 +105,12 @@ impl WindowsHotkeyInput {
         Ok(Self { reader })
     }
 
+    /// Opaque identity used only to detect a change in the approved HWND.
+    #[must_use]
+    pub fn window_identity(&self) -> u64 {
+        self.reader.target_window as usize as u64
+    }
+
     /// The caller forwards this verified HWND/focus snapshot into the *same*
     /// SpeedCoordinator that handles manual/UI/RPC speed commands.
     pub fn poll(&self) -> InputSnapshot {
