@@ -82,7 +82,7 @@ fn get_qpc_address() -> Option<usize> {
     if kernel.is_null() {
         return None;
     }
-    let address = unsafe { GetProcAddress(kernel, b"QueryPerformanceCounter\0".as_ptr()) };
+    let address = unsafe { GetProcAddress(kernel, c"QueryPerformanceCounter".as_ptr().cast()) };
     (!address.is_null()).then_some(address as usize)
 }
 
@@ -225,7 +225,7 @@ pub fn enable_probe() -> bool {
     };
     // Sample before hooking; the tracked timeline is continuous.
     session.sample(now);
-    let replacement = intercepted_qpc as usize;
+    let replacement = intercepted_qpc as *const () as usize;
     let mut installed = Vec::new();
     for (slot, original) in slots {
         if !unsafe { patch_slot(slot, original, replacement) } {
@@ -279,7 +279,7 @@ pub fn disable_probe() -> bool {
         return true;
     };
     for (slot, original) in &active.slots {
-        if !unsafe { patch_slot(*slot, intercepted_qpc as usize, *original) } {
+        if !unsafe { patch_slot(*slot, intercepted_qpc as *const () as usize, *original) } {
             return false;
         }
     }

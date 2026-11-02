@@ -9,7 +9,7 @@ fn main() {
 
 #[cfg(windows)]
 mod windows_probe {
-    use std::{ffi::c_void, os::windows::ffi::OsStrExt, path::Path, thread, time::Duration};
+    use std::{ffi::{CStr, c_void}, os::windows::ffi::OsStrExt, path::Path, thread, time::Duration};
 
     #[link(name = "kernel32")]
     unsafe extern "system" {
@@ -59,7 +59,7 @@ mod windows_probe {
         if kernel.is_null() {
             return Err("cannot find kernel32 module".to_owned());
         }
-        let address = unsafe { GetProcAddress(kernel, b"QueryPerformanceCounter\0".as_ptr()) };
+        let address = unsafe { GetProcAddress(kernel, c"QueryPerformanceCounter".as_ptr().cast()) };
         if address.is_null() {
             return Err("cannot resolve original QPC".to_owned());
         }
@@ -95,12 +95,12 @@ mod windows_probe {
     }
     type ShutdownFn = unsafe extern "system" fn() -> i32;
 
-    unsafe fn resolve(module: &LoadedModule, name: &'static [u8]) -> Result<*const c_void, String> {
-        let address = unsafe { GetProcAddress(module.0, name.as_ptr()) };
+    unsafe fn resolve(module: &LoadedModule, name: &'static CStr) -> Result<*const c_void, String> {
+        let address = unsafe { GetProcAddress(module.0, name.as_ptr().cast()) };
         if address.is_null() {
             return Err(format!(
                 "missing exported function {:?}",
-                String::from_utf8_lossy(name)
+                name.to_string_lossy()
             ));
         }
         Ok(address)
@@ -132,8 +132,8 @@ mod windows_probe {
         }
         let module = LoadedModule(handle);
 
-        let state_raw = unsafe { resolve(&module, b"intimatr_lifecycle_state\0")? };
-        let shutdown_raw = unsafe { resolve(&module, b"intimatr_request_shutdown\0")? };
+        let state_raw = unsafe { resolve(&module, c"intimatr_lifecycle_state")? };
+        let shutdown_raw = unsafe { resolve(&module, c"intimatr_request_shutdown")? };
         let state: StateFn = unsafe { std::mem::transmute(state_raw) };
         let shutdown: ShutdownFn = unsafe { std::mem::transmute(shutdown_raw) };
 
@@ -161,13 +161,13 @@ mod windows_probe {
         // this experimental import hook. The probe verifies actual API time,
         // not just the separately tested pure virtual-clock arithmetic.
         let hook_enable: BoolFn =
-            unsafe { std::mem::transmute(resolve(&module, b"intimatr_timer_probe_enable\0")?) };
+            unsafe { std::mem::transmute(resolve(&module, c"intimatr_timer_probe_enable")?) };
         let hook_disable: BoolFn =
-            unsafe { std::mem::transmute(resolve(&module, b"intimatr_timer_probe_disable\0")?) };
+            unsafe { std::mem::transmute(resolve(&module, c"intimatr_timer_probe_disable")?) };
         let hook_count: unsafe extern "system" fn() -> u32 =
-            unsafe { std::mem::transmute(resolve(&module, b"intimatr_timer_probe_hook_count\0")?) };
+            unsafe { std::mem::transmute(resolve(&module, c"intimatr_timer_probe_hook_count")?) };
         let set_rate: RateFn =
-            unsafe { std::mem::transmute(resolve(&module, b"intimatr_timer_probe_rate\0")?) };
+            unsafe { std::mem::transmute(resolve(&module, c"intimatr_timer_probe_rate")?) };
         if unsafe { hook_enable() } == 0 {
             return Err("fixture's QueryPerformanceCounter import was not hooked".into());
         }
