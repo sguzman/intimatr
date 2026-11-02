@@ -11,10 +11,10 @@ fn main() {
 mod windows_probe {
     use std::{
         ffi::{CStr, c_void},
-        os::windows::ffi::OsStrExt,
-        path::{Path, PathBuf},
         fs::OpenOptions,
         io::Write,
+        os::windows::ffi::OsStrExt,
+        path::{Path, PathBuf},
         sync::{Arc, Barrier},
         thread,
         time::Duration,
@@ -369,9 +369,8 @@ mod windows_probe {
             unsafe { std::mem::transmute(resolve(&module, c"intimatr_timer_probe_rate")?) };
         let fail_after: unsafe extern "system" fn(u32) -> i32 =
             unsafe { std::mem::transmute(resolve(&module, c"intimatr_timer_probe_fail_after")?) };
-        let shared_rate: RateFn = unsafe {
-            std::mem::transmute(resolve(&module, c"intimatr_timer_probe_shared_rate")?)
-        };
+        let shared_rate: RateFn =
+            unsafe { std::mem::transmute(resolve(&module, c"intimatr_timer_probe_shared_rate")?) };
         for stage in [0, 1, 2, 3] {
             if unsafe { fail_after(stage) } != 0 || unsafe { hook_count() } != 0 {
                 return Err(format!(
