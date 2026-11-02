@@ -92,7 +92,7 @@ The native manager can inspect the resolved speed for a specifically named bottl
 cargo run --locked --bin intimatr-bottles -- profile-check --config config/speed-global.example.toml --bottle Games --exe 'C:\Games\SinglePlayer\Game.exe'
 ```
 
-It prints `operation = read_only_profile_resolution` with the matched bottle/game flags, exclusion status and effective speed settings. The flags `dll_loaded = false` and `attachment_attempted = false` are deliberate: this command only resolves TOML, and cannot claim the target process exists. This CLI is a profile-preview tool and not a substitute for actual Bottles identity and Wine path compatibility testing.
+It prints `operation = read_only_profile_resolution` with the matched bottle/game flags, exclusion status, effective speed settings and validated `hotkeys` configuration. The additional `hotkey_delivery = not_wired_to_game_input` field explicitly prevents confusing configuration with running-game input support. The flags `dll_loaded = false` and `attachment_attempted = false` are deliberate: this command only resolves TOML, and cannot claim the target process exists. This CLI is a profile-preview tool and not a substitute for actual Bottles identity and Wine path compatibility testing.
 
 ## Focused-window speed hotkeys (portable configuration stage)
 
