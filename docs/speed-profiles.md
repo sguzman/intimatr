@@ -47,3 +47,37 @@ The future loader manager will opt supported offline games into the DLL; a globa
 ## Verification
 
 The parser's synthetic tests exercise safe defaults, custom ordered steps, schema version rejection, invalid bounds and values, unsupported keys, and TOML round trips. Test results must be confirmed in Linux or Windows CI at the exact commit before task INT-1201 can be marked verified.
+
+## Bottle and executable speed rules (portable matching implemented)
+
+The shared version-1 TOML can now contain optional `[[bottles]]` and `[[games]]` overrides. The **portable parser, precedence resolver, identity checks, and unit tests** are implemented in [src/speed_policy.rs](../src/speed_policy.rs). These are not yet connected to live Bottles discovery, DLL startup or automatic game enrollment.
+
+```toml
+version = 1
+
+[speed]
+enabled = false
+
+[[bottles]]
+name = "Games"
+[bottles.speed]
+enabled = true
+initial_multiplier = 1.5
+
+[[games]]
+bottle = "Games"
+path = 'C:\Games\SinglePlayer\Game.exe'
+[games.speed]
+initial_multiplier = 2.0
+
+[[games]]
+bottle = "Online"
+path = 'C:\Games\NetworkGame.exe'
+exclude = true
+```
+
+Resolution order is **global → matching bottle → matching full executable path**. The per-rule `[bottles.speed]` and `[games.speed]` tables allow optional `enabled`, `initial_multiplier`, `min_multiplier`, `max_multiplier`, and `steps` keys. Validation applies after merging so an out-of-range final profile fails instead of silently clamping. An `exclude = true` in either the bottle or game layer always wins over a more specific `enabled = true`.
+
+Bottle names are matched with trimmed ASCII-insensitive comparisons. Executable rules require a drive-qualified absolute Windows path, normalize ASCII case and slash separators, and reject `.`, `..`, UNC paths and basename-only rules. The complete bottle-plus-path identity distinguishes same-named `.exe` files in different game directories or bottles. Duplicate normalized rules, unknown fields and invalid effective speeds fail profile loading. Windows Unicode case-folding, mapped-drive aliases, filesystem links and native Bottles path identity remain future compatibility gates.
+
+**Important:** a speed rule is data describing a hypothetical target's speed; it does not grant process attachment or enroll all matching games. Deployment remains a separate opt-in flow. INT-1202 requires validating actual native Bottles inventory and path identities before its weighted completion is credited.

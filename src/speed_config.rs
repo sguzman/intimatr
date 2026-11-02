@@ -7,6 +7,8 @@
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use crate::speed_policy::{BottleSpeedRule, GameSpeedRule, validate_overrides};
+
 pub const CURRENT_SPEED_PROFILE_VERSION: u32 = 1;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -15,6 +17,10 @@ pub struct SharedSpeedConfig {
     pub version: u32,
     #[serde(default)]
     pub speed: SpeedSettings,
+    #[serde(default)]
+    pub bottles: Vec<BottleSpeedRule>,
+    #[serde(default)]
+    pub games: Vec<GameSpeedRule>,
 }
 
 impl SharedSpeedConfig {
@@ -32,7 +38,8 @@ impl SharedSpeedConfig {
                 "unsupported speed profile version",
             ));
         }
-        self.speed.validate()
+        self.speed.validate()?;
+        validate_overrides(self)
     }
 }
 
@@ -181,6 +188,8 @@ mod tests {
                 initial_multiplier: 1.5,
                 ..SpeedSettings::default()
             },
+            bottles: Vec::new(),
+            games: Vec::new(),
         };
         let encoded = toml::to_string(&original).expect("serialize profile");
         assert_eq!(
