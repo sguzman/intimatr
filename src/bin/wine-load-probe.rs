@@ -10,11 +10,10 @@ fn main() {
 #[cfg(windows)]
 mod windows_probe {
     use std::{
-        ffi::{c_void, OsStr},
+        ffi::{OsStr, c_void},
         os::windows::ffi::OsStrExt,
         path::Path,
-        ptr,
-        thread,
+        ptr, thread,
         time::Duration,
     };
 
@@ -54,7 +53,10 @@ mod windows_probe {
         let directory = executable.parent().unwrap_or_else(|| Path::new("."));
         let dll = directory.join("intimatr.dll");
         if !dll.is_file() {
-            return Err(format!("test DLL missing beside executable: {}", dll.display()));
+            return Err(format!(
+                "test DLL missing beside executable: {}",
+                dll.display()
+            ));
         }
 
         let wide: Vec<u16> = OsStr::new(dll.as_os_str())
