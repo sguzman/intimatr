@@ -134,18 +134,22 @@ fn speed_preview_rpc_round_trips_and_shares_in_memory_state() {
     };
     assert_eq!(changed.preview_multiplier, 1.5);
     assert!(!changed.clock_applied_to_game);
-    let local = shared.execute(Command::Speed {
-        request: SpeedRequest::Status,
-    }).unwrap();
+    let local = shared
+        .execute(Command::Speed {
+            request: SpeedRequest::Status,
+        })
+        .unwrap();
     let CommandResult::Speed { status: local } = local.result else {
         panic!("expected shared coordinator status");
     };
     assert_eq!(local.preview_multiplier, changed.preview_multiplier);
-    assert!(client
-        .call(Command::Speed {
-            request: SpeedRequest::SelectPreset { multiplier: 1.25 },
-        })
-        .is_err());
+    assert!(
+        client
+            .call(Command::Speed {
+                request: SpeedRequest::SelectPreset { multiplier: 1.25 },
+            })
+            .is_err()
+    );
 
     server.stop().unwrap();
 }
