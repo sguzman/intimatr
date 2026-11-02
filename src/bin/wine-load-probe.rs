@@ -397,6 +397,7 @@ mod windows_probe {
             measure_current_rate(expected)?;
         }
         println!("Ordinary speed RPC commands drove four already-installed Wine timer imports");
+        exercise_rpc_hold_expiry(directory)?;
         Ok(())
     }
 
@@ -432,6 +433,63 @@ mod windows_probe {
                 .map_err(|error| format!("cannot acknowledge stage {stage}: {error}"))?;
         }
         println!("Linux Bottles speed CLI drove four hooked APIs through external Wine RPC");
+        Ok(())
+    }
+
+    /// A read-only RPC status query must not restart a temporary rate.
+    /// The IAT clock itself must expire the lease when callbacks are read.
+    fn exercise_rpc_hold_expiry(directory: &Path) -> Result<(), String> {
+        fn call(
+            client: &Path,
+            request: &[&str],
+        ) -> Result<serde_json::Value, String> {
+            let output = std::process::Command::new(client)
+                .args(request)
+                .output()
+                .map_err(|error| format!("cannot start timed speed client: {error}"))?;
+            if !output.status.success() {
+                return Err(format!(
+                    "timed speed command failed: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                ));
+            }
+            serde_json::from_slice(&output.stdout)
+                .map_err(|error| format!("invalid timed speed JSON: {error}"))
+        }
+
+        let client = directory.join("intimatr-speed.exe");
+        let hold = call(
+            &client,
+            &["--tcp", "127.0.0.1:31379", "hold", "2.0", "1800"],
+        )?;
+        if hold["preview_multiplier"] != 2.0 {
+            return Err(format!("timed hold did not activate: {hold}"));
+        }
+        let read_only = call(&client, &["--tcp", "127.0.0.1:31379", "status"])?;
+        if read_only["preview_multiplier"] != 2.0 {
+            return Err(format!("status unexpectedly canceled active hold: {read_only}"));
+        }
+        measure_current_rate(2.0)?;
+        thread::sleep(Duration::from_millis(1900));
+        measure_current_rate(1.0)?;
+        let expired = call(&client, &["--tcp", "127.0.0.1:31379", "status"])?;
+        if expired["preview_multiplier"] != 1.0 {
+            return Err(format!("held preview did not expire: {expired}"));
+        }
+
+        let held = call(
+            &client,
+            &["--tcp", "127.0.0.1:31379", "hold", "0.5", "2000"],
+        )?;
+        if held["preview_multiplier"] != 0.5 {
+            return Err(format!("second hold not activated: {held}"));
+        }
+        let released = call(&client, &["--tcp", "127.0.0.1:31379", "release"])?;
+        if released["preview_multiplier"] != 1.0 {
+            return Err(format!("explicit hold release not applied: {released}"));
+        }
+        measure_current_rate(1.0)?;
+        println!("Wine fixture timed hold expired without RPC polling and explicit release restored 1x");
         Ok(())
     }
 
