@@ -119,3 +119,4 @@ finally {
     if (Test-Path $tempRoot) {
         Remove-Item $tempRoot -Recurse -Force
     }
+}
