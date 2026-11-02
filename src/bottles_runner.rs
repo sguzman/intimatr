@@ -26,6 +26,20 @@ pub struct RunnerAudit {
     pub safe_to_attach: bool,
 }
 
+impl RunnerAudit {
+    fn unavailable() -> Self {
+        Self {
+            configured_runner_name: None,
+            bottle_architecture: None,
+            configured_environment: None,
+            configured_runner_path: None,
+            runner_path_verified: false,
+            reason: "metadata_unavailable_in_list_shape",
+            safe_to_attach: false,
+        }
+    }
+}
+
 fn field(map: &serde_json::Map<String, Value>, name: &str) -> Result<Option<String>, String> {
     match map.get(name) {
         None | Some(Value::Null) => Ok(None),
@@ -40,14 +54,17 @@ fn field(map: &serde_json::Map<String, Value>, name: &str) -> Result<Option<Stri
 pub fn audit_runner_metadata(input: &str, bottle: &str) -> Result<RunnerAudit, String> {
     let root: Value = serde_json::from_str(input)
         .map_err(|error| format!("invalid Bottles inventory: {error}"))?;
-    let root = root
-        .as_object()
-        .ok_or("expected name-keyed Bottles inventory")?;
-    let root = root
-        .get("bottles")
-        .or_else(|| root.get("Bottles"))
-        .and_then(Value::as_object)
-        .unwrap_or(root);
+    // Older/alternate CLI shapes list only names. Keep matching read-only
+    // and the runner explicitly unknown instead of rejecting a valid bottle.
+    let Some(root) = root.as_object() else {
+        return Ok(RunnerAudit::unavailable());
+    };
+    let root = match root.get("bottles").or_else(|| root.get("Bottles")) {
+        Some(Value::Object(collection)) => collection,
+        Some(Value::Array(_)) => return Ok(RunnerAudit::unavailable()),
+        Some(_) => return Err("unsupported nested Bottles metadata".into()),
+        None => root,
+    };
     let bottle_config = root
         .get(bottle)
         .ok_or("selected bottle is not in runtime inventory")?
@@ -146,6 +163,21 @@ mod tests {
         assert!(!audit.runner_path_verified);
         assert!(!audit.safe_to_attach);
         assert_eq!(audit.reason, "managed_or_external_runner_location_unknown");
+    }
+
+    #[test]
+    fn name_only_list_keeps_runner_unverified() {
+        for list in [
+            r#"["Games"]"#,
+            r#"{"bottles":["Games"]}"#,
+            r#"{"Bottles":["Games"]}"#,
+        ] {
+            let audit = audit_runner_metadata(list, "Games").unwrap();
+            assert_eq!(audit.reason, "metadata_unavailable_in_list_shape");
+            assert!(audit.configured_runner_name.is_none());
+            assert!(!audit.runner_path_verified);
+            assert!(!audit.safe_to_attach);
+        }
     }
 
     #[test]
