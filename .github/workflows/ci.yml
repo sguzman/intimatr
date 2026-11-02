@@ -179,7 +179,6 @@ jobs:
           chmod +x target/wine-attach/mocks/bottles-cli
           target/release/intimatr-bottles live-match \
             --bottle Fixture \
-            --prefix "$WINEPREFIX" \
             --helper target/wine-attach/wine-process-list.exe \
             --runner wine \
             --bottles-cli target/wine-attach/mocks/bottles-cli > target/wine-attach/live-match.json
@@ -191,6 +190,20 @@ jobs:
           grep -q '"status": "not_registered_in_selected_bottle"' target/wine-attach/live-match.json
           grep -q '"safe_to_attach": false' target/wine-attach/live-match.json
           grep -q '"attachment_attempted": false' target/wine-attach/live-match.json
+          grep -q '"prefix_source": "configured_bottles_root"' target/wine-attach/live-match.json
+          # Wrong explicit Wine prefix must fail before the PE helper runs.
+          mkdir -p "$RUNNER_TEMP/Other/drive_c"
+          if target/release/intimatr-bottles live-match \
+            --bottle Fixture \
+            --prefix "$RUNNER_TEMP/Other" \
+            --helper target/wine-attach/wine-process-list.exe \
+            --runner wine \
+            --bottles-cli target/wine-attach/mocks/bottles-cli 2> target/wine-attach/wrong-prefix.stderr; then
+            echo "ERROR: mismatched bottle and prefix were accepted" >&2
+            exit 1
+          fi
+          grep -q 'supplied WINEPREFIX is not' target/wine-attach/wrong-prefix.stderr
+          echo "Read-only Bottles prefix ownership rejected an unrelated prefix"
           if target/release/intimatr-bottles live-match \
             --bottle Missing \
             --prefix "$WINEPREFIX" \
