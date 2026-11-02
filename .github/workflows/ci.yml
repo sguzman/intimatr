@@ -206,6 +206,16 @@ jobs:
           grep -q "\"windows_pid\": $windows_pid" target/wine-attach/live-match.json
           grep -q '"operation": "read_only_live_bottles_wine_match"' target/wine-attach/live-match.json
           grep -q '"bottle_prefix_association_verified": true' target/wine-attach/live-match.json
+          # Live matching must NEVER silently choose system Wine for a
+          # bottle that may require a patched or external runner.
+          if target/release/intimatr-bottles live-match \
+            --bottle Fixture \
+            --helper target/wine-attach/wine-process-list.exe \
+            --bottles-cli target/wine-attach/mocks/bottles-cli 2> target/wine-attach/missing-runner.stderr; then
+            echo "ERROR: implicit default Wine runner was accepted" >&2
+            exit 1
+          fi
+          grep -q 'missing --runner' target/wine-attach/missing-runner.stderr
           grep -q '"runner_verified": false' target/wine-attach/live-match.json
           grep -q '"configured_runner_name": "test-wine"' target/wine-attach/live-match.json
           grep -q '"bottle_architecture": "win64"' target/wine-attach/live-match.json
