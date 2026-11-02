@@ -90,3 +90,21 @@ Other modes include `plan --all --exclude-bottle 'Online*'` or `plan --include-p
 A minimal Windows-only test process, `src/bin/wine-load-probe.rs`, and a safe per-executable fixture, `config/wine-load-probe.exe.toml`, prove the **normal in-process LoadLibraryW path**, separate from injecting a third-party game. The test process loads the Linux-built `intimatr.dll`, resolves Intimatr's lifecycle exports, waits for Running, requests orderly shutdown, verifies Stopped, and unloads.
 
 The CI `wine-load-smoke` job runs this in a disposable Ubuntu Wine prefix with UI, debugger, RPC and memory writes disabled; the original Windows CI, Linux GNU cross-build and native Bottles manager continue independently. A passing test proves Wine can load Intimatr in **one deliberately controlled test process**, not that the DLL loads automatically into all games or that timer hooks work. A failed test must be diagnosed, not claimed as a verified integration.
+
+## 2026-11-02: Running-process attachment proven in disposable Wine fixture
+
+[GitHub Actions run 41371726886](https://github.com/sguzman/intimatr/actions/runs/41371726886), job `wine-load-smoke`, **passed the remote attachment step**. Both PE executables ([target](../src/bin/wine-attach-target.rs) and [helper](../src/bin/wine-attach-helper.rs)) were built on Linux for `x86_64-pc-windows-gnu`. CI launched `wine-attach-target.exe` first in a disposable `WINEPREFIX`; the target wrote its Windows PID (32 in the observed run) before the helper was started.
+
+The separately launched Windows helper, running under the **same Wine prefix**, checked that the requested PID belonged specifically to `wine-attach-target.exe`. It resolved `LoadLibraryW` to the actual containing system module, found that module's base in the target process and computed a target-relative start address rather than assuming identical absolute addresses. After writing the known `intimatr.dll` path to the target, it started and joined a remote loader thread. The target then independently confirmed the DLL reached Running and shut down to Stopped.
+
+CI output explicitly showed:
+
+```text
+Offline Wine attach target awaiting DLL; pid=32
+Wine helper completed remote LoadLibraryW thread for test PID 32
+Wine attach target observed Running then Stopped
+```
+
+**Scope and important limitations:** this proves a *controlled* already-running Windows process can load the DLL through Wine on the tested Ubuntu x86-64 runner. The helper is hard-allowlisted to that exact fixture, does not enumerate or select personal games, and is not installed into Bottles. It is not a general-purpose injector, anti-cheat bypass, or a process-attach service. It does not prove compatibility with the user's native Bottles runner, cross-bitness, a real game, repeated attachment, timing hooks in the remote target, or safe live-game teardown. The run's independent strict lint jobs failed a helper style check subsequently corrected; the latest full CI result must be checked before broader verification claims.
+
+**Next engineering gates:** connect the native Linux Bottles manager to targeted process/prefix discovery and an opt-in same-prefix Windows helper, add actual DLL readiness/status confirmation (not merely a remote thread return), verify correct process identity and compatibility before any application, and test duplicate attach/rollback. No automatic game-wide changes are authorized by this fixture.
