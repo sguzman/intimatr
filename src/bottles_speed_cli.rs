@@ -58,7 +58,9 @@ impl SpeedForward {
                         .parse()
                         .map_err(|_| "--tcp requires a numeric loopback IP and port")?;
                     if !address.ip().is_loopback() || address.port() == 0 {
-                        return Err("remote, wildcard and zero-port RPC endpoints are refused".into());
+                        return Err(
+                            "remote, wildcard and zero-port RPC endpoints are refused".into()
+                        );
                     }
                     endpoint = Some(("--tcp", value));
                 }
@@ -80,7 +82,9 @@ impl SpeedForward {
         let preset = match action.as_str() {
             "status" | "increase" | "decrease" | "toggle" | "reset" => None,
             "preset" => {
-                let raw = args.get(i).ok_or("preset requires a finite positive multiplier")?;
+                let raw = args
+                    .get(i)
+                    .ok_or("preset requires a finite positive multiplier")?;
                 let speed: f64 = raw
                     .parse()
                     .map_err(|_| "preset requires a finite positive multiplier")?;
@@ -185,7 +189,14 @@ mod tests {
 
     #[test]
     fn refuses_implicit_targets_and_network_endpoints() {
-        let base = ["--prefix", "/tmp/prefix", "--runner", "/bin/wine", "--client", "/tmp/intimatr-speed.exe"];
+        let base = [
+            "--prefix",
+            "/tmp/prefix",
+            "--runner",
+            "/bin/wine",
+            "--client",
+            "/tmp/intimatr-speed.exe",
+        ];
         assert!(SpeedForward::parse(&args(&base)).is_err());
         for endpoint in ["192.168.1.2:1234", "0.0.0.0:2345", "127.0.0.1:0"] {
             let mut input = base.to_vec();
@@ -198,16 +209,29 @@ mod tests {
             assert!(SpeedForward::parse(&args(&input)).is_err());
         }
         let mut duplicate = base.to_vec();
-        duplicate.extend(["--tcp", "127.0.0.1:1234", "--tcp", "127.0.0.1:1235", "status"]);
+        duplicate.extend([
+            "--tcp",
+            "127.0.0.1:1234",
+            "--tcp",
+            "127.0.0.1:1235",
+            "status",
+        ]);
         assert!(SpeedForward::parse(&args(&duplicate)).is_err());
     }
 
     #[test]
     fn accepts_only_explicit_loopback_or_simple_local_pipe() {
         let mut tokens = args(&[
-            "--prefix", "/tmp/prefix with spaces", "--runner", "/tmp/wine patched",
-            "--client", "/tmp/intimatr speed.exe", "--pipe", "intimatr_local",
-            "preset", "1.5",
+            "--prefix",
+            "/tmp/prefix with spaces",
+            "--runner",
+            "/tmp/wine patched",
+            "--client",
+            "/tmp/intimatr speed.exe",
+            "--pipe",
+            "intimatr_local",
+            "preset",
+            "1.5",
         ]);
         let parsed = SpeedForward::parse(&tokens).unwrap();
         assert_eq!(parsed.action, "preset");
@@ -223,14 +247,18 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let root = std::env::temp_dir().join(format!("intimatr-speed-forward-{}-{nonce}", std::process::id()));
+        let root = std::env::temp_dir().join(format!(
+            "intimatr-speed-forward-{}-{nonce}",
+            std::process::id()
+        ));
         let prefix = root.join("selected bottle");
         fs::create_dir_all(prefix.join("drive_c")).unwrap();
         let runner = root.join("fake runner.sh");
         let client = root.join("intimatr speed.exe");
         fs::write(&client, b"fixture").unwrap();
         let mut file = fs::File::create(&runner).unwrap();
-        file.write_all(b"#!/bin/sh\nprintf '%s\\n' \"$WINEPREFIX\" \"$1\" \"$2\" \"$3\"\n").unwrap();
+        file.write_all(b"#!/bin/sh\nprintf '%s\\n' \"$WINEPREFIX\" \"$1\" \"$2\" \"$3\"\n")
+            .unwrap();
         drop(file);
         let mut perms = fs::metadata(&runner).unwrap().permissions();
         perms.set_mode(0o755);
