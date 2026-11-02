@@ -2,7 +2,7 @@
 
 Intimatr's proposed shared speed configuration is a **versioned TOML file**. The schema parser and validator are implemented in [src/speed_config.rs](../src/speed_config.rs), with an example in [config/speed-global.example.toml](../config/speed-global.example.toml).
 
-**Important state distinction:** the schema and unit tests exist; **the Windows DLL does not yet resolve or apply this global file**, and per-bottle/per-game overrides are not implemented. A profile is not proof of a running speedhack.
+**Important state distinction:** the schema, per-bottle/per-game override resolver, and portable unit tests exist; **the Windows DLL does not yet resolve or apply the shared global profile**. Actual Bottles process identity and runtime activation remain unverified. A profile is not proof of a running speedhack.
 
 ## Example
 
