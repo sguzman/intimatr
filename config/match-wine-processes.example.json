@@ -1,0 +1,20 @@
+{
+  "operation": "read_only_wine_windows_processes",
+  "attachment_attempted": false,
+  "processes": [
+    {
+      "windows_pid": 42,
+      "reported_executable": "Game.exe",
+      "full_image_path": "c:\\games\\offline\\GAME.exe",
+      "image_query_verified": true,
+      "safe_to_attach": false
+    },
+    {
+      "windows_pid": 43,
+      "reported_executable": "Game.exe",
+      "full_image_path": null,
+      "image_query_verified": false,
+      "safe_to_attach": false
+    }
+  ]
+}

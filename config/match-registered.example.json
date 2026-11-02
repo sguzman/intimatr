@@ -1,0 +1,4 @@
+[
+  {"name":"Verified offline","executable":"Game.exe","path":"C:\\Games\\Offline\\Game.exe","arguments":""},
+  {"name":"Other same basename","executable":"Game.exe","path":"C:\\Games\\Other\\Game.exe","arguments":""}
+]

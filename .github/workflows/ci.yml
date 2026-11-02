@@ -279,6 +279,21 @@ jobs:
           wait "$fixture_pid" || true
           trap - EXIT
 
+      - name: Verify read-only Bottles registered game and Wine PID path correlation
+        shell: bash
+        run: |
+          set -euo pipefail
+          target/release/intimatr-bottles match-snapshot \
+            --bottle Offline \
+            --programs config/match-registered.example.json \
+            --windows config/match-wine-processes.example.json > target/intimatr-match-report.json
+          grep -q '"operation": "read_only_wine_registered_program_matching"' target/intimatr-match-report.json
+          grep -q '"windows_pid": 42' target/intimatr-match-report.json
+          grep -q '"registered_program_name": "Verified offline"' target/intimatr-match-report.json
+          grep -q '"status": "image_path_unknown"' target/intimatr-match-report.json
+          grep -q '"safe_to_attach": false' target/intimatr-match-report.json
+          grep -q '"attachment_attempted": false' target/intimatr-match-report.json
+
       - name: Strict Clippy for Windows GNU target from Linux
         run: cargo clippy --locked --target x86_64-pc-windows-gnu --all-targets --all-features -- -D warnings
 
