@@ -109,9 +109,18 @@ fn original_timer_addresses() -> Option<[(usize, usize); 3]> {
         return None;
     }
     let imports = [
-        (c"QueryPerformanceCounter", intercepted_qpc as *const () as usize),
-        (c"GetTickCount64", intercepted_tick_count64 as *const () as usize),
-        (c"GetTickCount", intercepted_tick_count as *const () as usize),
+        (
+            c"QueryPerformanceCounter",
+            intercepted_qpc as *const () as usize,
+        ),
+        (
+            c"GetTickCount64",
+            intercepted_tick_count64 as *const () as usize,
+        ),
+        (
+            c"GetTickCount",
+            intercepted_tick_count as *const () as usize,
+        ),
     ];
     let mut results = [(0, 0); 3];
     for (index, (name, replacement)) in imports.iter().enumerate() {

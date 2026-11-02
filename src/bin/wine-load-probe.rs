@@ -58,9 +58,7 @@ mod windows_probe {
     }
 
     fn kernel32_module() -> Result<*mut c_void, String> {
-        let name: &[u16] = &[
-            107, 101, 114, 110, 101, 108, 51, 50, 46, 100, 108, 108, 0,
-        ];
+        let name: &[u16] = &[107, 101, 114, 110, 101, 108, 51, 50, 46, 100, 108, 108, 0];
         let kernel = unsafe { GetModuleHandleW(name.as_ptr()) };
         if kernel.is_null() {
             Err("cannot find kernel32 module".to_owned())
@@ -118,11 +116,11 @@ mod windows_probe {
         if real64_delta == 0 || real32_delta == 0 {
             return Err("unmodified Windows millisecond timers did not advance".to_owned());
         }
-        let ratio64 = virtual64_after.saturating_sub(virtual64_before) as f64
-            / real64_delta as f64;
-        let ratio32 = virtual32_after.wrapping_sub(virtual32_before) as f64
-            / real32_delta as f64;
-        println!("Wine ms timer hooks: requested={rate:.2}x tick64={ratio64:.3}x tick32={ratio32:.3}x");
+        let ratio64 = virtual64_after.saturating_sub(virtual64_before) as f64 / real64_delta as f64;
+        let ratio32 = virtual32_after.wrapping_sub(virtual32_before) as f64 / real32_delta as f64;
+        println!(
+            "Wine ms timer hooks: requested={rate:.2}x tick64={ratio64:.3}x tick32={ratio32:.3}x"
+        );
         if (ratio64 - rate).abs() > 0.30 || (ratio32 - rate).abs() > 0.30 {
             return Err(format!(
                 "inconsistent Windows millisecond timer scaling at {rate}x"
@@ -235,7 +233,9 @@ mod windows_probe {
         let count = unsafe { hook_count() };
         println!("Wine QPC hook installed on {count} import slots");
         if count < 3 {
-            return Err(format!("only {count} timer imports hooked; expected at least three"));
+            return Err(format!(
+                "only {count} timer imports hooked; expected at least three"
+            ));
         }
         measure_rate(0.5, set_rate)?;
         measure_rate(2.0, set_rate)?;
