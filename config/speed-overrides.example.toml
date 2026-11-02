@@ -1,0 +1,29 @@
+# Read-only, synthetic speed-policy QA fixture.
+# These declarations DO NOT permit process loading or game attachment.
+version = 1
+
+[speed]
+enabled = false
+initial_multiplier = 1.0
+
+[[bottles]]
+name = "Games"
+[bottles.speed]
+enabled = true
+initial_multiplier = 1.5
+
+[[bottles]]
+name = "Online"
+exclude = true
+
+[[games]]
+bottle = "Games"
+path = 'C:\Games\Offline.exe'
+[games.speed]
+initial_multiplier = 2.0
+
+[[games]]
+bottle = "Online"
+path = 'C:\Games\Network.exe'
+[games.speed]
+enabled = true

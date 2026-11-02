@@ -227,6 +227,25 @@ jobs:
           test -s target/release/intimatr-bottles
           file target/release/intimatr-bottles | grep -q 'ELF 64-bit'
 
+      - name: Verify read-only global bottle game precedence in Linux CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          target/release/intimatr-bottles profile-check \
+            --config config/speed-overrides.example.toml \
+            --bottle Games \
+            --exe 'c:/games/offline.exe' > target/intimatr-profile-qa.json
+          grep -q '"operation": "read_only_profile_resolution"' target/intimatr-profile-qa.json
+          grep -q '"matched_game": true' target/intimatr-profile-qa.json
+          grep -q '"initial_multiplier": 2.0' target/intimatr-profile-qa.json
+          grep -q '"attachment_attempted": false' target/intimatr-profile-qa.json
+          target/release/intimatr-bottles profile-check \
+            --config config/speed-overrides.example.toml \
+            --bottle Online \
+            --exe 'C:\Games\Network.exe' > target/intimatr-profile-excluded.json
+          grep -q '"excluded": true' target/intimatr-profile-excluded.json
+          grep -q '"enabled": false' target/intimatr-profile-excluded.json
+
       - name: Strict Clippy for Windows GNU target from Linux
         run: cargo clippy --locked --target x86_64-pc-windows-gnu --all-targets --all-features -- -D warnings
 
