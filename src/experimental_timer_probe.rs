@@ -379,8 +379,9 @@ fn enable_probe_with_fault(fail_after: Option<usize>) -> bool {
         return false;
     };
     let is_our_probe = executable.file_name().is_some_and(|name| {
-        name.to_string_lossy()
-            .eq_ignore_ascii_case("wine-load-probe.exe")
+        let file = name.to_string_lossy();
+        file.eq_ignore_ascii_case("wine-load-probe.exe")
+            || file.eq_ignore_ascii_case("wine-attach-target.exe")
     });
     if !is_our_probe {
         return false;
