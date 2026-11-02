@@ -195,8 +195,9 @@ mod target {
                             // assert that a second explicit attach is refused.
                             let verified = directory.join("attach-verified.flag");
                             let release = directory.join("attach-release.flag");
-                            std::fs::write(&verified, b"four_timers_verified")
-                                .map_err(|error| format!("cannot publish attach status: {error}"))?;
+                            std::fs::write(&verified, b"four_timers_verified").map_err(
+                                |error| format!("cannot publish attach status: {error}"),
+                            )?;
                             let mut released = false;
                             for _ in 0..200 {
                                 if release.is_file() {

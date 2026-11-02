@@ -325,9 +325,7 @@ mod helper {
                 if !target_has_intimatr(pid)? {
                     return Err("remote loader exited without Intimatr in the target".into());
                 }
-                println!(
-                    "Wine helper confirmed Intimatr module in existing test PID {pid}"
-                );
+                println!("Wine helper confirmed Intimatr module in existing test PID {pid}");
                 Ok(())
             }
             WAIT_TIMEOUT => {
