@@ -143,6 +143,10 @@ jobs:
           export WINEDEBUG=-all
           xvfb-run -a wine target/wine-smoke/wine-load-probe.exe
 
+      - name: Exercise native Linux speed manager against hooked Wine fixture
+        shell: bash
+        run: xvfb-run -a bash scripts/wine-speed-bridge-smoke.sh
+
       - name: Run isolated already-running Wine process attach smoke
         shell: bash
         run: |

@@ -400,6 +400,41 @@ mod windows_probe {
         Ok(())
     }
 
+    /// Test-only rendezvous with the Linux-native speed CLI. The host runs
+    /// Intimatr's actual Windows RPC client under the same disposable Wine
+    /// prefix and asks this already-hooked executable to measure each rate.
+    /// This is disabled unless the isolated CI harness opts in explicitly.
+    fn exercise_external_linux_speed_bridge(directory: &Path) -> Result<(), String> {
+        if std::env::var_os("INTIMATR_EXTERNAL_SPEED_BRIDGE").is_none() {
+            return Ok(());
+        }
+        let ready = directory.join("bridge-ready.flag");
+        std::fs::write(&ready, b"four imported timer hooks active")
+            .map_err(|error| format!("cannot signal external bridge readiness: {error}"))?;
+        for (stage, rate) in [(1, 2.0), (2, 0.5), (3, 1.0)] {
+            let trigger = directory.join(format!("bridge-step-{stage}.flag"));
+            let mut received = false;
+            for _ in 0..600 {
+                if trigger.is_file() {
+                    received = true;
+                    break;
+                }
+                thread::sleep(Duration::from_millis(50));
+            }
+            if !received {
+                return Err(format!(
+                    "Linux speed manager did not signal stage {stage} within 30 seconds"
+                ));
+            }
+            measure_current_rate(rate)?;
+            let acknowledgement = directory.join(format!("bridge-ack-{stage}.flag"));
+            std::fs::write(acknowledgement, format!("measured {rate}x"))
+                .map_err(|error| format!("cannot acknowledge stage {stage}: {error}"))?;
+        }
+        println!("Linux Bottles speed CLI drove four hooked APIs through external Wine RPC");
+        Ok(())
+    }
+
     pub fn run() -> Result<(), String> {
         let executable = std::env::current_exe().map_err(|e| e.to_string())?;
         let directory = executable.parent().unwrap_or_else(|| Path::new("."));
@@ -497,6 +532,7 @@ mod windows_probe {
             ));
         }
         exercise_live_hook_through_rpc(directory)?;
+        exercise_external_linux_speed_bridge(directory)?;
         measure_rate(0.5, set_rate)?;
         measure_rate(2.0, set_rate)?;
         measure_rate(1.0, set_rate)?;
