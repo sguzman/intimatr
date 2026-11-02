@@ -485,6 +485,28 @@ pub fn set_probe_rate(multiplier: f64) -> bool {
     }
 }
 
+/// The shared command executor may synchronize rate changes only while
+/// an explicitly allowlisted disposable test process already has all four
+/// IAT imports installed. This never authorizes hook installation.
+pub(crate) fn synchronize_fixture_command(multiplier: f64) -> Result<(), &'static str> {
+    if !is_allowlisted_probe_process() {
+        return Ok(());
+    }
+    let guard = hooks().lock().map_err(|_| "fixture hook state poisoned")?;
+    let Some(active) = guard.as_ref() else {
+        return Ok(());
+    };
+    if active.slots.iter().filter(|slot| slot.active).count() < 4 {
+        return Err("fixture import hook set is incomplete");
+    }
+    drop(guard);
+    if set_probe_rate(multiplier) {
+        Ok(())
+    } else {
+        Err("fixture hook rejected the shared speed command")
+    }
+}
+
 pub fn probe_hook_count() -> u32 {
     hooks()
         .lock()

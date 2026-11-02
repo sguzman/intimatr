@@ -96,6 +96,20 @@ pub enum SpeedPreviewError {
     InactiveProfile,
     #[error(transparent)]
     Coordinator(#[from] SpeedCoordinatorError),
+    #[error("fixture timer-hook synchronization failed: {0}")]
+    FixtureClock(&'static str),
+}
+
+/// Keep the *isolated* IAT fixture in sync with shared UI/RPC/input
+/// commands. Ordinary Windows/Wine games never enter this path because the
+/// experimental IAT backend refuses every non-fixture executable.
+fn synchronize_fixture(multiplier: f64) -> Result<(), SpeedPreviewError> {
+    #[cfg(windows)]
+    crate::experimental_timer_probe::synchronize_fixture_command(multiplier)
+        .map_err(SpeedPreviewError::FixtureClock)?;
+    #[cfg(not(windows))]
+    let _ = multiplier;
+    Ok(())
 }
 
 struct PreviewSession {
@@ -173,7 +187,12 @@ impl SpeedPreviewExecutor {
         let session = guard.as_mut().ok_or(SpeedPreviewError::Unconfigured)?;
         let now = session.now();
         session.coordinator.input_sample(now, snapshot)?;
-        Ok(session.status())
+        let status = session.status();
+        if let Err(error) = synchronize_fixture(status.preview_multiplier) {
+            let _ = session.coordinator.apply(now, SpeedAction::Reset);
+            return Err(error);
+        }
+        Ok(status)
     }
 
     /// The HWND adapter can read exactly these keys. No opt-in profile means
@@ -213,10 +232,13 @@ impl SpeedPreviewExecutor {
         } else {
             let _ = session.coordinator.sample(now);
         }
+        let status = session.status();
+        if let Err(error) = synchronize_fixture(status.preview_multiplier) {
+            let _ = session.coordinator.apply(now, SpeedAction::Reset);
+            return Err(error.into());
+        }
         Ok(CommandExecution {
-            result: CommandResult::Speed {
-                status: session.status(),
-            },
+            result: CommandResult::Speed { status },
             post_action: None,
         })
     }
