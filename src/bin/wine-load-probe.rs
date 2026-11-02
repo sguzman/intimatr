@@ -371,6 +371,9 @@ mod windows_probe {
             unsafe { std::mem::transmute(resolve(&module, c"intimatr_timer_probe_fail_after")?) };
         let shared_rate: RateFn =
             unsafe { std::mem::transmute(resolve(&module, c"intimatr_timer_probe_shared_rate")?) };
+        if unsafe { shared_rate(2.0) } != 0 {
+            return Err("shared command activated a timer without installed hooks".into());
+        }
         for stage in [0, 1, 2, 3] {
             if unsafe { fail_after(stage) } != 0 || unsafe { hook_count() } != 0 {
                 return Err(format!(
@@ -414,6 +417,9 @@ mod windows_probe {
         }
         if unsafe { hook_disable() } == 0 {
             return Err("repeat timer hook disable was not idempotent".into());
+        }
+        if unsafe { shared_rate(2.0) } != 0 {
+            return Err("shared command reactivated restored timer hooks".into());
         }
         println!("Wine timer hooks restored all original imports");
 
