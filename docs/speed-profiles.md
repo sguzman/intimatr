@@ -81,3 +81,13 @@ Resolution order is **global → matching bottle → matching full executable pa
 Bottle names are matched with trimmed ASCII-insensitive comparisons. Executable rules require a drive-qualified absolute Windows path, normalize ASCII case and slash separators, and reject `.`, `..`, UNC paths and basename-only rules. The complete bottle-plus-path identity distinguishes same-named `.exe` files in different game directories or bottles. Duplicate normalized rules, unknown fields and invalid effective speeds fail profile loading. Windows Unicode case-folding, mapped-drive aliases, filesystem links and native Bottles path identity remain future compatibility gates.
 
 **Important:** a speed rule is data describing a hypothetical target's speed; it does not grant process attachment or enroll all matching games. Deployment remains a separate opt-in flow. INT-1202 requires validating actual native Bottles inventory and path identities before its weighted completion is credited.
+
+### Read-only preview from Linux
+
+The native manager can inspect the resolved speed for a specifically named bottle and complete Windows executable path, **without launching Bottles, loading a DLL or modifying files**:
+
+```fish
+cargo run --locked --bin intimatr-bottles -- profile-check --config config/speed-global.example.toml --bottle Games --exe 'C:\Games\SinglePlayer\Game.exe'
+```
+
+It prints `operation = read_only_profile_resolution` with the matched bottle/game flags, exclusion status and effective speed settings. The flags `dll_loaded = false` and `attachment_attempted = false` are deliberate: this command only resolves TOML, and cannot claim the target process exists. This CLI is a profile-preview tool and not a substitute for actual Bottles identity and Wine path compatibility testing.
