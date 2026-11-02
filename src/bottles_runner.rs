@@ -7,13 +7,13 @@
 //! Therefore this audit NEVER infers a runner from a sibling directory.
 //! Only an explicitly recorded RunnerPath is treated as candidate evidence.
 
+use serde::Serialize;
+use serde_json::Value;
 use std::{
     fs,
     os::unix::fs::PermissionsExt,
     path::{Path, PathBuf},
 };
-use serde::Serialize;
-use serde_json::Value;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct RunnerAudit {
@@ -40,11 +40,19 @@ fn field(map: &serde_json::Map<String, Value>, name: &str) -> Result<Option<Stri
 pub fn audit_runner_metadata(input: &str, bottle: &str) -> Result<RunnerAudit, String> {
     let root: Value = serde_json::from_str(input)
         .map_err(|error| format!("invalid Bottles inventory: {error}"))?;
-    let root = root.as_object().ok_or("expected name-keyed Bottles inventory")?;
-    let root = root.get("bottles").or_else(|| root.get("Bottles"))
-        .and_then(Value::as_object).unwrap_or(root);
-    let bottle_config = root.get(bottle).ok_or("selected bottle is not in runtime inventory")?
-        .as_object().ok_or("selected bottle metadata is not an object")?;
+    let root = root
+        .as_object()
+        .ok_or("expected name-keyed Bottles inventory")?;
+    let root = root
+        .get("bottles")
+        .or_else(|| root.get("Bottles"))
+        .and_then(Value::as_object)
+        .unwrap_or(root);
+    let bottle_config = root
+        .get(bottle)
+        .ok_or("selected bottle is not in runtime inventory")?
+        .as_object()
+        .ok_or("selected bottle metadata is not an object")?;
     let name = field(bottle_config, "Runner")?;
     let architecture = field(bottle_config, "Arch")?;
     let environment = field(bottle_config, "Environment")?;
@@ -130,7 +138,8 @@ mod tests {
 
     #[test]
     fn finds_runner_name_and_arch_in_native_bottles_map() {
-        let sample = r#"{"Games":{"Runner":"soda-9.0","Arch":"win64","Environment":"Gaming"},"Empty":{}}"#;
+        let sample =
+            r#"{"Games":{"Runner":"soda-9.0","Arch":"win64","Environment":"Gaming"},"Empty":{}}"#;
         let audit = audit_runner_metadata(sample, "Games").unwrap();
         assert_eq!(audit.configured_runner_name.as_deref(), Some("soda-9.0"));
         assert_eq!(audit.bottle_architecture.as_deref(), Some("win64"));
@@ -142,10 +151,15 @@ mod tests {
     #[test]
     fn system_runner_and_steam_runner_require_distinct_evidence() {
         let sys = r#"{"B":{"Runner":"sys-wine","Arch":"win64"}}"#;
-        assert_eq!(audit_runner_metadata(sys, "B").unwrap().reason, "system_runner_not_proven");
+        assert_eq!(
+            audit_runner_metadata(sys, "B").unwrap().reason,
+            "system_runner_not_proven"
+        );
         let proton = r#"{"B":{"Runner":"GE-Proton","Environment":"Steam","RunnerPath":"/tmp/GE"}}"#;
-        assert_eq!(audit_runner_metadata(proton, "B").unwrap().reason,
-            "steam_runner_path_recorded_not_verified");
+        assert_eq!(
+            audit_runner_metadata(proton, "B").unwrap().reason,
+            "steam_runner_path_recorded_not_verified"
+        );
     }
 
     #[test]
@@ -177,10 +191,14 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn recorded_steam_runner_must_match_exact_executable() {
-        use std::{os::unix::fs::symlink, sync::atomic::{AtomicUsize, Ordering}};
+        use std::{
+            os::unix::fs::symlink,
+            sync::atomic::{AtomicUsize, Ordering},
+        };
         static N: AtomicUsize = AtomicUsize::new(0);
         let root = std::env::temp_dir().join(format!(
-            "intimatr-runner-audit-{}-{}", std::process::id(),
+            "intimatr-runner-audit-{}-{}",
+            std::process::id(),
             N.fetch_add(1, Ordering::Relaxed)
         ));
         fs::create_dir_all(root.join("bin")).unwrap();

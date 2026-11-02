@@ -10,9 +10,9 @@ pub mod bottles_live_matches;
 #[cfg(target_os = "linux")]
 pub mod bottles_prefix;
 #[cfg(target_os = "linux")]
-pub mod bottles_runner;
-#[cfg(target_os = "linux")]
 pub mod bottles_processes;
+#[cfg(target_os = "linux")]
+pub mod bottles_runner;
 pub mod bottles_selection;
 pub mod command;
 pub mod config;

@@ -721,10 +721,9 @@ fn run_live_match(args: Vec<String>) -> Result<(), String> {
     let options = LiveMatchOptions::parse(&args)?;
     // Require both a registered bottle name and a verified direct prefix
     // child of Bottles' configured root. This still grants no attach access.
-    let bottle_list_json =
-        bottles_json_with_command(&options.bottles_cli, &["list", "bottles"])?;
+    let bottle_list_json = bottles_json_with_command(&options.bottles_cli, &["list", "bottles"])?;
     let names = parse_bottle_names(&bottle_list_json)
-    .map_err(|error| format!("invalid native Bottles list: {error}"))?;
+        .map_err(|error| format!("invalid native Bottles list: {error}"))?;
     if !names.iter().any(|name| name == &options.bottle) {
         return Err("selected bottle not found in native Bottles inventory".into());
     }
