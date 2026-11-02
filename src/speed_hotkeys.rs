@@ -186,12 +186,11 @@ fn parse_key(raw: &str) -> Result<u16, &'static str> {
             return Ok(u16::from(ch));
         }
     }
-    if let Some(number) = key.strip_prefix('F') {
-        if let Ok(n) = number.parse::<u16>() {
-            if (1..=24).contains(&n) {
-                return Ok(0x70 + n - 1);
-            }
-        }
+    if let Some(number) = key.strip_prefix('F')
+        && let Ok(n) = number.parse::<u16>()
+        && (1..=24).contains(&n)
+    {
+        return Ok(0x70 + n - 1);
     }
     match key.as_str() {
         "BACKSPACE" => Ok(0x08),
@@ -228,16 +227,15 @@ impl SpeedHotkeyDispatcher {
         if !self.focused {
             return None;
         }
-        if let Some(held) = self.held {
-            if (!event.pressed && event.virtual_key == held.key)
-                || !event.modifiers.includes(held.modifiers)
-            {
-                self.held = None;
-                self.pressed.remove(&held.key);
-                // A new keydown in the same event must not also trigger a
-                // second command; callers may deliver the next event normally.
-                return Some(SpeedAction::HoldRelease);
-            }
+        if let Some(held) = self.held
+            && ((!event.pressed && event.virtual_key == held.key)
+                || !event.modifiers.includes(held.modifiers))
+        {
+            self.held = None;
+            self.pressed.remove(&held.key);
+            // A new keydown in the same event must not also trigger a
+            // second command; callers may deliver the next event normally.
+            return Some(SpeedAction::HoldRelease);
         }
 
         if !event.pressed {
