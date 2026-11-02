@@ -16,10 +16,141 @@ mod target {
     unsafe extern "system" {
         fn GetModuleHandleW(module: *const u16) -> *mut c_void;
         fn GetProcAddress(module: *mut c_void, name: *const u8) -> *const c_void;
+        fn QueryPerformanceCounter(value: *mut i64) -> i32;
+        fn GetTickCount64() -> u64;
+        fn GetTickCount() -> u32;
+    }
+
+    #[link(name = "winmm")]
+    unsafe extern "system" {
+        fn timeGetTime() -> u32;
     }
 
     type StateFn = unsafe extern "system" fn() -> u32;
     type ShutdownFn = unsafe extern "system" fn() -> i32;
+    type ToggleFn = unsafe extern "system" fn() -> i32;
+    type RateFn = unsafe extern "system" fn(f64) -> i32;
+    type CountFn = unsafe extern "system" fn() -> u32;
+    type QpcFn = unsafe extern "system" fn(*mut i64) -> i32;
+    type Timer64Fn = unsafe extern "system" fn() -> u64;
+    type Timer32Fn = unsafe extern "system" fn() -> u32;
+
+    fn resolve(module: *mut c_void, name: &std::ffi::CStr) -> Result<*const c_void, String> {
+        let result = unsafe { GetProcAddress(module, name.as_ptr().cast()) };
+        if result.is_null() {
+            Err(format!("missing required DLL export: {}", name.to_string_lossy()))
+        } else {
+            Ok(result)
+        }
+    }
+
+    fn read_qpc(function: QpcFn) -> Result<i64, String> {
+        let mut counter = 0_i64;
+        if unsafe { function(&mut counter) } == 0 {
+            return Err("QPC read failed in remote attach fixture".into());
+        }
+        Ok(counter)
+    }
+
+    /// Check all four imported clocks against their original unhooked entry
+    /// points in the target process itself; no helper process does the reads.
+    fn check_scaled_clocks(rate: f64) -> Result<(), String> {
+        let kernel_name: &[u16] = &[107, 101, 114, 110, 101, 108, 51, 50, 46, 100, 108, 108, 0];
+        let winmm_name: &[u16] = &[119, 105, 110, 109, 109, 46, 100, 108, 108, 0];
+        let kernel = unsafe { GetModuleHandleW(kernel_name.as_ptr()) };
+        let winmm = unsafe { GetModuleHandleW(winmm_name.as_ptr()) };
+        if kernel.is_null() || winmm.is_null() {
+            return Err("could not locate original timer modules".into());
+        }
+        let real_qpc: QpcFn = unsafe {
+            std::mem::transmute(resolve(kernel, c"QueryPerformanceCounter")?)
+        };
+        let real_tick64: Timer64Fn = unsafe {
+            std::mem::transmute(resolve(kernel, c"GetTickCount64")?)
+        };
+        let real_tick32: Timer32Fn = unsafe {
+            std::mem::transmute(resolve(kernel, c"GetTickCount")?)
+        };
+        let real_winmm: Timer32Fn = unsafe {
+            std::mem::transmute(resolve(winmm, c"timeGetTime")?)
+        };
+        let hooked_qpc: QpcFn = QueryPerformanceCounter;
+        let vq1 = read_qpc(hooked_qpc)?;
+        let rq1 = read_qpc(real_qpc)?;
+        let v64_1 = unsafe { GetTickCount64() };
+        let r64_1 = unsafe { real_tick64() };
+        let v32_1 = unsafe { GetTickCount() };
+        let r32_1 = unsafe { real_tick32() };
+        let vw_1 = unsafe { timeGetTime() };
+        let rw_1 = unsafe { real_winmm() };
+
+        thread::sleep(Duration::from_millis(175));
+
+        let vq2 = read_qpc(hooked_qpc)?;
+        let rq2 = read_qpc(real_qpc)?;
+        let v64_2 = unsafe { GetTickCount64() };
+        let r64_2 = unsafe { real_tick64() };
+        let v32_2 = unsafe { GetTickCount() };
+        let r32_2 = unsafe { real_tick32() };
+        let vw_2 = unsafe { timeGetTime() };
+        let rw_2 = unsafe { real_winmm() };
+
+        let real_q = rq2 - rq1;
+        let real_64 = r64_2.saturating_sub(r64_1);
+        let real_32 = r32_2.wrapping_sub(r32_1);
+        let real_w = rw_2.wrapping_sub(rw_1);
+        if real_q <= 0 || real_64 == 0 || real_32 == 0 || real_w == 0 {
+            return Err("unhooked baseline did not advance".into());
+        }
+        let observed = [
+            (vq2 - vq1) as f64 / real_q as f64,
+            v64_2.saturating_sub(v64_1) as f64 / real_64 as f64,
+            v32_2.wrapping_sub(v32_1) as f64 / real_32 as f64,
+            vw_2.wrapping_sub(vw_1) as f64 / real_w as f64,
+        ];
+        println!(
+            "Remote-attached Wine clocks requested={rate:.2}x qpc={:.3}x tick64={:.3}x tick32={:.3}x winmm={:.3}x",
+            observed[0], observed[1], observed[2], observed[3]
+        );
+        if observed.iter().any(|measured| (measured - rate).abs() > 0.30) {
+            return Err(format!("remote-attached clock ratios not within tolerance at {rate}x"));
+        }
+        Ok(())
+    }
+
+    fn exercise_remote_speed(module: *mut c_void) -> Result<(), String> {
+        let enable: ToggleFn =
+            unsafe { std::mem::transmute(resolve(module, c"intimatr_timer_probe_enable")?) };
+        let disable: ToggleFn =
+            unsafe { std::mem::transmute(resolve(module, c"intimatr_timer_probe_disable")?) };
+        let count: CountFn =
+            unsafe { std::mem::transmute(resolve(module, c"intimatr_timer_probe_hook_count")?) };
+        let change: RateFn =
+            unsafe { std::mem::transmute(resolve(module, c"intimatr_timer_probe_rate")?) };
+        if unsafe { enable() } == 0 {
+            return Err("remote-attached target could not activate four timer hooks".into());
+        }
+        let measured = (|| {
+            if unsafe { count() } != 4 {
+                return Err(format!(
+                    "remote-attached target expected exactly four timer imports, observed {}",
+                    unsafe { count() }
+                ));
+            }
+            for speed in [0.5, 2.0, 1.0] {
+                if unsafe { change(speed) } == 0 {
+                    return Err(format!("remote-attached target rejected valid speed {speed}"));
+                }
+                check_scaled_clocks(speed)?;
+            }
+            Ok(())
+        })();
+        let disabled = unsafe { disable() } != 0 && unsafe { count() } == 0;
+        if !disabled {
+            return Err("remote-attached target failed to restore timing imports".into());
+        }
+        measured
+    }
 
     pub fn run() -> Result<(), String> {
         let executable = std::env::current_exe().map_err(|error| error.to_string())?;
@@ -54,10 +185,11 @@ mod target {
                             // Allow the remote helper to finish its load thread
                             // before this deliberately controlled target exits.
                             thread::sleep(Duration::from_millis(250));
+                            exercise_remote_speed(module)?;
                             if unsafe { stop() } == 0 || unsafe { state() } != 5 {
                                 return Err("attached DLL failed clean shutdown".into());
                             }
-                            println!("Wine attach target observed Running then Stopped");
+                            println!("Wine attach target verified 0.5x/2x/1x timers, then Stopped");
                             return Ok(());
                         }
                         6 => return Err("attached DLL reported failed bootstrap".into()),
