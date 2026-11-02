@@ -30,6 +30,15 @@ pub enum SpeedCoordinatorError {
     Session(#[from] SpeedSessionError),
 }
 
+/// Snapshot of the validated input actions that were actually applied.
+/// A fixture backend may replay these precise actions without replacing
+/// time-bounded holds with permanent speed presets.
+#[derive(Debug, Clone)]
+pub struct InputSampleOutcome {
+    pub timers: TimerSnapshot,
+    pub actions: Vec<SpeedAction>,
+}
+
 pub struct SpeedCoordinator {
     session: SpeedSession,
     input: FocusedInputPump,
@@ -79,17 +88,31 @@ impl SpeedCoordinator {
         real_qpc: u64,
         snapshot: InputSnapshot,
     ) -> Result<TimerSnapshot, SpeedCoordinatorError> {
+        Ok(self.input_sample_with_actions(real_qpc, snapshot)?.timers)
+    }
+
+    /// Return exactly the actions applied to the preview, preserving
+    /// hold-start durations and focus-loss/reset events for a second,
+    /// explicitly enabled timing backend.
+    pub fn input_sample_with_actions(
+        &mut self,
+        real_qpc: u64,
+        snapshot: InputSnapshot,
+    ) -> Result<InputSampleOutcome, SpeedCoordinatorError> {
         // Even with no input events, expire startup and held speed leases.
         self.session.sample(real_qpc);
         self.focused = snapshot.focused;
         let actions = self.input.sample(snapshot);
-        for action in actions {
+        for action in actions.iter().copied() {
             if let Err(error) = self.apply(real_qpc, action) {
                 self.reset_after_input_error(real_qpc);
                 return Err(error);
             }
         }
-        Ok(self.session.sample(real_qpc))
+        Ok(InputSampleOutcome {
+            timers: self.session.sample(real_qpc),
+            actions,
+        })
     }
 
     /// Callers controlling a shared session (future RPC, UI) use this same
@@ -174,6 +197,56 @@ mod tests {
         )
         .unwrap();
         assert!(empty.watched_keys().is_empty());
+    }
+
+    #[test]
+    fn input_reports_precise_hold_release_and_focus_loss_actions() {
+        let mut coordinator = coordinator();
+        let acquire = coordinator
+            .input_sample_with_actions(0, snapshot(true, &[]))
+            .unwrap();
+        assert!(acquire.actions.is_empty());
+        let held = coordinator
+            .input_sample_with_actions(100, snapshot(true, &[0x11, 0x48]))
+            .unwrap();
+        assert_eq!(
+            held.actions,
+            vec![SpeedAction::HoldStart {
+                multiplier: 2.0,
+                duration_ms: 200,
+            }]
+        );
+        let idle = coordinator
+            .input_sample_with_actions(150, snapshot(true, &[0x11, 0x48]))
+            .unwrap();
+        assert!(idle.actions.is_empty());
+        assert_eq!(coordinator.status().preview_multiplier, 2.0);
+        let released = coordinator
+            .input_sample_with_actions(180, snapshot(true, &[0x48]))
+            .unwrap();
+        assert_eq!(released.actions, vec![SpeedAction::HoldRelease]);
+        assert_eq!(coordinator.status().preview_multiplier, 1.0);
+        let lost = coordinator
+            .input_sample_with_actions(200, snapshot(false, &[]))
+            .unwrap();
+        assert_eq!(lost.actions, vec![SpeedAction::FocusLost]);
+        assert!(!coordinator.status().focused);
+    }
+
+    #[test]
+    fn input_deadline_expiry_does_not_synthesize_an_infinite_preset() {
+        let mut coordinator = coordinator();
+        coordinator
+            .input_sample_with_actions(0, snapshot(true, &[]))
+            .unwrap();
+        coordinator
+            .input_sample_with_actions(100, snapshot(true, &[0x11, 0x48]))
+            .unwrap();
+        let expired = coordinator
+            .input_sample_with_actions(600, snapshot(true, &[0x11, 0x48]))
+            .unwrap();
+        assert!(expired.actions.is_empty());
+        assert_eq!(coordinator.status().preview_multiplier, 1.0);
     }
 
     #[test]

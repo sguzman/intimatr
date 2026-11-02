@@ -100,24 +100,15 @@ pub enum SpeedPreviewError {
     FixtureClock(&'static str),
 }
 
-/// Keep the *isolated* IAT fixture in sync with shared UI/RPC/input
-/// commands. Ordinary Windows/Wine games never enter this path because the
-/// experimental IAT backend refuses every non-fixture executable.
+/// Replay validated actions into the already-installed isolated IAT
+/// fixture. The backend refuses every non-fixture executable and never
+/// installs hooks from this command boundary.
 fn apply_fixture_action(action: SpeedAction) -> Result<(), SpeedPreviewError> {
     #[cfg(windows)]
     crate::experimental_timer_probe::apply_fixture_command(action)
         .map_err(SpeedPreviewError::FixtureClock)?;
     #[cfg(not(windows))]
     let _ = action;
-    Ok(())
-}
-
-fn synchronize_fixture(multiplier: f64) -> Result<(), SpeedPreviewError> {
-    #[cfg(windows)]
-    crate::experimental_timer_probe::synchronize_fixture_command(multiplier)
-        .map_err(SpeedPreviewError::FixtureClock)?;
-    #[cfg(not(windows))]
-    let _ = multiplier;
     Ok(())
 }
 
@@ -195,18 +186,19 @@ impl SpeedPreviewExecutor {
             .map_err(|_| SpeedPreviewError::StatePoisoned)?;
         let session = guard.as_mut().ok_or(SpeedPreviewError::Unconfigured)?;
         let now = session.now();
-        let previous = session.coordinator.status();
-        let losing_focus = previous.focused && !snapshot.focused;
-        session.coordinator.input_sample(now, snapshot)?;
-        let status = session.status();
-        if ((previous.preview_multiplier - status.preview_multiplier).abs() > f64::EPSILON
-            || losing_focus)
-            && let Err(error) = synchronize_fixture(status.preview_multiplier)
-        {
-            let _ = session.coordinator.apply(now, SpeedAction::Reset);
-            return Err(error);
+        let outcome = session
+            .coordinator
+            .input_sample_with_actions(now, snapshot)?;
+        for action in outcome.actions {
+            if let Err(error) = apply_fixture_action(action) {
+                let _ = session.coordinator.apply(now, SpeedAction::FocusLost);
+                // Attempt to restore the fixture clock, but never report
+                // synchronization success after a failed backend action.
+                let _ = apply_fixture_action(SpeedAction::FocusLost);
+                return Err(error);
+            }
         }
-        Ok(status)
+        Ok(session.status())
     }
 
     /// The HWND adapter can read exactly these keys. No opt-in profile means
