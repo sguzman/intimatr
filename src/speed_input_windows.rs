@@ -96,10 +96,7 @@ impl WindowsHotkeyInput {
         Ok(Self { reader })
     }
 
-    pub fn from_game_window(
-        game_hwnd: HWND,
-        watched_keys: &[u16],
-    ) -> Result<Self, &'static str> {
+    pub fn from_game_window(game_hwnd: HWND, watched_keys: &[u16]) -> Result<Self, &'static str> {
         if watched_keys.is_empty() {
             return Err("speed hotkeys disabled; no key sampling requested");
         }

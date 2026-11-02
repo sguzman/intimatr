@@ -229,9 +229,11 @@ mod tests {
     #[test]
     fn unknown_manual_preset_does_not_claim_application() {
         let mut controller = coordinator();
-        assert!(controller
-            .apply(100, SpeedAction::SelectPreset(1.25))
-            .is_err());
+        assert!(
+            controller
+                .apply(100, SpeedAction::SelectPreset(1.25))
+                .is_err()
+        );
         assert_eq!(controller.status().last_action, None);
         assert_eq!(controller.status().preview_multiplier, 1.0);
         assert!(!controller.status().clock_applied_to_game);
