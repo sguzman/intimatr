@@ -367,6 +367,18 @@ fn restore_slots(slots: &mut [HookSlot]) -> bool {
     clean && slots.iter().all(|hook| !hook.active)
 }
 
+/// The experimental IAT backend is available only to these disposable,
+/// offline test executables. No production process gets hook eligibility.
+fn is_allowlisted_probe_process() -> bool {
+    std::env::current_exe().ok().is_some_and(|executable| {
+        executable.file_name().is_some_and(|name| {
+            let file = name.to_string_lossy();
+            file.eq_ignore_ascii_case("wine-load-probe.exe")
+                || file.eq_ignore_ascii_case("wine-attach-target.exe")
+        })
+    })
+}
+
 /// Only succeeds in Intimatr's fixture; never installs hooks into an
 /// arbitrary game, anti-cheat process, or another Wine program.
 pub fn enable_probe() -> bool {
@@ -375,15 +387,7 @@ pub fn enable_probe() -> bool {
 
 /// Only the disposable Wine probe invokes the deterministic rollback fault.
 fn enable_probe_with_fault(fail_after: Option<usize>) -> bool {
-    let Ok(executable) = std::env::current_exe() else {
-        return false;
-    };
-    let is_our_probe = executable.file_name().is_some_and(|name| {
-        let file = name.to_string_lossy();
-        file.eq_ignore_ascii_case("wine-load-probe.exe")
-            || file.eq_ignore_ascii_case("wine-attach-target.exe")
-    });
-    if !is_our_probe {
+    if !is_allowlisted_probe_process() {
         return false;
     }
     let Ok(mut guard) = hooks().lock() else {
@@ -506,6 +510,30 @@ pub fn disable_probe() -> bool {
     *guard = None;
     VIRTUAL_READY.store(false, Ordering::Release);
     true
+}
+
+/// Test-only bridge: apply a speed preset through the very same command
+/// executor used by the in-process UI/RPC, then synchronize the experimental
+/// four-API timer backend. It never installs hooks and never targets games.
+/// Invalid/absent preview profiles or inactive fixture hooks fail closed.
+#[unsafe(no_mangle)]
+pub extern "system" fn intimatr_timer_probe_shared_rate(multiplier: f64) -> i32 {
+    if !is_allowlisted_probe_process() || probe_hook_count() < 4 {
+        return 0;
+    }
+    // The command is authoritative for validation and selection. The clock
+    // backend has a different real-QPC epoch, so it receives only the speed
+    // multiplier, not the preview's synthetic virtual timestamps.
+    let Some(selected) = crate::runtime::fixture_preview_select_rate(multiplier) else {
+        return 0;
+    };
+    if !set_probe_rate(selected) {
+        // An unexpected backend failure must not leave the preview claiming
+        // acceleration while the fixture's timer hooks cannot follow it.
+        crate::runtime::fixture_preview_reset();
+        return 0;
+    }
+    1
 }
 
 #[unsafe(no_mangle)]
