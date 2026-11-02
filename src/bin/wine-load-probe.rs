@@ -9,7 +9,13 @@ fn main() {
 
 #[cfg(windows)]
 mod windows_probe {
-    use std::{ffi::{CStr, c_void}, os::windows::ffi::OsStrExt, path::Path, thread, time::Duration};
+    use std::{
+        ffi::{CStr, c_void},
+        os::windows::ffi::OsStrExt,
+        path::Path,
+        thread,
+        time::Duration,
+    };
 
     #[link(name = "kernel32")]
     unsafe extern "system" {
