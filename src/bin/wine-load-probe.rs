@@ -423,9 +423,19 @@ mod windows_probe {
         }
         println!("Wine timer hooks restored all original imports");
 
+        // Reinstall the same fixture-only hooks, then ask the DLL to shut
+        // down *without* calling the direct disable export. A safe shutdown
+        // must restore every IAT pointer before reporting Stopped.
+        if unsafe { hook_enable() } == 0 || unsafe { hook_count() } < 4 {
+            return Err("cannot reinstall fixture timer imports for shutdown test".into());
+        }
         if unsafe { shutdown() } == 0 {
             return Err("Intimatr exported shutdown returned failure".into());
         }
+        if unsafe { hook_count() } != 0 {
+            return Err("DLL reported Stopped with experimental timer hooks still installed".into());
+        }
+        println!("DLL shutdown restored still-installed timer hooks");
         if unsafe { state() } != 5 {
             return Err("Intimatr did not reach Stopped after shutdown".into());
         }
