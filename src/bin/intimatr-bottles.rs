@@ -174,8 +174,10 @@ fn run_probe_attach(args: Vec<String>) -> Result<(), String> {
     let opts = ProbeAttachOptions::parse(&args)?;
     let prefix =
         fs::canonicalize(&opts.prefix).map_err(|error| format!("invalid Wine prefix: {error}"))?;
-    if !prefix.is_dir() || !prefix.join("system.reg").is_file() {
-        return Err("Wine prefix must be an initialized directory containing system.reg".into());
+    // Wine can defer writing registry snapshots while a prefix is active.
+    // Its initialized drive tree is a more reliable non-mutating check.
+    if !prefix.is_dir() || !prefix.join("drive_c").is_dir() {
+        return Err("Wine prefix must already contain an initialized drive_c".into());
     }
     let helper = fs::canonicalize(&opts.helper)
         .map_err(|error| format!("invalid Windows helper path: {error}"))?;
