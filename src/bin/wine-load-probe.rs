@@ -412,7 +412,7 @@ mod windows_probe {
         let ready = directory.join("bridge-ready.flag");
         std::fs::write(&ready, b"four imported timer hooks active")
             .map_err(|error| format!("cannot signal external bridge readiness: {error}"))?;
-        for (stage, rate) in [(1, 2.0), (2, 0.5), (3, 1.0)] {
+        for (stage, rate) in [(1, 2.0), (2, 0.5), (3, 1.0), (4, 2.0), (5, 1.0)] {
             let trigger = directory.join(format!("bridge-step-{stage}.flag"));
             let mut received = false;
             for _ in 0..600 {

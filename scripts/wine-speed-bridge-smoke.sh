@@ -47,18 +47,20 @@ await_file() {
 }
 
 await_file "$fixture_dir/bridge-ready.flag"
-for stage in 1 2 3; do
+for stage in 1 2 3 4 5; do
   case "$stage" in
-    1) rate=2.0 ;;
-    2) rate=0.5 ;;
-    3) rate=1.0 ;;
+    1) rate=2.0; args=(preset "$rate") ;;
+    2) rate=0.5; args=(preset "$rate") ;;
+    3) rate=1.0; args=(preset "$rate") ;;
+    4) rate=2.0; args=(hold "$rate" 1800) ;;
+    5) rate=1.0; args=(release) ;;
   esac
   "$native_cli" speed \
     --prefix "$prefix" \
     --runner "$runner" \
     --client "$client" \
     --tcp 127.0.0.1:31379 \
-    preset "$rate" > "$fixture_dir/bridge-stage-$stage.json"
+    "${args[@]}" > "$fixture_dir/bridge-stage-$stage.json"
   jq -e --argjson rate "$rate" \
     '.configured == true and .preview_multiplier == $rate and .clock_applied_to_game == false' \
     "$fixture_dir/bridge-stage-$stage.json" >/dev/null
