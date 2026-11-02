@@ -135,7 +135,7 @@ Work is ordered by dependency: later phases should build on the shared core inst
 
 ## 14. Bottles deployment manager 🍾
 **Status:** active (0/23 points verified; native read-only inventory implemented, real Bottles QA pending). **Weight:** 23/100 expansion points.
-- [ ] INT-1401 🔭 Discover native Bottles and games (active; parser/CLI code committed, real discovery not yet verified).
+- [ ] INT-1401 🔭 Discover native Bottles and games (active; Linux /proc prefix records and same-prefix Windows PID enumeration verified in fixtures, real native Bottles installation not yet inspected).
 - [ ] INT-1402 🧲 Include/exclude filters (active; read-only selection CLI and synthetic fixture tests implemented, native Bottles field QA pending).
 - [ ] INT-1403 📋 Non-mutating plan; apply/status operations.
 - [ ] INT-1404 🔌 Verified normal-launch DLL loading.
@@ -181,3 +181,5 @@ Work is ordered by dependency: later phases should build on the shared core inst
 **Sequential Wine duplicate-attach prevention checkpoint (2026-11-02):** [CI 41373871724](https://github.com/sguzman/intimatr/actions/runs/41373871724) confirmed that an already-running Wine fixture received one Intimatr DLL load, then rejected a second attachment while loaded. The helper independently checks the target module list before and after the load, and the target verified timing and clean shutdown. Cross-helper races and real Bottles game attachment remain open. **16% verified; previous 16%; delta +0 percentage points.**
 
 **2026-11-02 checkpoint:** [concurrent attach CI 41376199401](https://github.com/sguzman/intimatr/actions/runs/41376199401) passed, verifying one winning and one rejected competing attach under Wine. [Speed policy CI 41376902970](https://github.com/sguzman/intimatr/actions/runs/41376902970) passed for per-bottle/per-executable override matching; later read-only CLI preview QA also passed in [run 41377364276](https://github.com/sguzman/intimatr/actions/runs/41377364276) (other jobs still active at the checkpoint). Real native Bottles field QA, full game attachment and lifecycle remain undone. **Verified expansion 16% (previous 16%, delta +0 pp).**
+
+**2026-11-02 PID and program matching checkpoint:** [run 41466434127](https://github.com/sguzman/intimatr/actions/runs/41466434127) completed all CI jobs for prefix-bound Linux process inspection. [Wine run 41467190463](https://github.com/sguzman/intimatr/actions/runs/41467190463) independently confirmed a Windows PID with the ToolHelp snapshot. [Linux correlation run 41468039689](https://github.com/sguzman/intimatr/actions/runs/41468039689) passed full-path registered-program fixture matching; full CI for newer code still in progress when recorded. All outputs remain read-only and non-attachable, and real Bottles field testing is missing. **Expansion 16%, previous 16%, delta +0 pp.**

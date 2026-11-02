@@ -171,3 +171,20 @@ CI runs this helper in the **same Wine prefix as the already-running owned attac
 The portable [bottles_live_matches.rs](../src/bottles_live_matches.rs) reconciles **one explicitly selected bottle**'s registered programs with a read-only Windows PID snapshot. It accepts candidates only when `QueryFullProcessImageNameW` succeeded and the complete drive-qualified Windows executable path exactly matches a registered Bottles program after case/slash normalization. A matching basename alone is ignored; duplicates in registered paths produce an ambiguity status rather than a selection. Unknown image paths, UNC/drive-relative aliases and unregistered executables remain in the report with reasons.
 
 The Linux CLI adds a file-based, read-only `match-snapshot` subcommand consuming Bottles' `--json programs` array and the output of `win-processes`. It outputs candidate Windows PIDs and match statuses with **`safe_to_attach: false`** and `attachment_attempted: false` for *every* record; no permission to inject is inferred from path equality. Synthetic CI fixtures exercise same-basename programs in different paths and a Windows PID with an unreadable image path. This does not yet verify a real Bottles inventory or native game paths.
+
+## Read-only dogfooding sequence (no process attachment)
+
+Once a matching native Linux CLI and read-only Wine process-list helper have been built, the following sequence can inspect one **explicitly chosen initialized** prefix. Use the same Wine runner configured for that prefix; do not assume a patched runner's executable location.
+
+```fish
+intimatr-bottles processes --prefix /absolute/prefix/path
+intimatr-bottles win-processes --prefix /absolute/prefix/path --helper /absolute/wine-process-list.exe --runner wine
+```
+
+The first command lists same-user **Linux** PIDs with the requested environment prefix but leaves Windows PIDs unknown. The second starts an intentionally read-only Windows PE helper in that prefix and lists **Windows** PIDs, image names and queryable complete Windows paths. One does not establish a mapping to the other. To compare a saved Windows PID report with Bottles' registered programs in a *single selected bottle*, first save the native `bottles-cli --json programs -b 'Bottle Name'` JSON to a file, then run:
+
+```fish
+intimatr-bottles match-snapshot --bottle 'Bottle Name' --programs /absolute/programs.json --windows /absolute/windows-processes.json
+```
+
+The result is a **review-only candidate list** with every `safe_to_attach` value set to false. It deliberately cannot start the actual attachment helper, mutate Bottles configuration or operate on unrelated processes.
