@@ -485,7 +485,8 @@ impl WindowsProcessesOptions {
         Ok(Self {
             prefix: prefix.ok_or("missing --prefix")?,
             helper: helper.ok_or("missing --helper")?,
-            runner: runner.ok_or("missing --runner: use the Wine binary selected for this prefix")?,
+            runner: runner
+                .ok_or("missing --runner: use the Wine binary selected for this prefix")?,
         })
     }
 }
@@ -568,12 +569,7 @@ mod windows_processes_tests {
             args(&[]),
             args(&["--prefix", "/tmp"]),
             args(&["--helper", "wine-process-list.exe"]),
-            args(&[
-                "--prefix",
-                "/tmp",
-                "--helper",
-                "wine-process-list.exe",
-            ]),
+            args(&["--prefix", "/tmp", "--helper", "wine-process-list.exe"]),
             args(&[
                 "--prefix",
                 "/tmp",
@@ -709,7 +705,8 @@ impl LiveMatchOptions {
             bottle,
             prefix,
             helper: helper.ok_or("missing --helper")?,
-            runner: runner.ok_or("missing --runner: select the explicit Wine binary for this bottle")?,
+            runner: runner
+                .ok_or("missing --runner: select the explicit Wine binary for this bottle")?,
             bottles_cli,
         })
     }
