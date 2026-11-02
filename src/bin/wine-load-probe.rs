@@ -217,6 +217,10 @@ mod windows_probe {
         if unsafe { set_rate(rate) } == 0 {
             return Err(format!("could not select speed preset {rate}"));
         }
+        measure_current_rate(rate)
+    }
+
+    fn measure_current_rate(rate: f64) -> Result<(), String> {
         let virtual_before = unsafe { imported_qpc()? };
         let real_before = unsafe { original_qpc()? };
         thread::sleep(Duration::from_millis(150));
@@ -357,6 +361,46 @@ mod windows_probe {
         Ok(())
     }
 
+    /// This verifies the *normal external RPC client*, rather than the
+    /// special exported probe-rate setter, controls real imported timer
+    /// reads inside the already-hooked disposable Wine fixture.
+    fn exercise_live_hook_through_rpc(directory: &Path) -> Result<(), String> {
+        let client = directory.join("intimatr-speed.exe");
+        for (action, value, expected) in [
+            ("preset", Some("2.0"), 2.0),
+            ("reset", None, 1.0),
+            ("preset", Some("0.5"), 0.5),
+            ("reset", None, 1.0),
+        ] {
+            let mut command = std::process::Command::new(&client);
+            command.args(["--tcp", "127.0.0.1:31379", action]);
+            if let Some(value) = value {
+                command.arg(value);
+            }
+            let output = command
+                .output()
+                .map_err(|error| format!("cannot invoke speed RPC client with hooks: {error}"))?;
+            if !output.status.success() {
+                return Err(format!(
+                    "speed RPC command rejected while fixture hooked: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                ));
+            }
+            let status: serde_json::Value = serde_json::from_slice(&output.stdout)
+                .map_err(|error| format!("bad speed RPC response: {error}"))?;
+            if status["preview_multiplier"] != expected
+                || status["clock_applied_to_game"] != false
+            {
+                return Err(format!(
+                    "RPC response did not reflect fixture preview at {expected}x: {status}"
+                ));
+            }
+            measure_current_rate(expected)?;
+        }
+        println!("Ordinary speed RPC commands drove four already-installed Wine timer imports");
+        Ok(())
+    }
+
     pub fn run() -> Result<(), String> {
         let executable = std::env::current_exe().map_err(|e| e.to_string())?;
         let directory = executable.parent().unwrap_or_else(|| Path::new("."));
@@ -453,6 +497,7 @@ mod windows_probe {
                 "only {count} timer imports hooked; expected at least four"
             ));
         }
+        exercise_live_hook_through_rpc(directory)?;
         measure_rate(0.5, set_rate)?;
         measure_rate(2.0, set_rate)?;
         measure_rate(1.0, set_rate)?;
