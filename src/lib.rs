@@ -14,6 +14,8 @@ pub mod bottles_processes;
 #[cfg(target_os = "linux")]
 pub mod bottles_runner;
 pub mod bottles_selection;
+#[cfg(target_os = "linux")]
+pub mod bottles_speed_cli;
 pub mod command;
 pub mod config;
 pub mod debugger;
