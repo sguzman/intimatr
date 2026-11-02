@@ -72,7 +72,17 @@ try {
         throw "Packaged speed RPC client is empty"
     }
     $clientSumLines = @(Get-Content $sumFile | Where-Object {
-        $_ -match '^[0-9a-fA-F]{64}\s+intimatr-speed\.exe
+        $_ -match '^[0-9a-fA-F]{64}\s+intimatr-speed\.exe$'
+    })
+    if ($clientSumLines.Count -ne 1) {
+        throw "SHA256SUMS.txt must contain exactly one speed client checksum"
+    }
+    $expectedClientHash = $clientSumLines[0].Substring(0, 64).ToLowerInvariant()
+    $actualClientHash = (Get-FileHash $client -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($actualClientHash -ne $expectedClientHash) {
+        throw "Packaged speed RPC client checksum mismatch: expected $expectedClientHash, got $actualClientHash"
+    }
+
     $versionFile = Join-Path $tempRoot "VERSION.txt"
     $versionLines = Get-Content $versionFile
 
