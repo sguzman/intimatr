@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{bottles::BottleInventory, speed_policy::game_path_key};
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct WindowsProcessRecord {
     pub windows_pid: u32,
@@ -17,7 +17,7 @@ pub struct WindowsProcessRecord {
     pub safe_to_attach: bool,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct WindowsProcessSnapshot {
     pub operation: String,
