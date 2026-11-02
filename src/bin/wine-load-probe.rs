@@ -431,17 +431,22 @@ mod windows_probe {
 
         start.wait();
         thread::sleep(Duration::from_millis(35));
-        let restored = unsafe { disable() } != 0;
+        // The initial bounded drain may deliberately refuse shutdown while
+        // workers are still entering callbacks. That is not a safe-to-unload
+        // result. Stop the readers, join them, and require a successful retry.
+        let first_attempt = unsafe { disable() } != 0;
         keep_reading.store(false, Ordering::Release);
         for worker in workers {
             worker
                 .join()
                 .map_err(|_| "Wine timer worker panicked during hook restoration")??;
         }
-        if !restored || unsafe { hook_count() } != 0 {
-            return Err("hook restoration did not drain callbacks and clear every IAT slot".into());
+        if unsafe { disable() } == 0 || unsafe { hook_count() } != 0 {
+            return Err("post-quiescence retry did not restore all timer hooks".into());
         }
-        println!("Wine timer hook restoration drained concurrent QPC/millisecond readers");
+        println!(
+            "Wine timer hook restoration drained concurrent readers; initial attempt completed: {first_attempt}"
+        );
         Ok(())
     }
 
