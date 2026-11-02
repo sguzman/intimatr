@@ -5,10 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    bottles::BottleInventory,
-    speed_policy::game_path_key,
-};
+use crate::{bottles::BottleInventory, speed_policy::game_path_key};
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -178,9 +175,15 @@ mod tests {
                 (7, None),
             ]),
         );
-        assert_eq!(matches.matches[0].registered_program_name.as_deref(), Some("Second"));
+        assert_eq!(
+            matches.matches[0].registered_program_name.as_deref(),
+            Some("Second")
+        );
         assert_eq!(matches.matches[0].status, "exact_registered_path");
-        assert_eq!(matches.matches[1].status, "not_registered_in_selected_bottle");
+        assert_eq!(
+            matches.matches[1].status,
+            "not_registered_in_selected_bottle"
+        );
         assert_eq!(matches.matches[2].status, "image_path_unknown");
         assert!(matches.matches.iter().all(|record| !record.safe_to_attach));
     }
@@ -191,22 +194,35 @@ mod tests {
             ("First", r"C:\Games\Game.exe"),
             ("Duplicate", "c:/games/GAME.exe"),
         ]);
-        let plan = match_registered_programs(
-            &bottle,
-            &snapshot(&[(8, Some(r"C:\Games\Game.exe"))]),
+        let plan =
+            match_registered_programs(&bottle, &snapshot(&[(8, Some(r"C:\Games\Game.exe"))]));
+        assert_eq!(
+            plan.matches[0].status,
+            "ambiguous_duplicate_program_registration"
         );
-        assert_eq!(plan.matches[0].status, "ambiguous_duplicate_program_registration");
         assert!(plan.matches[0].registered_program_name.is_none());
     }
 
     #[test]
     fn rejects_forged_or_inconsistent_pid_snapshots() {
         let valid = r#"{"operation":"read_only_wine_windows_processes","attachment_attempted":false,"processes":[{"windows_pid":2,"reported_executable":"Demo.exe","full_image_path":"C:\\Demo.exe","image_query_verified":true,"safe_to_attach":false}]}"#;
-        assert_eq!(WindowsProcessSnapshot::parse(valid).unwrap().processes.len(), 1);
+        assert_eq!(
+            WindowsProcessSnapshot::parse(valid)
+                .unwrap()
+                .processes
+                .len(),
+            1
+        );
         for invalid in [
-            valid.replace("\"attachment_attempted\":false", "\"attachment_attempted\":true"),
+            valid.replace(
+                "\"attachment_attempted\":false",
+                "\"attachment_attempted\":true",
+            ),
             valid.replace("\"safe_to_attach\":false", "\"safe_to_attach\":true"),
-            valid.replace("\"image_query_verified\":true", "\"image_query_verified\":false"),
+            valid.replace(
+                "\"image_query_verified\":true",
+                "\"image_query_verified\":false",
+            ),
             valid.replace("\"windows_pid\":2", "\"windows_pid\":0"),
         ] {
             assert!(WindowsProcessSnapshot::parse(&invalid).is_err());
@@ -223,6 +239,10 @@ mod tests {
                 (11, Some("C:Demo.exe")),
             ]),
         );
-        assert!(plan.matches.iter().all(|entry| entry.status == "unsupported_windows_path"));
+        assert!(
+            plan.matches
+                .iter()
+                .all(|entry| entry.status == "unsupported_windows_path")
+        );
     }
 }
