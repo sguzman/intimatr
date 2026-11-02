@@ -18,7 +18,12 @@ use tracing::{error, info, warn};
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState;
 use winit::platform::windows::EventLoopBuilderExtWindows;
 
+mod speed;
+
+use speed::SpeedView;
+
 use crate::{
+    speed_commands::{SpeedPreviewStatus, SpeedRequest},
     command::{
         ActiveScanInfo, Command, CommandExecutor, CommandResult, ModuleInfo, ScanCandidateInfo,
         ScanSummary, ThreadInfo, WatchValue,
@@ -180,6 +185,7 @@ enum UiTaskKind {
     WriteMemory,
     ListModules,
     ListThreads,
+    Speed,
 }
 
 struct UiTaskResponse {
@@ -200,6 +206,8 @@ struct IntimatrApp {
     pending: HashSet<UiTaskKind>,
     status: String,
     tab: ToolTab,
+    speed_view: SpeedView,
+    last_speed_refresh: Instant,
 
     scan_value_type: ValueType,
     scan_mode: ScanMode,
@@ -257,6 +265,8 @@ impl IntimatrApp {
             pending: HashSet::new(),
             status: "Ready".to_owned(),
             tab: persisted.tab,
+            speed_view: SpeedView::default(),
+            last_speed_refresh: Instant::now(),
             scan_value_type: persisted.scan_value_type,
             scan_mode: persisted.scan_mode,
             scan_operand_a: persisted.scan_operand_a,
@@ -282,6 +292,10 @@ impl IntimatrApp {
             threads: Vec::new(),
         };
         app.submit(UiTaskKind::ListWatches, Command::ListWatches);
+        app.submit(
+            UiTaskKind::Speed,
+            Command::Speed { request: SpeedRequest::Status },
+        );
         app
     }
 
@@ -315,6 +329,9 @@ impl IntimatrApp {
             self.pending.remove(&response.kind);
             match response.result {
                 Ok(result) => self.handle_result(response.kind, result),
+                Err(error) if response.kind == UiTaskKind::Speed => {
+                    self.speed_view.error(error);
+                }
                 Err(error) if response.kind == UiTaskKind::ActiveScans => {
                     warn!(error = %error, "failed to poll active scan progress");
                 }
@@ -424,6 +441,9 @@ impl IntimatrApp {
                 self.status = format!("Enumerated {} process threads", threads.len());
                 self.threads = threads;
             }
+            CommandResult::Speed { status } => {
+                self.speed_view.update(status);
+            }
             other => {
                 self.status = format!("{} completed: {other:?}", task_label(kind));
             }
@@ -485,11 +505,19 @@ impl IntimatrApp {
                 (ToolTab::Memory, "Memory"),
                 (ToolTab::Modules, "Modules"),
                 (ToolTab::Threads, "Threads"),
+                (ToolTab::Speed, "Speed"),
             ] {
                 ui.selectable_value(&mut self.tab, tab, label);
             }
         });
         ui.separator();
+    }
+
+    fn render_speed(&mut self, ui: &mut egui::Ui) {
+        if let Some(request) = self.speed_view.render(ui, self.pending.contains(&UiTaskKind::Speed)) {
+            self.submit(UiTaskKind::Speed, Command::Speed { request });
+            self.last_speed_refresh = Instant::now();
+        }
     }
 
     fn render_scan(&mut self, ui: &mut egui::Ui) {
@@ -954,6 +982,15 @@ impl eframe::App for IntimatrApp {
             self.last_scan_progress_refresh = Instant::now();
         }
 
+        if self.visible
+            && self.tab == ToolTab::Speed
+            && self.last_speed_refresh.elapsed() >= Duration::from_millis(750)
+            && !self.pending.contains(&UiTaskKind::Speed)
+        {
+            self.submit(UiTaskKind::Speed, Command::Speed { request: SpeedRequest::Status });
+            self.last_speed_refresh = Instant::now();
+        }
+
         context.request_repaint_after(HOTKEY_POLL_INTERVAL);
     }
 
@@ -966,6 +1003,7 @@ impl eframe::App for IntimatrApp {
                 ToolTab::Memory => self.render_memory(ui),
                 ToolTab::Modules => self.render_modules(ui),
                 ToolTab::Threads => self.render_threads(ui),
+                ToolTab::Speed => self.render_speed(ui),
             }
             ui.separator();
             let scanning = self.pending.contains(&UiTaskKind::FirstScan)
@@ -1006,6 +1044,7 @@ enum ToolTab {
     Memory,
     Modules,
     Threads,
+    Speed,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -1280,6 +1319,7 @@ fn task_label(kind: UiTaskKind) -> &'static str {
         UiTaskKind::WriteMemory => "memory write",
         UiTaskKind::ListModules => "module enumeration",
         UiTaskKind::ListThreads => "thread enumeration",
+        UiTaskKind::Speed => "speed preview",
     }
 }
 
