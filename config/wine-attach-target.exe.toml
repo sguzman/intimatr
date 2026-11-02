@@ -1,0 +1,21 @@
+# Offline self-owned remote attach fixture. No UI, debugger, RPC or
+# memory writes. Does not opt into general automatic injection.
+[target]
+executable = "wine-attach-target.exe"
+
+[ui]
+enabled = false
+
+[debugger]
+enabled = false
+ui_enabled = false
+
+[rpc]
+enabled = false
+
+[policy]
+allow_memory_read = true
+allow_memory_write = false
+allow_code_patch = false
+allow_debugger = false
+allow_remote_shutdown = false
