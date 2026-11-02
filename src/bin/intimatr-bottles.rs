@@ -353,6 +353,8 @@ fn run_profile_check(args: Vec<String>) -> Result<(), String> {
         "bottle": options.bottle,
         "executable": options.executable,
         "resolved": result,
+        "hotkeys": &profile.hotkeys,
+        "hotkey_delivery": "not_wired_to_game_input",
         "dll_loaded": false,
         "attachment_attempted": false,
     });
