@@ -10,6 +10,8 @@ pub mod bottles_selection;
 pub mod command;
 pub mod config;
 pub mod debugger;
+#[cfg(windows)]
+pub mod experimental_timer_probe;
 pub mod lifecycle;
 pub mod logging;
 pub mod memory;
@@ -22,8 +24,6 @@ pub mod speed_config;
 pub mod speed_controls;
 pub mod speed_session;
 pub mod speed_timers;
-#[cfg(windows)]
-pub mod experimental_timer_probe;
 
 #[cfg(windows)]
 pub mod debugger_ui;

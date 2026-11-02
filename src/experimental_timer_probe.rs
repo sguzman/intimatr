@@ -8,9 +8,12 @@
 //! tests cover the new target type.
 
 use std::{
-    ffi::{c_void, CStr},
+    ffi::c_void,
     ptr,
-    sync::{Mutex, OnceLock, atomic::{AtomicUsize, Ordering}},
+    sync::{
+        Mutex, OnceLock,
+        atomic::{AtomicUsize, Ordering},
+    },
 };
 
 use crate::{

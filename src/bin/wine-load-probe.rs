@@ -48,13 +48,18 @@ mod windows_probe {
     }
 
     unsafe fn original_qpc() -> Result<i64, String> {
-        let kernel = unsafe { GetModuleHandleW(
-            [107_u16, 101, 114, 110, 101, 108, 51, 50, 46, 100, 108, 108, 0].as_ptr(),
-        ) };
+        let kernel = unsafe {
+            GetModuleHandleW(
+                [
+                    107_u16, 101, 114, 110, 101, 108, 51, 50, 46, 100, 108, 108, 0,
+                ]
+                .as_ptr(),
+            )
+        };
         if kernel.is_null() {
             return Err("cannot find kernel32 module".to_owned());
         }
-        let address = unsafe { GetProcAddress(kernel, b"QueryPerformanceCounter\\0".as_ptr()) };
+        let address = unsafe { GetProcAddress(kernel, b"QueryPerformanceCounter\0".as_ptr()) };
         if address.is_null() {
             return Err("cannot resolve original QPC".to_owned());
         }
@@ -82,7 +87,9 @@ mod windows_probe {
         let observed = (virtual_after - virtual_before) as f64 / real_elapsed as f64;
         println!("Wine QPC hook: requested={rate:.2}x observed={observed:.3}x");
         if (observed - rate).abs() > 0.25 {
-            return Err(format!("unexpected QPC speed: expected {rate}, got {observed}"));
+            return Err(format!(
+                "unexpected QPC speed: expected {rate}, got {observed}"
+            ));
         }
         Ok(())
     }
@@ -153,18 +160,15 @@ mod windows_probe {
         // A constrained offline fixture is the only process allowed to enable
         // this experimental import hook. The probe verifies actual API time,
         // not just the separately tested pure virtual-clock arithmetic.
-        let hook_enable: BoolFn = unsafe {
-            std::mem::transmute(resolve(&module, b"intimatr_timer_probe_enable\\0")?)
-        };
-        let hook_disable: BoolFn = unsafe {
-            std::mem::transmute(resolve(&module, b"intimatr_timer_probe_disable\\0")?)
-        };
+        let hook_enable: BoolFn =
+            unsafe { std::mem::transmute(resolve(&module, b"intimatr_timer_probe_enable\0")?) };
+        let hook_disable: BoolFn =
+            unsafe { std::mem::transmute(resolve(&module, b"intimatr_timer_probe_disable\0")?) };
         let hook_count: unsafe extern "system" fn() -> u32 = unsafe {
-            std::mem::transmute(resolve(&module, b"intimatr_timer_probe_hook_count\\0")?)
+            std::mem::transmute(resolve(&module, b"intimatr_timer_probe_hook_count\0")?)
         };
-        let set_rate: RateFn = unsafe {
-            std::mem::transmute(resolve(&module, b"intimatr_timer_probe_rate\\0")?)
-        };
+        let set_rate: RateFn =
+            unsafe { std::mem::transmute(resolve(&module, b"intimatr_timer_probe_rate\0")?) };
         if unsafe { hook_enable() } == 0 {
             return Err("fixture's QueryPerformanceCounter import was not hooked".into());
         }
