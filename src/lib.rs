@@ -32,9 +32,9 @@ pub mod speed_commands;
 pub mod speed_config;
 pub mod speed_controls;
 pub mod speed_coordinator;
-pub mod speed_hotkeys;
 #[cfg(windows)]
 pub mod speed_hotkey_worker;
+pub mod speed_hotkeys;
 pub mod speed_input;
 #[cfg(windows)]
 pub mod speed_input_windows;

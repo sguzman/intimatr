@@ -43,9 +43,7 @@ pub struct SpeedHotkeyWorker {
 impl SpeedHotkeyWorker {
     /// No bindings, no thread, no polling. The enabled preview profile is
     /// distinct from runtime timer-hook enrollment; it changes no game time.
-    pub fn start(
-        preview: Arc<SpeedPreviewExecutor>,
-    ) -> Result<Option<Self>, SpeedWorkerError> {
+    pub fn start(preview: Arc<SpeedPreviewExecutor>) -> Result<Option<Self>, SpeedWorkerError> {
         let keys = preview.watched_keys()?;
         if keys.is_empty() {
             return Ok(None);
@@ -70,11 +68,7 @@ impl SpeedHotkeyWorker {
     }
 }
 
-fn run_worker(
-    preview: Arc<SpeedPreviewExecutor>,
-    keys: Vec<u16>,
-    stop: Arc<AtomicBool>,
-) {
+fn run_worker(preview: Arc<SpeedPreviewExecutor>, keys: Vec<u16>, stop: Arc<AtomicBool>) {
     debug!("focused game speed preview monitoring started");
     while !stop.load(Ordering::Acquire) {
         // Refresh the window decision every tick. If a launcher, dialog or
@@ -123,15 +117,18 @@ mod tests {
         let inner: Arc<dyn CommandExecutor> = Arc::new(RejectAll);
         let disabled = Arc::new(SpeedPreviewExecutor::disabled(Arc::clone(&inner)));
         assert!(SpeedHotkeyWorker::start(disabled).unwrap().is_none());
-        let unbound = Arc::new(SpeedPreviewExecutor::with_profile(
-            inner,
-            &SpeedSettings {
-                enabled: true,
-                ..SpeedSettings::default()
-            },
-            &SpeedHotkeyConfig::default(),
-            "test",
-        ).unwrap());
+        let unbound = Arc::new(
+            SpeedPreviewExecutor::with_profile(
+                inner,
+                &SpeedSettings {
+                    enabled: true,
+                    ..SpeedSettings::default()
+                },
+                &SpeedHotkeyConfig::default(),
+                "test",
+            )
+            .unwrap(),
+        );
         assert!(SpeedHotkeyWorker::start(unbound).unwrap().is_none());
     }
 }
