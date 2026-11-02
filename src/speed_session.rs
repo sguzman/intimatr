@@ -176,7 +176,10 @@ impl SpeedSession {
         };
         let snapshot = self.timers.set_multiplier(real_qpc, multiplier)?;
         self.hold_deadline_qpc = new_deadline;
-        if !matches!(action, SpeedAction::HoldStart { .. } | SpeedAction::HoldRelease) {
+        if !matches!(
+            action,
+            SpeedAction::HoldStart { .. } | SpeedAction::HoldRelease
+        ) {
             // Explicit persistent speed decisions supersede a startup timer.
             self.startup_deadline_qpc = None;
         }
@@ -376,7 +379,13 @@ mod tests {
         assert_eq!(session.sample(300).tick_count64, 800);
         assert_eq!(session.multiplier(), 1.0);
         assert_eq!(session.sample(600).tick_count64, 1_100);
-        assert_eq!(session.apply(600, SpeedAction::HoldRelease).unwrap().tick_count64, 1_100);
+        assert_eq!(
+            session
+                .apply(600, SpeedAction::HoldRelease)
+                .unwrap()
+                .tick_count64,
+            1_100
+        );
     }
 
     #[test]
@@ -389,7 +398,10 @@ mod tests {
         };
         let mut session = SpeedSession::new(&settings, 0, 1_000, 0, 0).unwrap();
         assert_eq!(
-            session.apply(100, SpeedAction::Increase).unwrap().tick_count64,
+            session
+                .apply(100, SpeedAction::Increase)
+                .unwrap()
+                .tick_count64,
             200
         );
         assert_eq!(session.sample(400).tick_count64, 1_100);
