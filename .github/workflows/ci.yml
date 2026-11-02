@@ -388,6 +388,11 @@ jobs:
           grep -q '"registered_program_name": "Verified offline"' target/intimatr-match-report.json
           grep -q '"status": "image_path_unknown"' target/intimatr-match-report.json
           grep -q '"safe_to_attach": false' target/intimatr-match-report.json
+          jq -e '.matches[] | select(
+            .windows_pid == 44 and .status == "unsupported_x64_dll_architecture"
+            and .x64_dll_compatible == false
+            and .registered_program_name == null and .safe_to_attach == false
+          )' target/intimatr-match-report.json > /dev/null
           grep -q '"attachment_attempted": false' target/intimatr-match-report.json
 
       - name: Strict Clippy for Windows GNU target from Linux

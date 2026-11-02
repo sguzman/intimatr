@@ -15,6 +15,18 @@
       "full_image_path": null,
       "image_query_verified": false,
       "safe_to_attach": false
+    },
+    {
+      "windows_pid": 44,
+      "reported_executable": "Game.exe",
+      "full_image_path": "C:\\Games\\Other\\Game.exe",
+      "image_query_verified": true,
+      "pe_image_architecture": "x86",
+      "pe_image_verified": true,
+      "process_architecture": "x86",
+      "process_architecture_verified": true,
+      "process_architecture_source": "is_wow64_process2",
+      "safe_to_attach": false
     }
   ]
 }
