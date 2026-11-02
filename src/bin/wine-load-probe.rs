@@ -39,10 +39,14 @@ mod windows_probe {
     type BoolFn = unsafe extern "system" fn() -> i32;
     type RateFn = unsafe extern "system" fn(f64) -> i32;
     type QpcFn = unsafe extern "system" fn(*mut i64) -> i32;
+    type Tick64Fn = unsafe extern "system" fn() -> u64;
+    type Tick32Fn = unsafe extern "system" fn() -> u32;
 
     #[link(name = "kernel32")]
     unsafe extern "system" {
         fn QueryPerformanceCounter(value: *mut i64) -> i32;
+        fn GetTickCount64() -> u64;
+        fn GetTickCount() -> u32;
     }
 
     unsafe fn imported_qpc() -> Result<i64, String> {
@@ -53,18 +57,20 @@ mod windows_probe {
         Ok(value)
     }
 
-    unsafe fn original_qpc() -> Result<i64, String> {
-        let kernel = unsafe {
-            GetModuleHandleW(
-                [
-                    107_u16, 101, 114, 110, 101, 108, 51, 50, 46, 100, 108, 108, 0,
-                ]
-                .as_ptr(),
-            )
-        };
+    fn kernel32_module() -> Result<*mut c_void, String> {
+        let name: &[u16] = &[
+            107, 101, 114, 110, 101, 108, 51, 50, 46, 100, 108, 108, 0,
+        ];
+        let kernel = unsafe { GetModuleHandleW(name.as_ptr()) };
         if kernel.is_null() {
-            return Err("cannot find kernel32 module".to_owned());
+            Err("cannot find kernel32 module".to_owned())
+        } else {
+            Ok(kernel)
         }
+    }
+
+    unsafe fn original_qpc() -> Result<i64, String> {
+        let kernel = kernel32_module()?;
         let address = unsafe { GetProcAddress(kernel, c"QueryPerformanceCounter".as_ptr().cast()) };
         if address.is_null() {
             return Err("cannot resolve original QPC".to_owned());
@@ -75,6 +81,54 @@ mod windows_probe {
             return Err("original QPC returned failure".to_owned());
         }
         Ok(value)
+    }
+
+    unsafe fn original_tick64() -> Result<u64, String> {
+        let kernel = kernel32_module()?;
+        let address = unsafe { GetProcAddress(kernel, c"GetTickCount64".as_ptr().cast()) };
+        if address.is_null() {
+            return Err("cannot resolve unmodified GetTickCount64".to_owned());
+        }
+        let real: Tick64Fn = unsafe { std::mem::transmute(address) };
+        Ok(unsafe { real() })
+    }
+
+    unsafe fn original_tick32() -> Result<u32, String> {
+        let kernel = kernel32_module()?;
+        let address = unsafe { GetProcAddress(kernel, c"GetTickCount".as_ptr().cast()) };
+        if address.is_null() {
+            return Err("cannot resolve unmodified GetTickCount".to_owned());
+        }
+        let real: Tick32Fn = unsafe { std::mem::transmute(address) };
+        Ok(unsafe { real() })
+    }
+
+    fn measure_millisecond_timers(rate: f64) -> Result<(), String> {
+        let virtual64_before = unsafe { GetTickCount64() };
+        let real64_before = unsafe { original_tick64()? };
+        let virtual32_before = unsafe { GetTickCount() };
+        let real32_before = unsafe { original_tick32()? };
+        thread::sleep(Duration::from_millis(160));
+        let virtual64_after = unsafe { GetTickCount64() };
+        let real64_after = unsafe { original_tick64()? };
+        let virtual32_after = unsafe { GetTickCount() };
+        let real32_after = unsafe { original_tick32()? };
+        let real64_delta = real64_after.saturating_sub(real64_before);
+        let real32_delta = real32_after.wrapping_sub(real32_before);
+        if real64_delta == 0 || real32_delta == 0 {
+            return Err("unmodified Windows millisecond timers did not advance".to_owned());
+        }
+        let ratio64 = virtual64_after.saturating_sub(virtual64_before) as f64
+            / real64_delta as f64;
+        let ratio32 = virtual32_after.wrapping_sub(virtual32_before) as f64
+            / real32_delta as f64;
+        println!("Wine ms timer hooks: requested={rate:.2}x tick64={ratio64:.3}x tick32={ratio32:.3}x");
+        if (ratio64 - rate).abs() > 0.30 || (ratio32 - rate).abs() > 0.30 {
+            return Err(format!(
+                "inconsistent Windows millisecond timer scaling at {rate}x"
+            ));
+        }
+        Ok(())
     }
 
     fn measure_rate(rate: f64, set_rate: RateFn) -> Result<(), String> {
@@ -97,6 +151,7 @@ mod windows_probe {
                 "unexpected QPC speed: expected {rate}, got {observed}"
             ));
         }
+        measure_millisecond_timers(rate)?;
         Ok(())
     }
     type ShutdownFn = unsafe extern "system" fn() -> i32;
@@ -179,8 +234,8 @@ mod windows_probe {
         }
         let count = unsafe { hook_count() };
         println!("Wine QPC hook installed on {count} import slots");
-        if count == 0 {
-            return Err("the experimental hook has no active import slots".into());
+        if count < 3 {
+            return Err(format!("only {count} timer imports hooked; expected at least three"));
         }
         measure_rate(0.5, set_rate)?;
         measure_rate(2.0, set_rate)?;
