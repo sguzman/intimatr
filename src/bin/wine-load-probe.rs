@@ -9,13 +9,7 @@ fn main() {
 
 #[cfg(windows)]
 mod windows_probe {
-    use std::{
-        ffi::c_void,
-        os::windows::ffi::OsStrExt,
-        path::Path,
-        thread,
-        time::Duration,
-    };
+    use std::{ffi::c_void, os::windows::ffi::OsStrExt, path::Path, thread, time::Duration};
 
     #[link(name = "kernel32")]
     unsafe extern "system" {
@@ -59,7 +53,8 @@ mod windows_probe {
             ));
         }
 
-        let wide: Vec<u16> = dll.as_os_str()
+        let wide: Vec<u16> = dll
+            .as_os_str()
             .encode_wide()
             .chain(std::iter::once(0))
             .collect();
