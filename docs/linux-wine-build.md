@@ -124,3 +124,16 @@ The CI log reported `"operation":"fixture_only_remote_load"` with `"game_attachm
 **This is not a production game-injection feature.** No user Bottles library was read or changed. Real game/prefix identification, 32-bit support, opt-in match filters for live Windows processes, engine-specific timing APIs, environment compatibility with the user's patched Wine runner, anti-cheat exclusion, duplicate attachment, and full lifecycle teardown under a live game remain unverified. The test's `helper_exited_successfully` field means the helper returned successfully, **not** that the CLI independently interrogated and authenticated the target's live Intimatr status; the CI target supplies that separate confirmation.
 
 Current verified scope remains limited to disposable x86-64 fixtures; these results support continuing INT-1003, INT-1407, INT-1102/1103 but do not close their full acceptance tests.
+
+## 2026-11-02 — Target-side module confirmation and duplicate attach refusal
+
+[CI run 41373871724](https://github.com/sguzman/intimatr/actions/runs/41373871724), `wine-load-smoke` job, passed a stricter **Linux native controller → same-prefix Windows helper → already-running Wine fixture** sequence:
+
+1. The Windows helper checks for `intimatr.dll` in the target module list **before** allocating remote memory; it fails closed on an uninspectable module list, and refuses a second load when the module is already present.
+2. After the remote `LoadLibraryW` thread finishes, it inspects the target module list again. A signaled remote thread alone no longer counts as successful DLL loading.
+3. The fixture independently measures all four virtual clocks at 0.5×/2×/1×, then publishes a test-only readiness marker while its DLL stays loaded.
+4. CI issues **the same Linux CLI attach command a second time** against the same still-live Windows PID, requires a nonzero exit and the specific `refusing duplicate attach` diagnostic, and only then releases the target for orderly shutdown.
+
+Observed CI output confirmed the second attach was refused, after four timing APIs produced the expected rates, and the first target reached Stopped normally. This proves **sequential duplicate refusal**, not an atomic reservation for simultaneous competing helpers. It does not grant arbitrary Wine process access or automatic Bottles opt-in. The fixture executable allowlist remains unchanged and other program images remain refused.
+
+These checks strengthen the INT-1003/INT-1407 attachment groundwork but do not satisfy either full acceptance criterion; **weighted expansion remains 16/100, previous 16, delta +0 percentage points**.
