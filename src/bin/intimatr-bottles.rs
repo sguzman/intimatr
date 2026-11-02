@@ -580,7 +580,6 @@ mod windows_processes_tests {
     }
 }
 
-
 #[cfg(target_os = "linux")]
 fn run_match_snapshot(args: Vec<String>) -> Result<(), String> {
     use intimatr::{
@@ -617,17 +616,13 @@ fn run_match_snapshot(args: Vec<String>) -> Result<(), String> {
         if !metadata.is_file() || metadata.len() > 8 * 1024 * 1024 {
             return Err("expected a regular JSON file of at most 8 MiB".into());
         }
-        std::fs::read_to_string(path)
-            .map_err(|error| format!("cannot read JSON fixture: {error}"))
+        std::fs::read_to_string(path).map_err(|error| format!("cannot read JSON fixture: {error}"))
     }
 
     let programs = parse_registered_programs(&read_bounded(&programs)?)
         .map_err(|error| format!("invalid registered Bottles programs: {error}"))?;
     let snapshot = WindowsProcessSnapshot::parse(&read_bounded(&windows)?)?;
-    let result = match_registered_programs(
-        &BottleInventory { bottle, programs },
-        &snapshot,
-    );
+    let result = match_registered_programs(&BottleInventory { bottle, programs }, &snapshot);
     println!(
         "{}",
         serde_json::to_string_pretty(&result)
