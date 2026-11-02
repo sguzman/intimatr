@@ -32,6 +32,8 @@ pub enum PreviewProfileLoadError {
     Io(#[from] std::io::Error),
     #[error("shared speed profile exceeds 1 MiB")]
     TooLarge,
+    #[error("shared speed profile must use an absolute path in the DLL host process")]
+    RelativePath,
     #[error(transparent)]
     Invalid(#[from] SpeedProfileError),
     #[error(
@@ -64,6 +66,9 @@ pub fn parse_preview_profile(
 pub fn load_preview_profile(
     path: &Path,
 ) -> Result<Option<PreviewProfile>, PreviewProfileLoadError> {
+    if !path.is_absolute() {
+        return Err(PreviewProfileLoadError::RelativePath);
+    }
     let file = File::open(path)?;
     let mut bytes = Vec::new();
     file.take(MAX_PROFILE_BYTES + 1).read_to_end(&mut bytes)?;
@@ -126,6 +131,20 @@ mod tests {
                 .is_none()
         );
         assert!(parse_preview_profile("version = 2").is_err());
+    }
+
+    #[test]
+    fn relative_profile_path_is_rejected_before_disk_access() {
+        for path in [
+            Path::new("speed.toml"),
+            Path::new("config/speed.toml"),
+            Path::new("../other/speed.toml"),
+        ] {
+            assert!(matches!(
+                load_preview_profile(path),
+                Err(PreviewProfileLoadError::RelativePath)
+            ));
+        }
     }
 
     #[test]
