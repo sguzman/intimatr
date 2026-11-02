@@ -393,19 +393,6 @@ pub(crate) fn fixture_preview_select_rate(multiplier: f64) -> Option<f64> {
     status.configured.then_some(status.preview_multiplier)
 }
 
-#[cfg(windows)]
-pub(crate) fn fixture_preview_reset() {
-    use crate::{command::Command, speed_commands::SpeedRequest};
-    if let Ok(guard) = CONTEXT.lock()
-        && let Some(context) = guard.as_ref()
-    {
-        let executor = Arc::clone(&context.command_executor);
-        drop(guard);
-        let _ = executor.execute(Command::Speed {
-            request: SpeedRequest::Reset,
-        });
-    }
-}
 
 #[cfg(windows)]
 fn handle_rpc_post_action(action: PostAction) {
