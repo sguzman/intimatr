@@ -50,16 +50,41 @@ mod helper {
     unsafe extern "system" {
         fn OpenProcess(access: u32, inherit: i32, pid: u32) -> Handle;
         fn CloseHandle(handle: Handle) -> i32;
-        fn QueryFullProcessImageNameW(handle: Handle, flags: u32, name: *mut u16, size: *mut u32) -> i32;
+        fn QueryFullProcessImageNameW(
+            handle: Handle,
+            flags: u32,
+            name: *mut u16,
+            size: *mut u32,
+        ) -> i32;
         fn GetModuleHandleW(name: *const u16) -> Handle;
         fn GetProcAddress(module: Handle, name: *const u8) -> *const c_void;
         fn CreateToolhelp32Snapshot(flags: u32, pid: u32) -> Handle;
         fn Module32FirstW(snapshot: Handle, entry: *mut ModuleEntry32W) -> i32;
         fn Module32NextW(snapshot: Handle, entry: *mut ModuleEntry32W) -> i32;
-        fn VirtualAllocEx(handle: Handle, address: *mut c_void, size: usize, flags: u32, protect: u32) -> *mut c_void;
+        fn VirtualAllocEx(
+            handle: Handle,
+            address: *mut c_void,
+            size: usize,
+            flags: u32,
+            protect: u32,
+        ) -> *mut c_void;
         fn VirtualFreeEx(handle: Handle, address: *mut c_void, size: usize, flags: u32) -> i32;
-        fn WriteProcessMemory(handle: Handle, address: *mut c_void, buffer: *const c_void, size: usize, wrote: *mut usize) -> i32;
-        fn CreateRemoteThread(handle: Handle, attributes: *const c_void, stack_size: usize, start: Option<unsafe extern "system" fn(*mut c_void) -> u32>, argument: *mut c_void, flags: u32, thread_id: *mut u32) -> Handle;
+        fn WriteProcessMemory(
+            handle: Handle,
+            address: *mut c_void,
+            buffer: *const c_void,
+            size: usize,
+            wrote: *mut usize,
+        ) -> i32;
+        fn CreateRemoteThread(
+            handle: Handle,
+            attributes: *const c_void,
+            stack_size: usize,
+            start: Option<unsafe extern "system" fn(*mut c_void) -> u32>,
+            argument: *mut c_void,
+            flags: u32,
+            thread_id: *mut u32,
+        ) -> Handle;
         fn WaitForSingleObject(handle: Handle, milliseconds: u32) -> u32;
     }
 
@@ -85,12 +110,16 @@ mod helper {
         let mut path = [0_u16; 2048];
         let mut length = path.len() as u32;
         if unsafe { QueryFullProcessImageNameW(handle, 0, path.as_mut_ptr(), &mut length) } == 0 {
-            return Err(format!("cannot identify process: {}", std::io::Error::last_os_error()));
+            return Err(format!(
+                "cannot identify process: {}",
+                std::io::Error::last_os_error()
+            ));
         }
         let name = String::from_utf16_lossy(&path[..length as usize]);
-        Ok(name.rsplit(['/', '\\']).next().is_some_and(|file| {
-            file.eq_ignore_ascii_case("wine-attach-target.exe")
-        }))
+        Ok(name
+            .rsplit(['/', '\\'])
+            .next()
+            .is_some_and(|file| file.eq_ignore_ascii_case("wine-attach-target.exe")))
     }
 
     fn local_image_size(base: usize) -> Option<usize> {
@@ -117,7 +146,8 @@ mod helper {
     }
 
     fn resolve_remote_loader(pid: u32) -> Result<usize, String> {
-        let kernel = unsafe { GetModuleHandleW(wide(std::ffi::OsStr::new("kernel32.dll")).as_ptr()) };
+        let kernel =
+            unsafe { GetModuleHandleW(wide(std::ffi::OsStr::new("kernel32.dll")).as_ptr()) };
         if kernel.is_null() {
             return Err("helper cannot find kernel32".into());
         }
@@ -132,9 +162,9 @@ mod helper {
         let candidates = ["kernel32.dll", "kernelbase.dll", "ntdll.dll"];
         let mut selected = None;
         for module_name in candidates {
-            let loaded = unsafe {
-                GetModuleHandleW(wide(std::ffi::OsStr::new(module_name)).as_ptr())
-            } as usize;
+            let loaded =
+                unsafe { GetModuleHandleW(wide(std::ffi::OsStr::new(module_name)).as_ptr()) }
+                    as usize;
             if loaded == 0 {
                 continue;
             }
@@ -159,7 +189,11 @@ mod helper {
             return Err("target module list is empty".into());
         }
         loop {
-            let end = entry.name.iter().position(|value| *value == 0).unwrap_or(entry.name.len());
+            let end = entry
+                .name
+                .iter()
+                .position(|value| *value == 0)
+                .unwrap_or(entry.name.len());
             let current = String::from_utf16_lossy(&entry.name[..end]);
             if current.eq_ignore_ascii_case(module_name) {
                 if rva >= entry.size_bytes as usize {
@@ -192,7 +226,10 @@ mod helper {
         if !dll.is_file() {
             return Err(format!("cannot find test DLL: {}", dll.display()));
         }
-        let process = own(unsafe { OpenProcess(ACCESS, 0, pid) }, "cannot open test target")?;
+        let process = own(
+            unsafe { OpenProcess(ACCESS, 0, pid) },
+            "cannot open test target",
+        )?;
         if !target_is_fixture(process.0)? {
             return Err("refusing to attach: target is not wine-attach-target.exe".into());
         }
@@ -209,18 +246,15 @@ mod helper {
             )
         };
         if remote.is_null() {
-            return Err(format!("cannot allocate remote path: {}", std::io::Error::last_os_error()));
+            return Err(format!(
+                "cannot allocate remote path: {}",
+                std::io::Error::last_os_error()
+            ));
         }
         let mut wrote = 0_usize;
-        if unsafe {
-            WriteProcessMemory(
-                process.0,
-                remote,
-                path.as_ptr().cast(),
-                size,
-                &mut wrote,
-            )
-        } == 0 || wrote != size
+        if unsafe { WriteProcessMemory(process.0, remote, path.as_ptr().cast(), size, &mut wrote) }
+            == 0
+            || wrote != size
         {
             unsafe { VirtualFreeEx(process.0, remote, 0, MEM_RELEASE) };
             return Err("cannot write test DLL path into target".into());
@@ -242,7 +276,10 @@ mod helper {
         };
         if thread.is_null() {
             unsafe { VirtualFreeEx(process.0, remote, 0, MEM_RELEASE) };
-            return Err(format!("cannot create test loading thread: {}", std::io::Error::last_os_error()));
+            return Err(format!(
+                "cannot create test loading thread: {}",
+                std::io::Error::last_os_error()
+            ));
         }
         let thread = OwnedHandle(thread);
         match unsafe { WaitForSingleObject(thread.0, 10_000) } {

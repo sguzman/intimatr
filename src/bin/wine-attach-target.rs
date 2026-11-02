@@ -27,7 +27,10 @@ mod target {
         let pid_file = directory.join("attach-target.pid");
         std::fs::write(&pid_file, std::process::id().to_string())
             .map_err(|error| format!("cannot write target PID: {error}"))?;
-        println!("Offline Wine attach target awaiting DLL; pid={}", std::process::id());
+        println!(
+            "Offline Wine attach target awaiting DLL; pid={}",
+            std::process::id()
+        );
 
         let wide: Vec<u16> = "intimatr.dll"
             .encode_utf16()
@@ -36,12 +39,10 @@ mod target {
         for _ in 0..800 {
             let module = unsafe { GetModuleHandleW(wide.as_ptr()) };
             if !module.is_null() {
-                let state = unsafe {
-                    GetProcAddress(module, c"intimatr_lifecycle_state".as_ptr().cast())
-                };
-                let shutdown = unsafe {
-                    GetProcAddress(module, c"intimatr_request_shutdown".as_ptr().cast())
-                };
+                let state =
+                    unsafe { GetProcAddress(module, c"intimatr_lifecycle_state".as_ptr().cast()) };
+                let shutdown =
+                    unsafe { GetProcAddress(module, c"intimatr_request_shutdown".as_ptr().cast()) };
                 if state.is_null() || shutdown.is_null() {
                     return Err("remote-loaded DLL is missing lifecycle exports".into());
                 }
