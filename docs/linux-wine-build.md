@@ -242,3 +242,11 @@ Native Bottles can use a patched/custom Wine runner, while the host's `wine` com
 The Wine regression on [CI 41481506734](https://github.com/sguzman/intimatr/actions/runs/41481506734) independently observed the controlled already-running target's **live process architecture as `x86_64`** through `IsWow64Process2`, matching its PE-file architecture. The same Wine fixture verified duplicate-attach refusal, speed at 0.5×/2×/1× on four APIs, and orderly shutdown. This confirms the optional Win32 architecture query works in the tested Ubuntu Wine runner. It is not a claim that other Wine runners or a real Bottles game will behave identically.
 
 Current acceptance gates still lacking: actual native Bottles runner path selection, cross-runner compatibility, real game identity, 32-bit support, production-safe hook lifetime and rollback. All read-only preview results retain `safe_to_attach: false` and `attachment_attempted: false`.
+
+## 2026-11-02 — Explicit x86 / ARM64 mismatch classification for the x64 DLL
+
+Intimatr currently builds/ships an x86-64 Windows DLL for Wine. The **read-only Bottles path-matching report** now includes `x64_dll_compatible` as a *machine-bit-only* result: `true` only when **both** a verified running process machine and a verified on-disk PE file machine are x86-64, `false` when both machine observations exist but are not both x86-64, and `null` when evidence is incomplete. This flag **does not establish** that hooks, runner, DLL version, memory permissions, target identity or game semantics are supported.
+
+When both verified machines are x86 (or both ARM64), a matched registered executable is labeled `unsupported_x64_dll_architecture`, and the command suppresses registered program selection. When file and process machine conflict, `process_file_architecture_conflict` takes precedence. In every case `safe_to_attach` remains false. No 32-bit DLL or ARM64 DLL has been built, and this output must not advertise support for those targets.
+
+Synthetic CI adds a registered second program with a known **x86** Windows PID/image snapshot, and requires `x64_dll_compatible: false`, an explicit unsupported status, a null selected program and no attachment. Actual native Bottles x86 game testing remains open.

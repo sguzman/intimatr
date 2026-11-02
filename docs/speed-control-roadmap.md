@@ -227,3 +227,9 @@ The Linux-cross-built `wine-process-list.exe` probe now uses an optional, dynami
 The fixture's `wine-process-list.exe` successfully called optional `IsWow64Process2` on an already-running Wine x86-64 test process; [CI 41481506734](https://github.com/sguzman/intimatr/actions/runs/41481506734) logged `Wine live-process machine query: x86_64`. File machine and live machine agreed, and timing/duplicate-attach regression passed. If the API is unavailable on another Wine version, its machine remains unknown; a contradictory file and process machine suppresses registered-game selection.
 
 To avoid launching a mismatched default Wine runner against a custom bottle, `intimatr-bottles live-match` and `win-processes` now require an explicit `--runner`, with negative regression checks. This is a **read-only probe constraint**, not proof of native Bottles runner equivalence, actual game compatibility or authorization for attachment. INT-1406 and INT-1407 remain open; **weighted expansion 16/100, delta +0 pp**.
+
+### ⛔ Explicit x86 game rejection in read-only Wine matching — 2026-11-02
+
+With the presently available x86-64 Intimatr DLL, `match-snapshot` and `live-match` now distinguish recognized **unsupported** 32-bit/ARM64 images from unknown-bitness candidates and from contradictory PE/process architecture observations. A synthetic Linux CI fixture includes a correctly path-matched registered x86 game; it must be reported `unsupported_x64_dll_architecture` and **not selected**. `x64_dll_compatible` represents only a bitness check, never full injection safety or game compatibility. The unit and integration checks are queued/running at this checkpoint.
+
+INT-1406 remains open (runner compatibility matrix, real-game test, 32-bit option or documented exclusion); **verified expansion 16/100, previous 16, +0 pp**.
