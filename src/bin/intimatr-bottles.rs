@@ -32,7 +32,7 @@ fn run() -> Result<(), String> {
     let action = args.next().unwrap_or_default();
     if action == "--help" || action == "-h" {
         println!(
-            "Usage:\n  intimatr-bottles scan\n  intimatr-bottles plan (--all | --include-bottle GLOB | --include-program GLOB) [--exclude-bottle GLOB] [--exclude-program GLOB]\n  intimatr-bottles probe-attach --pid PID --prefix WINEPREFIX --helper PATH [--runner WINE]\n  intimatr-bottles profile-check --config TOML --bottle NAME --exe WINDOWS_PATH\n  intimatr-bottles processes --prefix INITIALIZED_WINEPREFIX\n  intimatr-bottles win-processes --prefix INITIALIZED_WINEPREFIX --helper WINE_PROCESS_LIST_EXE [--runner WINE]\n  intimatr-bottles match-snapshot --bottle NAME --programs BOTTLES_JSON --windows WINE_PROCESS_JSON\n  intimatr-bottles live-match --bottle NAME --helper WINE_PROCESS_LIST_EXE [--prefix WINEPREFIX] [--runner WINE] [--bottles-cli BOTTLES_CLI]\n\nscan and plan are read-only. probe-attach runs only the strictly allowlisted offline Wine test helper; it cannot attach a real game."
+            "Usage:\n  intimatr-bottles scan\n  intimatr-bottles plan (--all | --include-bottle GLOB | --include-program GLOB) [--exclude-bottle GLOB] [--exclude-program GLOB]\n  intimatr-bottles probe-attach --pid PID --prefix WINEPREFIX --helper PATH [--runner WINE]\n  intimatr-bottles profile-check --config TOML --bottle NAME --exe WINDOWS_PATH\n  intimatr-bottles processes --prefix INITIALIZED_WINEPREFIX\n  intimatr-bottles win-processes --prefix INITIALIZED_WINEPREFIX --helper WINE_PROCESS_LIST_EXE [--runner WINE]\n  intimatr-bottles match-snapshot --bottle NAME --programs BOTTLES_JSON --windows WINE_PROCESS_JSON\n  intimatr-bottles live-match --bottle NAME --helper WINE_PROCESS_LIST_EXE --runner EXPLICIT_WINE_BINARY [--prefix WINEPREFIX] [--bottles-cli BOTTLES_CLI]\n\nscan and plan are read-only. probe-attach runs only the strictly allowlisted offline Wine test helper; it cannot attach a real game."
         );
         return Ok(());
     }
@@ -703,7 +703,7 @@ impl LiveMatchOptions {
             bottle,
             prefix,
             helper: helper.ok_or("missing --helper")?,
-            runner: runner.unwrap_or_else(|| "wine".to_owned()),
+            runner: runner.ok_or("missing --runner: select the explicit Wine binary for this bottle")?,
             bottles_cli,
         })
     }
@@ -800,6 +800,7 @@ mod live_match_tests {
     fn requires_bottle_and_probe_but_not_manual_prefix() {
         for invalid in [
             args(&[]),
+            args(&["--bottle", "Games", "--helper", "wine-process-list.exe"]),
             args(&["--bottle", "Games", "--prefix", "/tmp"]),
             args(&["--helper", "wine-process-list.exe"]),
             args(&[
@@ -834,6 +835,8 @@ mod live_match_tests {
             "My Games",
             "--helper",
             "/tmp/wine-process-list.exe",
+            "--runner",
+            "/opt/custom-patched-wine/bin/wine",
         ]))
         .unwrap();
         assert_eq!(parsed.prefix, None);
