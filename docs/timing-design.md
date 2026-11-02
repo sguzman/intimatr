@@ -27,7 +27,7 @@ The platform-neutral model stores a real-time anchor, virtual-time anchor, last-
 
 The synthetic tests in `src/speed.rs` cover: 1× identity, 0.25× and 2× progression, reset to 1×, no discontinuity at repeated transitions, invalid-rate rollback, out-of-order sampling, and saturation. The engine currently uses `f64` for elapsed scaling and floors fractional ticks. For extremely large tick values, precision is limited by floating-point representation and saturation; documented limitations must be verified before using these rates with real QPC frequencies.
 
-A **single clock instance cannot accept raw ticks from different APIs with incompatible epoch/frequency**. The Windows backend must either maintain separate coordinated clock domains driven by one canonical monotonic source or explicitly convert each raw timer's units. Tests must compare QPC, milliseconds and wraparound under rate changes; no implementation is accepted for live Wine games until multi-API consistency is established.
+A **single clock instance cannot accept raw ticks from different APIs with incompatible epoch/frequency**. The new platform-neutral [WindowsTimers](../src/speed_timers.rs) projection uses the real QPC as the only input clock; its virtual QPC delta is converted to millisecond domains using the unchanged QPF. It retains separate base values for GetTickCount64 and timeGetTime and deliberately preserves 32-bit wrapping. [SpeedSession](../src/speed_session.rs) coordinates profile preset transitions with that same clock, instead of maintaining disconnected UI and timer state. The hook backend still needs to acquire the true native QPC once per intercepted call and initialize the native epochs. Tests must compare QPC, milliseconds and wraparound under rate changes; no implementation is accepted for live Wine games until multi-API consistency is established.
 
 ## Concurrency, safety and performance acceptance
 
@@ -45,3 +45,7 @@ A **single clock instance cannot accept raw ticks from different APIs with incom
 - **Next engineering steps:** run deterministic tests, select hook method via isolated Windows/Wine harness, and prove the same rates under a selected offline game.
 
 External documentation: [Microsoft on Windows DLL runtime loading](https://learn.microsoft.com/en-us/windows/desktop/Dlls/run-time-dynamic-linking), [Rust saturating float-to-integer conversions](https://doc.rust-lang.org/rust-by-example/types/cast.html), [Wine native/builtin DLL override semantics](https://manpages.debian.org/unstable/libwine/wine64.1.en.html).
+
+## 2026-11-01 incremental implementation checkpoint
+
+The pure [src/speed_timers.rs](../src/speed_timers.rs) projection and [src/speed_session.rs](../src/speed_session.rs) action/session boundary have source-level synthetic tests for cross-API scaling, wraparound, continuity, invalid rates and preset transitions. These are **not hook installations**. Their acceptance depends on the next CI run and they do not close INT-1102/INT-1103 or INT-1002 until real Windows/Wine timer behavior is verified.

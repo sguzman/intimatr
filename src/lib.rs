@@ -19,6 +19,8 @@ pub mod scanner;
 pub mod speed;
 pub mod speed_config;
 pub mod speed_controls;
+pub mod speed_session;
+pub mod speed_timers;
 
 #[cfg(windows)]
 pub mod debugger_ui;
