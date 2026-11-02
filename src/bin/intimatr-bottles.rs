@@ -505,7 +505,13 @@ fn run_windows_processes(args: Vec<String>) -> Result<(), String> {
 #[cfg(target_os = "linux")]
 fn query_windows_process_snapshot(
     opts: &WindowsProcessesOptions,
-) -> Result<(std::path::PathBuf, intimatr::bottles_live_matches::WindowsProcessSnapshot), String> {
+) -> Result<
+    (
+        std::path::PathBuf,
+        intimatr::bottles_live_matches::WindowsProcessSnapshot,
+    ),
+    String,
+> {
     use intimatr::bottles_live_matches::WindowsProcessSnapshot;
 
     let prefix = std::fs::canonicalize(&opts.prefix)
@@ -645,7 +651,6 @@ fn run_match_snapshot(args: Vec<String>) -> Result<(), String> {
     Ok(())
 }
 
-
 #[cfg(target_os = "linux")]
 #[derive(Debug, PartialEq, Eq)]
 struct LiveMatchOptions {
@@ -676,7 +681,11 @@ impl LiveMatchOptions {
                 "--helper" if helper.is_none() => helper = Some(value.clone()),
                 "--runner" if runner.is_none() => runner = Some(value.clone()),
                 "--bottles-cli" if bottles_cli.is_none() => bottles_cli = Some(value.clone()),
-                _ => return Err(format!("duplicate or unsupported live-match option: {flag}")),
+                _ => {
+                    return Err(format!(
+                        "duplicate or unsupported live-match option: {flag}"
+                    ));
+                }
             }
         }
         let bottle: String = bottle.ok_or("missing --bottle")?;
@@ -768,12 +777,24 @@ mod live_match_tests {
             args(&["--bottle", "Games", "--prefix", "/tmp"]),
             args(&["--bottle", "Games", "--helper", "wine-process-list.exe"]),
             args(&[
-                "--bottle", "Games", "--prefix", "/tmp", "--helper", "helper.exe",
-                "--bottles-cli", "/tmp/fake-program",
+                "--bottle",
+                "Games",
+                "--prefix",
+                "/tmp",
+                "--helper",
+                "helper.exe",
+                "--bottles-cli",
+                "/tmp/fake-program",
             ]),
             args(&[
-                "--bottle", "Games", "--prefix", "/tmp", "--helper", "helper.exe",
-                "--bottle", "Another",
+                "--bottle",
+                "Games",
+                "--prefix",
+                "/tmp",
+                "--helper",
+                "helper.exe",
+                "--bottle",
+                "Another",
             ]),
         ] {
             assert!(LiveMatchOptions::parse(&invalid).is_err());
@@ -783,10 +804,16 @@ mod live_match_tests {
     #[test]
     fn accepts_explicit_mock_cli_and_wine_runner_without_shell_interpolation() {
         let parsed = LiveMatchOptions::parse(&args(&[
-            "--bottle", "My Games", "--prefix", "/tmp/native prefix",
-            "--helper", "/tmp/wine-process-list.exe",
-            "--bottles-cli", "/tmp/bottles-cli",
-            "--runner", "/home/user/patch runner/wine",
+            "--bottle",
+            "My Games",
+            "--prefix",
+            "/tmp/native prefix",
+            "--helper",
+            "/tmp/wine-process-list.exe",
+            "--bottles-cli",
+            "/tmp/bottles-cli",
+            "--runner",
+            "/home/user/patch runner/wine",
         ]))
         .unwrap();
         assert_eq!(parsed.bottle, "My Games");
