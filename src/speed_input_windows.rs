@@ -14,11 +14,7 @@ use windows_sys::Win32::{
 };
 
 use crate::{
-    speed_config::SpeedSettings,
-    speed_hotkeys::SpeedHotkeyConfig,
-    speed_input::{FocusedInputPump, InputSnapshot},
-    speed_session::SpeedAction,
-    speed_window::SelectionError,
+    speed_input::InputSnapshot, speed_window::SelectionError,
     speed_window_windows::find_unique_game_window,
 };
 
@@ -85,80 +81,52 @@ impl WindowsFocusedInput {
     }
 }
 
-/// Single owning bridge between an explicitly selected Win32 HWND and
-/// the portable key-edge/focus state machine. This observes keys only;
-/// production speed command delivery still belongs to the shared executor.
+/// Thin Win32 sampler. It owns no hotkey state or virtual clock; the
+/// portable SpeedCoordinator owns those and supplies watched_keys().
 pub struct WindowsHotkeyInput {
     reader: WindowsFocusedInput,
-    pump: FocusedInputPump,
 }
 
 impl WindowsHotkeyInput {
-    /// Fail closed when a profile captures no keys or the game HWND is not
-    /// unambiguously owned. No global keyboard hook is installed.
-    pub fn from_unique_game_window(
-        config: &SpeedHotkeyConfig,
-        speed: &SpeedSettings,
-    ) -> Result<Self, &'static str> {
-        let pump = Self::compiled_pump(config, speed)?;
-        let reader = WindowsFocusedInput::from_unique_game_window(pump.watched_keys())?;
-        Ok(Self { reader, pump })
-    }
-
-    /// Explicit in-process HWND enrollment for future caller-controlled
-    /// selection. Never permit a foreign process HWND.
-    pub fn from_game_window(
-        game_hwnd: HWND,
-        config: &SpeedHotkeyConfig,
-        speed: &SpeedSettings,
-    ) -> Result<Self, &'static str> {
-        let pump = Self::compiled_pump(config, speed)?;
-        let reader = WindowsFocusedInput::new(game_hwnd, pump.watched_keys())?;
-        Ok(Self { reader, pump })
-    }
-
-    fn compiled_pump(
-        config: &SpeedHotkeyConfig,
-        speed: &SpeedSettings,
-    ) -> Result<FocusedInputPump, &'static str> {
-        let dispatcher = config.compile(speed)?;
-        let pump = FocusedInputPump::new(dispatcher);
-        if pump.watched_keys().is_empty() {
+    pub fn from_unique_game_window(watched_keys: &[u16]) -> Result<Self, &'static str> {
+        if watched_keys.is_empty() {
             return Err("speed hotkeys disabled; no key sampling requested");
         }
-        Ok(pump)
+        let reader = WindowsFocusedInput::from_unique_game_window(watched_keys)?;
+        Ok(Self { reader })
     }
 
-    /// Returns ordered actions from one focused-game sample. A caller must
-    /// feed these to the shared session; observing them alone changes no game
-    /// clock. A lost or invalid HWND yields the fail-closed focus reset.
-    pub fn poll(&mut self) -> Vec<SpeedAction> {
-        self.pump.sample(self.reader.sample())
+    pub fn from_game_window(
+        game_hwnd: HWND,
+        watched_keys: &[u16],
+    ) -> Result<Self, &'static str> {
+        if watched_keys.is_empty() {
+            return Err("speed hotkeys disabled; no key sampling requested");
+        }
+        let reader = WindowsFocusedInput::new(game_hwnd, watched_keys)?;
+        Ok(Self { reader })
+    }
+
+    /// The caller forwards this verified HWND/focus snapshot into the *same*
+    /// SpeedCoordinator that handles manual/UI/RPC speed commands.
+    pub fn poll(&self) -> InputSnapshot {
+        self.reader.sample()
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::WindowsFocusedInput;
+    use super::{WindowsFocusedInput, WindowsHotkeyInput};
 
     #[test]
-    fn disabled_configuration_never_opens_a_keyboard_reader() {
-        let config = crate::speed_hotkeys::SpeedHotkeyConfig::default();
-        let speed = crate::speed_config::SpeedSettings::default();
-        assert!(super::WindowsHotkeyInput::from_unique_game_window(&config, &speed).is_err());
+    fn empty_bindings_never_open_a_keyboard_reader() {
+        assert!(WindowsHotkeyInput::from_unique_game_window(&[]).is_err());
     }
 
     #[test]
-    fn explicit_enrollment_rejects_null_window() {
-        let config = crate::speed_hotkeys::SpeedHotkeyConfig {
-            increase: Some("Ctrl+F7".to_owned()),
-            ..Default::default()
-        };
-        let speed = crate::speed_config::SpeedSettings::default();
-        assert!(
-            super::WindowsHotkeyInput::from_game_window(std::ptr::null_mut(), &config, &speed)
-                .is_err()
-        );
+    fn explicit_enrollment_rejects_null_or_unwatched_windows() {
+        assert!(WindowsHotkeyInput::from_game_window(std::ptr::null_mut(), &[0x11, 0x76]).is_err());
+        assert!(WindowsHotkeyInput::from_game_window(std::ptr::null_mut(), &[]).is_err());
     }
 
     #[test]

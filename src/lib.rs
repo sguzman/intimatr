@@ -29,6 +29,7 @@ pub mod runtime;
 pub mod scanner;
 pub mod speed;
 pub mod speed_config;
+pub mod speed_coordinator;
 pub mod speed_controls;
 pub mod speed_hotkeys;
 pub mod speed_input;
