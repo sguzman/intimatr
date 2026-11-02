@@ -29,8 +29,8 @@ jobs:
       - name: Test
         run: cargo test --locked --all-targets --all-features
 
-      - name: Build x86_64 Windows DLL
-        run: cargo build --locked --release --lib --target x86_64-pc-windows-msvc
+      - name: Build x86_64 Windows DLL and isolated timer probe
+        run: cargo build --locked --release --lib --bin wine-load-probe --target x86_64-pc-windows-msvc
 
       - name: Verify DLL artifact
         shell: pwsh
@@ -44,6 +44,27 @@ jobs:
             throw "DLL artifact is empty: $dll"
           }
           Write-Host "Verified $dll ($($item.Length) bytes)"
+
+      - name: Run native Windows four-timer and rollback smoke
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $source = "target/x86_64-pc-windows-msvc/release"
+          $destination = "target/windows-smoke"
+          New-Item -ItemType Directory -Force "$destination/config" | Out-Null
+          Copy-Item "$source/intimatr.dll" "$destination/intimatr.dll"
+          Copy-Item "$source/wine-load-probe.exe" "$destination/wine-load-probe.exe"
+          Copy-Item "config/wine-load-probe.exe.toml" "$destination/config/wine-load-probe.exe.toml"
+          Push-Location $destination
+          try {
+            & ./wine-load-probe.exe
+            if ($LASTEXITCODE -ne 0) {
+              throw "Native Windows isolated timer smoke failed with exit code $LASTEXITCODE"
+            }
+          }
+          finally {
+            Pop-Location
+          }
 
       - name: Package and verify release layout
         shell: pwsh
