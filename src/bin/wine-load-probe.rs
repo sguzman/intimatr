@@ -12,7 +12,9 @@ mod windows_probe {
     use std::{
         ffi::{CStr, c_void},
         os::windows::ffi::OsStrExt,
-        path::Path,
+        path::{Path, PathBuf},
+        fs::OpenOptions,
+        io::Write,
         sync::{Arc, Barrier},
         thread,
         time::Duration,
@@ -29,6 +31,41 @@ mod windows_probe {
     #[link(name = "winmm")]
     unsafe extern "system" {
         fn timeGetTime() -> u32;
+    }
+
+    /// Disposable fixture configuration, created exclusively in the Wine
+    /// test process. Never touches any user's shared profile or Bottles.
+    struct TemporaryPreviewProfile(PathBuf);
+
+    impl TemporaryPreviewProfile {
+        fn create() -> Result<Self, String> {
+            let path = std::env::temp_dir().join(format!(
+                "intimatr-fixture-speed-{}-{}.toml",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map_err(|error| error.to_string())?
+                    .as_nanos()
+            ));
+            let mut file = OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&path)
+                .map_err(|error| format!("cannot create disposable speed profile: {error}"))?;
+            file.write_all(b"version = 1\n[speed]\nenabled = true\n")
+                .map_err(|error| format!("cannot write disposable speed profile: {error}"))?;
+            // SAFETY: before LoadLibrary/bootstrap and before this fixture
+            // spawns any threads; no other process's environment is changed.
+            unsafe { std::env::set_var("INTIMATR_SPEED_PROFILE", &path) };
+            Ok(Self(path))
+        }
+    }
+
+    impl Drop for TemporaryPreviewProfile {
+        fn drop(&mut self) {
+            // The disposable test file is ours, created with create_new.
+            let _ = std::fs::remove_file(&self.0);
+        }
     }
 
     struct LoadedModule(*mut c_void);
@@ -277,6 +314,8 @@ mod windows_probe {
             ));
         }
 
+        let _preview_profile = TemporaryPreviewProfile::create()?;
+
         let wide: Vec<u16> = dll
             .as_os_str()
             .encode_wide()
@@ -330,6 +369,9 @@ mod windows_probe {
             unsafe { std::mem::transmute(resolve(&module, c"intimatr_timer_probe_rate")?) };
         let fail_after: unsafe extern "system" fn(u32) -> i32 =
             unsafe { std::mem::transmute(resolve(&module, c"intimatr_timer_probe_fail_after")?) };
+        let shared_rate: RateFn = unsafe {
+            std::mem::transmute(resolve(&module, c"intimatr_timer_probe_shared_rate")?)
+        };
         for stage in [0, 1, 2, 3] {
             if unsafe { fail_after(stage) } != 0 || unsafe { hook_count() } != 0 {
                 return Err(format!(
@@ -357,6 +399,16 @@ mod windows_probe {
         measure_rate(0.5, set_rate)?;
         measure_rate(2.0, set_rate)?;
         measure_rate(1.0, set_rate)?;
+        // Unlike the direct test export, this route validates the preset
+        // through Intimatr's shared RPC/UI command state first. The existing
+        // real Wine IAT timing measurements then confirm the hook follows it.
+        if unsafe { shared_rate(1.25) } != 0 {
+            return Err("unsupported shared speed preset unexpectedly accepted".into());
+        }
+        measure_rate(0.5, shared_rate)?;
+        measure_rate(2.0, shared_rate)?;
+        measure_rate(1.0, shared_rate)?;
+        println!("Shared speed commands drove four real Wine timer imports");
         stress_concurrent_timers(set_rate)?;
         if unsafe { hook_disable() } == 0 || unsafe { hook_count() } != 0 {
             return Err("experimental timer import restoration failed".into());
