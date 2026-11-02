@@ -5,13 +5,7 @@
 //! exist in the selected, initialized Wine prefix. Game-clock application
 //! remains accurately reported by the Windows client.
 
-use std::{
-    fs,
-    net::SocketAddr,
-    os::unix::fs::PermissionsExt,
-    path::PathBuf,
-    process::Command,
-};
+use std::{fs, net::SocketAddr, os::unix::fs::PermissionsExt, path::PathBuf, process::Command};
 
 const USAGE: &str = "Usage: intimatr-bottles speed --prefix ABSOLUTE_WINEPREFIX --runner ABSOLUTE_WINE --client ABSOLUTE_INTIMATR_SPEED_EXE (--tcp LOOPBACK_IP:PORT | --pipe NAME) (status | increase | decrease | toggle | reset | preset MULTIPLIER)";
 
