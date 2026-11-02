@@ -25,6 +25,11 @@ mod windows_probe {
         fn GetModuleHandleW(module: *const u16) -> *mut c_void;
     }
 
+    #[link(name = "winmm")]
+    unsafe extern "system" {
+        fn timeGetTime() -> u32;
+    }
+
     struct LoadedModule(*mut c_void);
 
     impl Drop for LoadedModule {
@@ -57,6 +62,7 @@ mod windows_probe {
     type QpcFn = unsafe extern "system" fn(*mut i64) -> i32;
     type Tick64Fn = unsafe extern "system" fn() -> u64;
     type Tick32Fn = unsafe extern "system" fn() -> u32;
+    type TimeGetTimeFn = unsafe extern "system" fn() -> u32;
 
     #[link(name = "kernel32")]
     unsafe extern "system" {
@@ -117,27 +123,52 @@ mod windows_probe {
         Ok(unsafe { real() })
     }
 
+    unsafe fn original_time_get_time() -> Result<u32, String> {
+        let module_name: &[u16] = &[119, 105, 110, 109, 109, 46, 100, 108, 108, 0];
+        let winmm = unsafe { GetModuleHandleW(module_name.as_ptr()) };
+        if winmm.is_null() {
+            return Err("cannot find winmm module".to_owned());
+        }
+        let address = unsafe { GetProcAddress(winmm, c"timeGetTime".as_ptr().cast()) };
+        if address.is_null() {
+            return Err("cannot resolve unmodified timeGetTime".to_owned());
+        }
+        let original: TimeGetTimeFn = unsafe { std::mem::transmute(address) };
+        Ok(unsafe { original() })
+    }
+
     fn measure_millisecond_timers(rate: f64) -> Result<(), String> {
         let virtual64_before = unsafe { GetTickCount64() };
         let real64_before = unsafe { original_tick64()? };
         let virtual32_before = unsafe { GetTickCount() };
         let real32_before = unsafe { original_tick32()? };
+        let virtual_winmm_before = unsafe { timeGetTime() };
+        let real_winmm_before = unsafe { original_time_get_time()? };
         thread::sleep(Duration::from_millis(160));
         let virtual64_after = unsafe { GetTickCount64() };
         let real64_after = unsafe { original_tick64()? };
         let virtual32_after = unsafe { GetTickCount() };
         let real32_after = unsafe { original_tick32()? };
+        let virtual_winmm_after = unsafe { timeGetTime() };
+        let real_winmm_after = unsafe { original_time_get_time()? };
         let real64_delta = real64_after.saturating_sub(real64_before);
         let real32_delta = real32_after.wrapping_sub(real32_before);
-        if real64_delta == 0 || real32_delta == 0 {
+        let real_winmm_delta = real_winmm_after.wrapping_sub(real_winmm_before);
+        if real64_delta == 0 || real32_delta == 0 || real_winmm_delta == 0 {
             return Err("unmodified Windows millisecond timers did not advance".to_owned());
         }
         let ratio64 = virtual64_after.saturating_sub(virtual64_before) as f64 / real64_delta as f64;
         let ratio32 = virtual32_after.wrapping_sub(virtual32_before) as f64 / real32_delta as f64;
+        let ratio_winmm =
+            virtual_winmm_after.wrapping_sub(virtual_winmm_before) as f64
+                / real_winmm_delta as f64;
         println!(
-            "Wine ms timer hooks: requested={rate:.2}x tick64={ratio64:.3}x tick32={ratio32:.3}x"
+            "Wine ms timer hooks: requested={rate:.2}x tick64={ratio64:.3}x tick32={ratio32:.3}x winmm={ratio_winmm:.3}x"
         );
-        if (ratio64 - rate).abs() > 0.30 || (ratio32 - rate).abs() > 0.30 {
+        if (ratio64 - rate).abs() > 0.30
+            || (ratio32 - rate).abs() > 0.30
+            || (ratio_winmm - rate).abs() > 0.30
+        {
             return Err(format!(
                 "inconsistent Windows millisecond timer scaling at {rate}x"
             ));
@@ -245,14 +276,14 @@ mod windows_probe {
             unsafe { std::mem::transmute(resolve(&module, c"intimatr_timer_probe_rate")?) };
         let fail_after: unsafe extern "system" fn(u32) -> i32 =
             unsafe { std::mem::transmute(resolve(&module, c"intimatr_timer_probe_fail_after")?) };
-        for stage in [0, 1, 2] {
+        for stage in [0, 1, 2, 3] {
             if unsafe { fail_after(stage) } != 0 || unsafe { hook_count() } != 0 {
                 return Err(format!(
                     "fault-injected rollback failed after {stage} imports"
                 ));
             }
         }
-        println!("Wine timer import rollback verified after 0/1/2 attempted hooks");
+        println!("Wine timer import rollback verified after 0/1/2/3 attempted hooks");
         if unsafe { hook_enable() } == 0 {
             return Err("fixture's QueryPerformanceCounter import was not hooked".into());
         }
@@ -264,9 +295,9 @@ mod windows_probe {
             return Err("unsupported speed preset was unexpectedly accepted".into());
         }
         println!("Wine timer hooks installed on {count} import slots");
-        if count < 3 {
+        if count < 4 {
             return Err(format!(
-                "only {count} timer imports hooked; expected at least three"
+                "only {count} timer imports hooked; expected at least four"
             ));
         }
         measure_rate(0.5, set_rate)?;

@@ -37,6 +37,11 @@ unsafe extern "system" {
     fn VirtualProtect(address: *mut c_void, size: usize, protect: u32, old: *mut u32) -> i32;
 }
 
+#[link(name = "winmm")]
+unsafe extern "system" {
+    fn timeGetTime() -> u32;
+}
+
 #[derive(Debug, Clone, Copy)]
 struct HookSlot {
     address: usize,
@@ -111,7 +116,25 @@ unsafe extern "system" fn intercepted_tick_count() -> u32 {
     }
 }
 
-fn original_timer_addresses() -> Option<[(usize, usize); 3]> {
+unsafe extern "system" fn intercepted_time_get_time() -> u32 {
+    let Some(real) = native_qpc() else {
+        return unsafe { timeGetTime() };
+    };
+    match hooks().try_lock() {
+        Ok(mut guard) => guard
+            .as_mut()
+            .map(|active| active.session.sample(real).time_get_time)
+            .unwrap_or_else(|| unsafe { timeGetTime() }),
+        Err(_) => unsafe { timeGetTime() },
+    }
+}
+
+fn wide_literal_winmm() -> &'static [u16] {
+    const NAME: &[u16] = &[119, 105, 110, 109, 109, 46, 100, 108, 108, 0];
+    NAME
+}
+
+fn original_timer_addresses() -> Option<[(usize, usize); 4]> {
     let kernel = unsafe { GetModuleHandleW(wide_literal_kernel32().as_ptr()) };
     if kernel.is_null() {
         return None;
@@ -130,7 +153,7 @@ fn original_timer_addresses() -> Option<[(usize, usize); 3]> {
             intercepted_tick_count as *const () as usize,
         ),
     ];
-    let mut results = [(0, 0); 3];
+    let mut results = [(0, 0); 4];
     for (index, (name, replacement)) in imports.iter().enumerate() {
         let address = unsafe { GetProcAddress(kernel, name.as_ptr().cast()) };
         if address.is_null() {
@@ -138,6 +161,18 @@ fn original_timer_addresses() -> Option<[(usize, usize); 3]> {
         }
         results[index] = (address as usize, *replacement);
     }
+    let winmm = unsafe { GetModuleHandleW(wide_literal_winmm().as_ptr()) };
+    if winmm.is_null() {
+        return None;
+    }
+    let address = unsafe { GetProcAddress(winmm, c"timeGetTime".as_ptr().cast()) };
+    if address.is_null() {
+        return None;
+    }
+    results[3] = (
+        address as usize,
+        intercepted_time_get_time as *const () as usize,
+    );
     Some(results)
 }
 
@@ -295,7 +330,7 @@ fn enable_probe_with_fault(fail_after: Option<usize>) -> bool {
         return false;
     };
     if let Some(active) = guard.as_ref() {
-        return active.slots.iter().filter(|slot| slot.active).count() >= 3;
+        return active.slots.iter().filter(|slot| slot.active).count() >= 4;
     }
 
     let (Some(real_qpc), Some(slots)) = (native_qpc(), timer_import_slots()) else {
@@ -313,7 +348,7 @@ fn enable_probe_with_fault(fail_after: Option<usize>) -> bool {
         real_qpc,
         frequency as u64,
         unsafe { GetTickCount64() },
-        unsafe { GetTickCount() },
+        unsafe { timeGetTime() },
     ) else {
         return false;
     };
