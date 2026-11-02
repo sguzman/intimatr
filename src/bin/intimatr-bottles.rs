@@ -444,7 +444,6 @@ mod process_command_tests {
     }
 }
 
-
 #[cfg(target_os = "linux")]
 #[derive(Debug, PartialEq, Eq)]
 struct WindowsProcessesOptions {
@@ -519,7 +518,7 @@ fn run_windows_processes(args: Vec<String>) -> Result<(), String> {
     let result: serde_json::Value = serde_json::from_slice(&result.stdout)
         .map_err(|error| format!("invalid Windows process list JSON: {error}"))?;
     if result["operation"] != "read_only_wine_windows_processes"
-        || result["attachment_attempted"] != false
+        || result["attachment_attempted"].as_bool() != Some(false)
         || !result["processes"].is_array()
     {
         return Err("unrecognized or unsafe Wine process probe response".into());
@@ -546,8 +545,17 @@ mod windows_processes_tests {
             args(&[]),
             args(&["--prefix", "/tmp"]),
             args(&["--helper", "wine-process-list.exe"]),
-            args(&["--prefix", "/tmp", "--helper", "test.exe", "--unknown", "yes"]),
-            args(&["--prefix", "/tmp", "--helper", "test.exe", "--prefix", "/another"]),
+            args(&[
+                "--prefix",
+                "/tmp",
+                "--helper",
+                "test.exe",
+                "--unknown",
+                "yes",
+            ]),
+            args(&[
+                "--prefix", "/tmp", "--helper", "test.exe", "--prefix", "/another",
+            ]),
         ] {
             assert!(WindowsProcessesOptions::parse(&invalid).is_err());
         }
@@ -556,9 +564,12 @@ mod windows_processes_tests {
     #[test]
     fn supports_spaces_in_runner_paths_without_shell() {
         let parsed = WindowsProcessesOptions::parse(&args(&[
-            "--prefix", "/tmp/Wine prefix",
-            "--helper", "/tmp/wine-process-list.exe",
-            "--runner", "/home/user/wine patched/bin/wine",
+            "--prefix",
+            "/tmp/Wine prefix",
+            "--helper",
+            "/tmp/wine-process-list.exe",
+            "--runner",
+            "/home/user/wine patched/bin/wine",
         ]))
         .unwrap();
         assert_eq!(parsed.runner, "/home/user/wine patched/bin/wine");
