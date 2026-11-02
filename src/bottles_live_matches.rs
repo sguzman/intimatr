@@ -48,7 +48,9 @@ impl WindowsProcessSnapshot {
                 return Err("Windows process snapshot has inconsistent image verification".into());
             }
             if process.pe_image_verified != process.pe_image_architecture.is_some() {
-                return Err("Windows process snapshot has inconsistent PE image verification".into());
+                return Err(
+                    "Windows process snapshot has inconsistent PE image verification".into(),
+                );
             }
             if process
                 .pe_image_architecture

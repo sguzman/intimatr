@@ -10,8 +10,8 @@ fn main() {
 
 #[cfg(windows)]
 mod windows {
-    use serde::Serialize;
     use intimatr::pe_image::inspect_pe;
+    use serde::Serialize;
     use std::{
         ffi::c_void,
         mem::{size_of, zeroed},

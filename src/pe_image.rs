@@ -65,7 +65,8 @@ mod tests {
     }
     fn with_file(image: &[u8], check: impl FnOnce(&Path)) {
         let path = std::env::temp_dir().join(format!(
-            "intimatr-pe-{}-{}", std::process::id(),
+            "intimatr-pe-{}-{}",
+            std::process::id(),
             NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::write(&path, image).unwrap();
@@ -93,8 +94,12 @@ mod tests {
         let mut large_offset = make(0x8664, 0x020b);
         large_offset[60..64].copy_from_slice(&0x1fffff_u32.to_le_bytes());
         for invalid in [
-            vec![], b"MZ".to_vec(), make(0x014c, 0x020b),
-            make(0x8664, 0x010b), wrong_signature, large_offset,
+            vec![],
+            b"MZ".to_vec(),
+            make(0x014c, 0x020b),
+            make(0x8664, 0x010b),
+            wrong_signature,
+            large_offset,
         ] {
             with_file(&invalid, |path| assert!(inspect_pe(path).is_err()));
         }
