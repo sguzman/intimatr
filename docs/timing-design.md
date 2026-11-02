@@ -87,3 +87,21 @@ The **same disposable Windows PE probe** was extended to import `GetTickCount64`
 | 1× | 1.000× | 1.000× | 1.000× |
 
 The probe confirmed **three patched IAT slots**, restored all originals, and shut down cleanly. This is a real coordinated clock proof *in an opt-in, single-purpose Wine fixture*. It is not a general-purpose, thread-safe game hook. In particular, `timeGetTime`, late-loaded modules, Win32 `GetProcAddress` paths, synchronization under heavy contention and safe unload during concurrent calls remain unverified. No automatic Bottles deployment, native Linux running-process attachment or game compatibility claim follows from these results. INT-1102/1103 remain **pending/active**, not verified complete; the weighted expansion score remains **16%** until their whole acceptance criteria are satisfied.
+
+## 2026-11-02 — Four-API and rollback verification
+
+The test-only import patcher now covers all four planned v1 timing APIs: `QueryPerformanceCounter`, `GetTickCount64`, `GetTickCount` and the WinMM `timeGetTime`, resolved independently from the target's unhooked functions. All remain restricted to Intimatr's own **opt-in isolated test EXE**.
+
+[Wine CI run 41370469163](https://github.com/sguzman/intimatr/actions/runs/41370469163) passed the isolated 64-bit Wine test and measured the following ratios relative to the original unhooked timers:
+
+| Requested rate | QPC | Tick64 | Tick32 | WinMM |
+| --- | ---: | ---: | ---: | ---: |
+| 0.5× | 0.500× | 0.503× | 0.503× | 0.503× |
+| 2× | 2.000× | 1.994× | 1.994× | 1.994× |
+| 1× | 1.000× | 1.006× | 1.006× | 1.006× |
+
+The same Wine test deliberately failed installation after 0, 1, 2 and 3 pointer replacements; every partial installation was rolled back without leaving active hook slots. The probe then confirmed four active hooks, rejected an invalid preset, exercised rate transitions, restored all imports and shut down cleanly. An earlier [rollback baseline run 41370188133](https://github.com/sguzman/intimatr/actions/runs/41370188133) independently passed the three-API version of this test plus native/Linux build checks.
+
+**Lifecycle hardening implemented:** `HookSlot` ownership records each successful pointer swap separately from page-protection recovery. On a failed installation, restoration is retried without forgetting a remaining hook; the test executable's module guard attempts cleanup before unload and deliberately retains the DLL if any active callback remains. This is *not* complete production-grade lifecycle safety: restoration of original page permissions after an unexpected failure still needs robust verification, as do simultaneous patch/unload operations and external process exit.
+
+**Further work in progress:** a monotonic snapshot fallback during concurrent timer reads, a multithread rate-transition stress test and a parallel native Windows MSVC smoke run. These additions are committed but must pass CI before their results are claimed. The current implementation does not load into ordinary Bottles games or running Wine processes, and no global speed control is enabled. INT-1102/1103/1104 remain unfinished; no new weighted points are awarded.
