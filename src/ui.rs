@@ -23,13 +23,13 @@ mod speed;
 use speed::SpeedView;
 
 use crate::{
-    speed_commands::SpeedRequest,
     command::{
         ActiveScanInfo, Command, CommandExecutor, CommandResult, ModuleInfo, ScanCandidateInfo,
         ScanSummary, ThreadInfo, WatchValue,
     },
     config::UiConfig,
     scanner::{ScalarValue, ScanPredicate, ValueType},
+    speed_commands::SpeedRequest,
 };
 
 const UI_STATE_KEY: &str = "intimatr.ui.state";
@@ -294,7 +294,9 @@ impl IntimatrApp {
         app.submit(UiTaskKind::ListWatches, Command::ListWatches);
         app.submit(
             UiTaskKind::Speed,
-            Command::Speed { request: SpeedRequest::Status },
+            Command::Speed {
+                request: SpeedRequest::Status,
+            },
         );
         app
     }
@@ -514,7 +516,10 @@ impl IntimatrApp {
     }
 
     fn render_speed(&mut self, ui: &mut egui::Ui) {
-        if let Some(request) = self.speed_view.render(ui, self.pending.contains(&UiTaskKind::Speed)) {
+        if let Some(request) = self
+            .speed_view
+            .render(ui, self.pending.contains(&UiTaskKind::Speed))
+        {
             self.submit(UiTaskKind::Speed, Command::Speed { request });
             self.last_speed_refresh = Instant::now();
         }
@@ -987,7 +992,12 @@ impl eframe::App for IntimatrApp {
             && self.last_speed_refresh.elapsed() >= Duration::from_millis(750)
             && !self.pending.contains(&UiTaskKind::Speed)
         {
-            self.submit(UiTaskKind::Speed, Command::Speed { request: SpeedRequest::Status });
+            self.submit(
+                UiTaskKind::Speed,
+                Command::Speed {
+                    request: SpeedRequest::Status,
+                },
+            );
             self.last_speed_refresh = Instant::now();
         }
 

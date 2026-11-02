@@ -31,7 +31,10 @@ impl SpeedView {
 
         let Some(status) = self.status.as_ref() else {
             ui.label("Speed status has not been received yet.");
-            if ui.add_enabled(!pending, egui::Button::new("Refresh status")).clicked() {
+            if ui
+                .add_enabled(!pending, egui::Button::new("Refresh status"))
+                .clicked()
+            {
                 return Some(SpeedRequest::Status);
             }
             return None;
@@ -40,7 +43,11 @@ impl SpeedView {
         let configured = status.configured;
         ui.horizontal(|ui| {
             ui.label("Shared speed profile:");
-            ui.strong(if configured { "Configured" } else { "Not configured" });
+            ui.strong(if configured {
+                "Configured"
+            } else {
+                "Not configured"
+            });
         });
         if let Some(profile) = status.profile.as_deref() {
             ui.label(format!("Source: {profile}"));
@@ -51,7 +58,11 @@ impl SpeedView {
         });
         ui.label(format!(
             "Game window focus: {}",
-            if status.focused { "Focused" } else { "Unfocused" }
+            if status.focused {
+                "Focused"
+            } else {
+                "Unfocused"
+            }
         ));
         if let Some(action) = &status.last_action {
             ui.label(format!("Last preview action: {action}"));
@@ -80,7 +91,10 @@ impl SpeedView {
 
         let mut request = None;
         ui.horizontal(|ui| {
-            if ui.add_enabled(!pending, egui::Button::new("Refresh")).clicked() {
+            if ui
+                .add_enabled(!pending, egui::Button::new("Refresh"))
+                .clicked()
+            {
                 request = Some(SpeedRequest::Status);
             }
             ui.add_enabled_ui(configured && !pending, |ui| {
