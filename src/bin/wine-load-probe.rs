@@ -164,9 +164,8 @@ mod windows_probe {
             unsafe { std::mem::transmute(resolve(&module, b"intimatr_timer_probe_enable\0")?) };
         let hook_disable: BoolFn =
             unsafe { std::mem::transmute(resolve(&module, b"intimatr_timer_probe_disable\0")?) };
-        let hook_count: unsafe extern "system" fn() -> u32 = unsafe {
-            std::mem::transmute(resolve(&module, b"intimatr_timer_probe_hook_count\0")?)
-        };
+        let hook_count: unsafe extern "system" fn() -> u32 =
+            unsafe { std::mem::transmute(resolve(&module, b"intimatr_timer_probe_hook_count\0")?) };
         let set_rate: RateFn =
             unsafe { std::mem::transmute(resolve(&module, b"intimatr_timer_probe_rate\0")?) };
         if unsafe { hook_enable() } == 0 {
