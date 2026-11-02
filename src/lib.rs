@@ -37,6 +37,8 @@ pub mod speed_coordinator;
 #[cfg(windows)]
 pub mod speed_hotkey_worker;
 pub mod speed_hotkeys;
+#[cfg(windows)]
+pub mod speed_hook_lifecycle;
 pub mod speed_input;
 #[cfg(windows)]
 pub mod speed_input_windows;

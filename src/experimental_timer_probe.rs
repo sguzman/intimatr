@@ -10,6 +10,7 @@
 use std::{
     ffi::c_void,
     ptr,
+    time::Duration,
     sync::{
         Mutex, OnceLock,
         atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering},
@@ -18,6 +19,7 @@ use std::{
 
 use crate::{
     speed_config::SpeedSettings,
+    speed_hook_lifecycle::CallbackTracker,
     speed_session::{SpeedAction, SpeedSession},
     speed_timers::TimerSnapshot,
 };
@@ -58,6 +60,9 @@ struct ProbeHooks {
 }
 
 static HOOKS: OnceLock<Mutex<Option<ProbeHooks>>> = OnceLock::new();
+static ACTIVE_CALLBACKS: CallbackTracker = CallbackTracker {
+    active: std::sync::atomic::AtomicUsize::new(0),
+};
 
 // Published only while owning HOOKS. Contended API reads return the last
 // scaled sample rather than a raw counter that could jump backwards at 2x.
@@ -112,6 +117,7 @@ fn native_qpc() -> Option<u64> {
 }
 
 unsafe extern "system" fn intercepted_qpc(value: *mut i64) -> i32 {
+    let _callback = ACTIVE_CALLBACKS.enter();
     if value.is_null() {
         return 0;
     }
@@ -135,6 +141,7 @@ unsafe extern "system" fn intercepted_qpc(value: *mut i64) -> i32 {
 }
 
 unsafe extern "system" fn intercepted_tick_count64() -> u64 {
+    let _callback = ACTIVE_CALLBACKS.enter();
     let Some(real) = native_qpc() else {
         return unsafe { GetTickCount64() };
     };
@@ -153,6 +160,7 @@ unsafe extern "system" fn intercepted_tick_count64() -> u64 {
 }
 
 unsafe extern "system" fn intercepted_tick_count() -> u32 {
+    let _callback = ACTIVE_CALLBACKS.enter();
     let Some(real) = native_qpc() else {
         return unsafe { GetTickCount() };
     };
@@ -171,6 +179,7 @@ unsafe extern "system" fn intercepted_tick_count() -> u32 {
 }
 
 unsafe extern "system" fn intercepted_time_get_time() -> u32 {
+    let _callback = ACTIVE_CALLBACKS.enter();
     let Some(real) = native_qpc() else {
         return unsafe { timeGetTime() };
     };
@@ -531,6 +540,12 @@ pub fn disable_probe() -> bool {
         return true;
     };
     if !restore_slots(&mut active.slots) {
+        return false;
+    }
+    // Restoration prevents new normal IAT dispatches, but existing hook
+    // calls may still be executing. Never report clean shutdown while a
+    // tracked callback is active; keep ownership for a later retry.
+    if !ACTIVE_CALLBACKS.wait_until_idle(Duration::from_millis(500)) {
         return false;
     }
     *guard = None;
