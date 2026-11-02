@@ -21,6 +21,13 @@ pub struct CallbackGuard<'a> {
 }
 
 impl CallbackTracker {
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
+            active: AtomicUsize::new(0),
+        }
+    }
+
     pub fn enter(&self) -> CallbackGuard<'_> {
         self.active.fetch_add(1, Ordering::AcqRel);
         CallbackGuard { tracker: self }
