@@ -29,6 +29,23 @@ mod windows_probe {
 
     impl Drop for LoadedModule {
         fn drop(&mut self) {
+            // Errors while a hook is installed must never unload a DLL whose
+            // callbacks could still be referenced by this executable.
+            let disable = unsafe {
+                GetProcAddress(self.0, c"intimatr_timer_probe_disable".as_ptr().cast())
+            };
+            let count = unsafe {
+                GetProcAddress(self.0, c"intimatr_timer_probe_hook_count".as_ptr().cast())
+            };
+            if !disable.is_null() && !count.is_null() {
+                let stop: BoolFn = unsafe { std::mem::transmute(disable) };
+                let active: unsafe extern "system" fn() -> u32 =
+                    unsafe { std::mem::transmute(count) };
+                if unsafe { stop() } == 0 || unsafe { active() } != 0 {
+                    eprintln!("Wine probe retaining loaded DLL: unsafe hook restoration state");
+                    return;
+                }
+            }
             unsafe {
                 FreeLibrary(self.0);
             }
@@ -227,11 +244,25 @@ mod windows_probe {
             unsafe { std::mem::transmute(resolve(&module, c"intimatr_timer_probe_hook_count")?) };
         let set_rate: RateFn =
             unsafe { std::mem::transmute(resolve(&module, c"intimatr_timer_probe_rate")?) };
+        let fail_after: unsafe extern "system" fn(u32) -> i32 =
+            unsafe { std::mem::transmute(resolve(&module, c"intimatr_timer_probe_fail_after")?) };
+        for stage in [0, 1, 2] {
+            if unsafe { fail_after(stage) } != 0 || unsafe { hook_count() } != 0 {
+                return Err(format!("fault-injected rollback failed after {stage} imports"));
+            }
+        }
+        println!("Wine timer import rollback verified after 0/1/2 attempted hooks");
         if unsafe { hook_enable() } == 0 {
             return Err("fixture's QueryPerformanceCounter import was not hooked".into());
         }
         let count = unsafe { hook_count() };
-        println!("Wine QPC hook installed on {count} import slots");
+        if unsafe { hook_enable() } == 0 || unsafe { hook_count() } != count {
+            return Err("repeat timer hook enable was not idempotent".into());
+        }
+        if unsafe { set_rate(1.25) } != 0 {
+            return Err("unsupported speed preset was unexpectedly accepted".into());
+        }
+        println!("Wine timer hooks installed on {count} import slots");
         if count < 3 {
             return Err(format!(
                 "only {count} timer imports hooked; expected at least three"
@@ -243,7 +274,10 @@ mod windows_probe {
         if unsafe { hook_disable() } == 0 || unsafe { hook_count() } != 0 {
             return Err("experimental timer import restoration failed".into());
         }
-        println!("Wine QPC hook restored all original imports");
+        if unsafe { hook_disable() } == 0 {
+            return Err("repeat timer hook disable was not idempotent".into());
+        }
+        println!("Wine timer hooks restored all original imports");
 
         if unsafe { shutdown() } == 0 {
             return Err("Intimatr exported shutdown returned failure".into());

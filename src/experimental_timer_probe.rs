@@ -37,10 +37,18 @@ unsafe extern "system" {
     fn VirtualProtect(address: *mut c_void, size: usize, protect: u32, old: *mut u32) -> i32;
 }
 
+#[derive(Debug, Clone, Copy)]
+struct HookSlot {
+    address: usize,
+    original: usize,
+    replacement: usize,
+    active: bool,
+}
+
 struct ProbeHooks {
     session: SpeedSession,
-    /// Valid only for the lifetime of the host executable (never freed here).
-    slots: Vec<(usize, usize, usize)>,
+    /// Each swapped import remains owned until positively restored.
+    slots: Vec<HookSlot>,
 }
 
 static HOOKS: OnceLock<Mutex<Option<ProbeHooks>>> = OnceLock::new();
@@ -215,28 +223,65 @@ fn timer_import_slots() -> Option<Vec<(usize, usize, usize)>> {
     (!slots.is_empty()).then_some(slots)
 }
 
-/// Restore writable protection even if the compare/exchange fails. A slot
-/// not owned by this hook is never overwritten.
-unsafe fn patch_slot(slot: usize, expected: usize, replacement: usize) -> bool {
+/// Record the pointer mutation independently of page-protection recovery.
+#[derive(Clone, Copy)]
+struct PatchOutcome {
+    swapped: bool,
+    protection_restored: bool,
+}
+
+unsafe fn patch_slot(slot: usize, expected: usize, replacement: usize) -> PatchOutcome {
+    let fail = PatchOutcome {
+        swapped: false,
+        protection_restored: false,
+    };
     if !slot.is_multiple_of(std::mem::align_of::<usize>()) {
-        return false;
+        return fail;
     }
     let mut previous = 0;
     if unsafe { VirtualProtect(slot as *mut c_void, 8, PAGE_READWRITE, &mut previous) } == 0 {
-        return false;
+        return fail;
     }
     let entry = unsafe { &*(slot as *const AtomicUsize) };
-    let changed = entry
+    let swapped = entry
         .compare_exchange(expected, replacement, Ordering::SeqCst, Ordering::SeqCst)
         .is_ok();
     let mut ignored = 0;
-    let restored = unsafe { VirtualProtect(slot as *mut c_void, 8, previous, &mut ignored) } != 0;
-    changed && restored
+    let protection_restored =
+        unsafe { VirtualProtect(slot as *mut c_void, 8, previous, &mut ignored) } != 0;
+    PatchOutcome {
+        swapped,
+        protection_restored,
+    }
+}
+
+/// A partial failed restoration keeps all remaining active slots owned by the
+/// module so the host can retry instead of unloading live function pointers.
+fn restore_slots(slots: &mut [HookSlot]) -> bool {
+    let mut clean = true;
+    for hook in slots.iter_mut().filter(|hook| hook.active) {
+        let outcome =
+            unsafe { patch_slot(hook.address, hook.replacement, hook.original) };
+        if outcome.swapped {
+            hook.active = false;
+        } else {
+            clean = false;
+        }
+        if !outcome.protection_restored {
+            clean = false;
+        }
+    }
+    clean && slots.iter().all(|hook| !hook.active)
 }
 
 /// Only succeeds in Intimatr's fixture; never installs hooks into an
 /// arbitrary game, anti-cheat process, or another Wine program.
 pub fn enable_probe() -> bool {
+    enable_probe_with_fault(None)
+}
+
+/// Only the disposable Wine probe invokes the deterministic rollback fault.
+fn enable_probe_with_fault(fail_after: Option<usize>) -> bool {
     let Ok(executable) = std::env::current_exe() else {
         return false;
     };
@@ -250,8 +295,8 @@ pub fn enable_probe() -> bool {
     let Ok(mut guard) = hooks().lock() else {
         return false;
     };
-    if guard.is_some() {
-        return true;
+    if let Some(active) = guard.as_ref() {
+        return active.slots.iter().filter(|slot| slot.active).count() >= 3;
     }
 
     let (Some(real_qpc), Some(slots)) = (native_qpc(), timer_import_slots()) else {
@@ -278,24 +323,44 @@ pub fn enable_probe() -> bool {
     };
     // Sample before hooking; the tracked timeline is continuous.
     session.sample(now);
-    let mut installed = Vec::new();
+    let mut installed = Vec::with_capacity(slots.len());
+    let mut complete = true;
     for (slot, original, replacement) in slots {
-        if !unsafe { patch_slot(slot, original, replacement) } {
-            for (prior_slot, prior_value, prior_replacement) in &installed {
-                // The disposable fixture is single-threaded while enabling.
-                if !unsafe { patch_slot(*prior_slot, *prior_replacement, *prior_value) } {
-                    return false;
-                }
-            }
-            return false;
+        if fail_after.is_some_and(|limit| installed.len() == limit) {
+            complete = false;
+            break;
         }
-        installed.push((slot, original, replacement));
+        let result = unsafe { patch_slot(slot, original, replacement) };
+        if result.swapped {
+            installed.push(HookSlot {
+                address: slot,
+                original,
+                replacement,
+                active: true,
+            });
+        }
+        if !result.swapped || !result.protection_restored {
+            complete = false;
+            break;
+        }
     }
-    *guard = Some(ProbeHooks {
-        session,
-        slots: installed,
-    });
-    true
+    if complete {
+        *guard = Some(ProbeHooks {
+            session,
+            slots: installed,
+        });
+        true
+    } else {
+        let clean = restore_slots(&mut installed);
+        if !clean {
+            // Retain DLL ownership if any import could still call this code.
+            *guard = Some(ProbeHooks {
+                session,
+                slots: installed,
+            });
+        }
+        false
+    }
 }
 
 pub fn set_probe_rate(multiplier: f64) -> bool {
@@ -318,7 +383,11 @@ pub fn probe_hook_count() -> u32 {
     hooks()
         .lock()
         .ok()
-        .and_then(|guard| guard.as_ref().map(|active| active.slots.len() as u32))
+        .and_then(|guard| {
+            guard.as_ref().map(|active| {
+                active.slots.iter().filter(|slot| slot.active).count() as u32
+            })
+        })
         .unwrap_or(0)
 }
 
@@ -326,13 +395,11 @@ pub fn disable_probe() -> bool {
     let Ok(mut guard) = hooks().lock() else {
         return false;
     };
-    let Some(active) = guard.as_ref() else {
+    let Some(active) = guard.as_mut() else {
         return true;
     };
-    for (slot, original, replacement) in &active.slots {
-        if !unsafe { patch_slot(*slot, *replacement, *original) } {
-            return false;
-        }
+    if !restore_slots(&mut active.slots) {
+        return false;
     }
     *guard = None;
     true
@@ -353,4 +420,9 @@ pub extern "system" fn intimatr_timer_probe_hook_count() -> u32 {
 #[unsafe(no_mangle)]
 pub extern "system" fn intimatr_timer_probe_disable() -> i32 {
     i32::from(disable_probe())
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn intimatr_timer_probe_fail_after(steps: u32) -> i32 {
+    i32::from(enable_probe_with_fault(Some(steps as usize)))
 }
