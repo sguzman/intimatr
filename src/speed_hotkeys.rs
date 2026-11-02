@@ -213,6 +213,16 @@ fn parse_key(raw: &str) -> Result<u16, &'static str> {
 }
 
 impl SpeedHotkeyDispatcher {
+    /// Exact virtual keys needed for the selected actions. The input pump
+    /// adds modifier VKs separately, even if no chord uses them.
+    #[must_use]
+    pub fn watched_keys(&self) -> Vec<u16> {
+        let mut keys: Vec<u16> = self.bindings.iter().map(|(chord, _)| chord.key).collect();
+        keys.sort_unstable();
+        keys.dedup();
+        keys
+    }
+
     /// The event stream remains disabled until the host explicitly reports
     /// focus. The host must stop feeding unrelated window events.
     pub fn on_focus_gained(&mut self) {

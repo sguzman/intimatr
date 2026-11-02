@@ -31,6 +31,9 @@ pub mod speed;
 pub mod speed_config;
 pub mod speed_controls;
 pub mod speed_hotkeys;
+pub mod speed_input;
+#[cfg(windows)]
+pub mod speed_input_windows;
 pub mod speed_policy;
 pub mod speed_session;
 pub mod speed_timers;
