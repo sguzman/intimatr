@@ -123,15 +123,15 @@ Work is ordered by dependency: later phases should build on the shared core inst
 **Status:** active (3/12 points verified). **Weight:** 12/100 expansion points.
 - [x] INT-1201 🗂️ Global versioned speed profile (validated TOML, Linux CI 41357980641).
 - [ ] INT-1202 🧩 Per-bottle/per-game matching (active; deterministic TOML override parser, case/path identity tests and read-only Linux preview implemented; native Bottles validation missing).
-- [ ] INT-1203 🔗 Wine-visible shared configuration path.
+- [ ] INT-1203 🔗 Wine-visible shared configuration path (active; explicit DLL-side environment path and bounded global preview loader implemented; verified Bottles identity and cross-game handoff pending).
 - [ ] INT-1204 🔄 Reload, validation, persistence.
 
 ## 13. Hotkeys and speed modulation ⌨️
 **Status:** active (3/10 points verified). **Weight:** 10/100 expansion points.
 - [x] INT-1301 🎚️ Step/preset/toggle/reset state machine (Linux CI 41358317446 core unit tests).
-- [ ] INT-1302 ✋ Hold-to-modulate and optional startup speed (active; portable bounded holds and bounded startup expiry implemented, including overlapping deadlines; real keyboard/focus integration pending).
-- [ ] INT-1303 🔑 Configurable, conflict-aware hotkeys (active; focused-window pump and conservative same-PID unique game-HWND discovery implemented; live input dispatch, Windows/Wine game verification and Wayland field QA pending).
-- [ ] INT-1304 🧷 Authoritative status and recovery.
+- [ ] INT-1302 ✋ Hold-to-modulate and optional startup speed (active; bounded holds/startup expiry and opt-in preview focus worker wired; live in-game acceleration, modifier behavior and recovery still unverified).
+- [ ] INT-1303 🔑 Configurable, conflict-aware hotkeys (active; opt-in Win32 focused-window preview worker, command state handoff and unambiguous HWND selection implemented; real Wine game input/Wayland field QA pending).
+- [ ] INT-1304 🧷 Authoritative status and recovery (active; fail-closed preview status and focus-loss reset exposed; actual installed-hook/game-speed status not yet available).
 
 ## 14. Bottles deployment manager 🍾
 **Status:** active (0/23 points verified; native read-only inventory implemented, real Bottles QA pending). **Weight:** 23/100 expansion points.
@@ -144,10 +144,10 @@ Work is ordered by dependency: later phases should build on the shared core inst
 - [ ] INT-1407 🧷 Explicit attach to already-running Wine processes via native Linux manager (active; same-PID competing helpers serialized in isolated Wine CI, actual Bottles game compatibility and cleanup outstanding).
 
 ## 15. Unified UI/RPC 🖥️
-**Status:** pending. **Weight:** 7/100 expansion points.
-- [ ] INT-1501 🧠 Shared command and RPC interface.
+**Status:** active (0/7 points verified; preview-only speed command DTOs and shared executor integrated, RPC integration QA pending). **Weight:** 7/100 expansion points.
+- [ ] INT-1501 🧠 Shared command and RPC interface (active; one serialized preview coordinator and real loopback RPC regression added; UI and applied-game-clock controls outstanding).
 - [ ] INT-1502 🪟 Native egui controls and appearance/keyboard QA.
-- [ ] INT-1503 📟 Status without keeping the scanner foregrounded.
+- [ ] INT-1503 📟 Status without keeping the scanner foregrounded (active; RPC preview-only status available, live hooked-game status unimplemented).
 
 ## 16. Verification and hardening 🧪
 **Status:** pending. **Weight:** 15/100 expansion points.
@@ -195,3 +195,5 @@ Work is ordered by dependency: later phases should build on the shared core inst
 **2026-11-02 verified live machine and explicit runner gate:** [Wine CI 41481506734](https://github.com/sguzman/intimatr/actions/runs/41481506734) observed a real running x86-64 fixture machine through `IsWow64Process2` and confirmed consistent on-disk PE architecture, four speed timers, duplicate attach refusal and clean shutdown. Native `live-match` and `win-processes` were then changed to reject omitted Wine runner parameters; latest full CI for these changes remains pending. A real Bottles installation/runner and offline game have not been inspected. **16% verified; previous 16%; delta +0 percentage points.**
 
 **2026-11-02 x64 DLL machine mismatch guard:** Read-only game matching now rejects registered x86/ARM64 candidates when both observed process and PE file machines are known to be incompatible with the current x86-64 DLL; contradictory machines also fail closed. Added unit tests and a Linux synthetic CLI fixture; latest CI pending. Real bottle/runner/game acceptance and an x86 DLL remain unverified. **Progress 16%, delta +0 percentage points.**
+
+**2026-11-02 shared-preview integration checkpoint:** The preview-only speed request/status command now routes through the established RPC/CommandExecutor boundary, with explicit opt-in Wine-visible shared-profile loading, fail-closed game HWND selection, focused-key polling, and coordinated reset/shutdown. None of those preview controls activates the timing-hook backend. Full native Windows and isolated Wine CI for the latest RPC regression remains under review; real Bottles game enrollment, authoritative applied-speed status and UI controls remain unfinished. **Weighted progress 16% (previous 16%, delta +0 pp).**
