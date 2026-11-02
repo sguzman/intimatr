@@ -153,6 +153,13 @@ jobs:
             --helper target/wine-attach/wine-process-list.exe \
             --runner wine > target/wine-attach/windows-pids.json
           grep -q "\"windows_pid\": $windows_pid" target/wine-attach/windows-pids.json
+          # The target itself is a Linux-cross-built x86-64 PE executable.
+          # A file-header match does not prove that generic Wine games are
+          # safe to inject, but it guards against a guessed architecture.
+          jq -e --argjson pid "$windows_pid" '.processes[] | select(
+            .windows_pid == $pid and .pe_image_verified == true
+            and .pe_image_architecture == "x86_64"
+          )' target/wine-attach/windows-pids.json > /dev/null
           grep -q '"attachment_attempted": false' target/wine-attach/windows-pids.json
           echo "Wine process inventory independently confirmed target Windows PID"
           # Mock only native Bottles' read-only JSON CLI; the actual Windows
