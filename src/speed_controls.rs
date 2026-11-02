@@ -12,6 +12,7 @@ pub struct SpeedControlState {
     selected: f64,
     previous_nonunity: Option<f64>,
     bypassed: bool,
+    held_multiplier: Option<f64>,
 }
 
 impl SpeedControlState {
@@ -33,12 +34,19 @@ impl SpeedControlState {
             selected: initial,
             previous_nonunity,
             bypassed: !settings.enabled || initial == 1.0,
+            held_multiplier: None,
         })
     }
 
     #[must_use]
     pub fn effective_multiplier(&self) -> f64 {
-        if self.bypassed { 1.0 } else { self.selected }
+        if let Some(held) = self.held_multiplier {
+            held
+        } else if self.bypassed {
+            1.0
+        } else {
+            self.selected
+        }
     }
 
     #[must_use]
@@ -46,9 +54,30 @@ impl SpeedControlState {
         self.bypassed
     }
 
+    /// Hold a configured preset without changing the persistent selection.
+    /// Only one temporary override can be active at a time.
+    pub fn begin_hold(&mut self, multiplier: f64) -> bool {
+        if !multiplier.is_finite() || !self.steps.contains(&multiplier) {
+            return false;
+        }
+        self.held_multiplier = Some(multiplier);
+        true
+    }
+
+    /// Idempotent release, timeout or loss-of-focus cleanup.
+    pub fn end_hold(&mut self) -> f64 {
+        self.held_multiplier = None;
+        self.effective_multiplier()
+    }
+
+    #[must_use]
+    pub fn is_held(&self) -> bool {
+        self.held_multiplier.is_some()
+    }
+
     /// Move to the next strictly faster configured preset.
     pub fn increase(&mut self) -> f64 {
-        let current = self.effective_multiplier();
+        let current = self.end_hold();
         if let Some(next) = self.steps.iter().copied().find(|step| *step > current) {
             self.activate(next);
         }
@@ -57,7 +86,7 @@ impl SpeedControlState {
 
     /// Move to the next strictly slower configured preset.
     pub fn decrease(&mut self) -> f64 {
-        let current = self.effective_multiplier();
+        let current = self.end_hold();
         if let Some(previous) = self
             .steps
             .iter()
@@ -81,6 +110,7 @@ impl SpeedControlState {
 
     /// Temporarily bypass scaling, or restore the last non-1× selection.
     pub fn toggle(&mut self) -> f64 {
+        self.end_hold();
         if !self.bypassed {
             self.bypassed = true;
         } else if let Some(previous) = self.previous_nonunity {
@@ -92,12 +122,14 @@ impl SpeedControlState {
 
     /// Return to normal time without forgetting the last faster/slower preset.
     pub fn reset(&mut self) -> f64 {
+        self.end_hold();
         self.selected = 1.0;
         self.bypassed = true;
         self.effective_multiplier()
     }
 
     fn activate(&mut self, multiplier: f64) {
+        self.end_hold();
         self.selected = multiplier;
         self.bypassed = multiplier == 1.0;
         if multiplier != 1.0 {
@@ -166,6 +198,35 @@ mod tests {
         }
         assert!(state.select_preset(0.5));
         assert_eq!(state.effective_multiplier(), 0.5);
+    }
+
+    #[test]
+    fn held_speed_is_temporary_and_release_is_idempotent() {
+        let mut state = SpeedControlState::new(&SpeedSettings::default()).unwrap();
+        assert_eq!(state.increase(), 1.5);
+        assert!(state.begin_hold(3.0));
+        assert!(state.is_held());
+        assert_eq!(state.effective_multiplier(), 3.0);
+        assert_eq!(state.end_hold(), 1.5);
+        assert_eq!(state.end_hold(), 1.5);
+        assert!(!state.is_held());
+        assert_eq!(state.toggle(), 1.0);
+        assert_eq!(state.toggle(), 1.5);
+    }
+
+    #[test]
+    fn persistent_commands_cancel_hold_without_losing_base_speed() {
+        let mut state = SpeedControlState::new(&SpeedSettings::default()).unwrap();
+        assert!(state.begin_hold(5.0));
+        assert_eq!(state.increase(), 1.5);
+        assert!(!state.is_held());
+        assert!(state.begin_hold(0.5));
+        assert_eq!(state.reset(), 1.0);
+        assert!(!state.is_held());
+        for invalid in [f64::NAN, f64::INFINITY, 0.0, 1.25] {
+            assert!(!state.begin_hold(invalid));
+            assert_eq!(state.effective_multiplier(), 1.0);
+        }
     }
 
     #[test]
