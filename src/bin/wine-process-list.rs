@@ -11,6 +11,7 @@ fn main() {
 #[cfg(windows)]
 mod windows {
     use serde::Serialize;
+    use intimatr::pe_image::inspect_pe;
     use std::{
         ffi::c_void,
         mem::{size_of, zeroed},
@@ -64,6 +65,8 @@ mod windows {
         reported_executable: String,
         full_image_path: Option<String>,
         image_query_verified: bool,
+        pe_image_architecture: Option<&'static str>,
+        pe_image_verified: bool,
         safe_to_attach: bool,
     }
 
@@ -122,11 +125,20 @@ mod windows {
             let pid = entry.process_id;
             if pid > 0 {
                 let path = image_path(pid);
+                // Parsing PE headers from this reported file path is
+                // read-only evidence of FILE machine, not proof of process
+                // machine, image ownership, or safe injection.
+                let architecture = path
+                    .as_deref()
+                    .and_then(|path| inspect_pe(std::path::Path::new(path)).ok())
+                    .map(|identity| identity.architecture);
                 processes.push(WindowsProcess {
                     windows_pid: pid,
                     reported_executable: utf16_z(&entry.exe_file),
                     image_query_verified: path.is_some(),
                     full_image_path: path,
+                    pe_image_architecture: architecture,
+                    pe_image_verified: architecture.is_some(),
                     safe_to_attach: false,
                 });
             }

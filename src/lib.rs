@@ -22,6 +22,7 @@ pub mod experimental_timer_probe;
 pub mod lifecycle;
 pub mod logging;
 pub mod memory;
+pub mod pe_image;
 pub mod platform;
 pub mod rpc;
 pub mod runtime;

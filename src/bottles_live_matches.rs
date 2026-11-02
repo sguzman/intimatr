@@ -14,6 +14,10 @@ pub struct WindowsProcessRecord {
     pub reported_executable: String,
     pub full_image_path: Option<String>,
     pub image_query_verified: bool,
+    #[serde(default)]
+    pub pe_image_architecture: Option<String>,
+    #[serde(default)]
+    pub pe_image_verified: bool,
     pub safe_to_attach: bool,
 }
 
@@ -43,6 +47,16 @@ impl WindowsProcessSnapshot {
             if process.image_query_verified != process.full_image_path.is_some() {
                 return Err("Windows process snapshot has inconsistent image verification".into());
             }
+            if process.pe_image_verified != process.pe_image_architecture.is_some() {
+                return Err("Windows process snapshot has inconsistent PE image verification".into());
+            }
+            if process
+                .pe_image_architecture
+                .as_deref()
+                .is_some_and(|value| !matches!(value, "x86" | "x86_64" | "aarch64"))
+            {
+                return Err("Windows process snapshot reports unsupported PE architecture".into());
+            }
             if process
                 .full_image_path
                 .as_ref()
@@ -59,6 +73,8 @@ impl WindowsProcessSnapshot {
 pub struct ProcessProgramMatch {
     pub windows_pid: u32,
     pub verified_executable_path: Option<String>,
+    pub pe_image_architecture: Option<String>,
+    pub pe_image_verified: bool,
     pub registered_program_name: Option<String>,
     pub status: &'static str,
     pub safe_to_attach: bool,
@@ -110,6 +126,8 @@ pub fn match_registered_programs(
         matches.push(ProcessProgramMatch {
             windows_pid: process.windows_pid,
             verified_executable_path: process.full_image_path.clone(),
+            pe_image_architecture: process.pe_image_architecture.clone(),
+            pe_image_verified: process.pe_image_verified,
             registered_program_name: found,
             status,
             safe_to_attach: false,
@@ -155,6 +173,8 @@ mod tests {
                     reported_executable: "Game.exe".into(),
                     full_image_path: path.map(str::to_owned),
                     image_query_verified: path.is_some(),
+                    pe_image_architecture: None,
+                    pe_image_verified: false,
                     safe_to_attach: false,
                 })
                 .collect(),
