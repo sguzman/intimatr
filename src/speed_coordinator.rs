@@ -65,6 +65,13 @@ impl SpeedCoordinator {
         })
     }
 
+    /// Exactly the Win32 virtual keys the HWND reader may observe. Empty
+    /// when the user has not opted in to speed shortcuts.
+    #[must_use]
+    pub fn watched_keys(&self) -> &[u16] {
+        self.input.watched_keys()
+    }
+
     /// Feed one verified, focused-game snapshot to the shared speed model.
     /// The input reader must have already verified HWND ownership/focus.
     pub fn input_sample(
@@ -149,6 +156,24 @@ mod tests {
             0,
         )
         .unwrap()
+    }
+
+    #[test]
+    fn coordinator_exposes_only_configured_observation_keys() {
+        let controller = coordinator();
+        assert!(controller.watched_keys().contains(&0x11));
+        assert!(controller.watched_keys().contains(&0x76));
+        assert!(!controller.watched_keys().contains(&0x79));
+        let empty = SpeedCoordinator::new(
+            &SpeedSettings::default(),
+            &SpeedHotkeyConfig::default(),
+            0,
+            1_000,
+            0,
+            0,
+        )
+        .unwrap();
+        assert!(empty.watched_keys().is_empty());
     }
 
     #[test]
