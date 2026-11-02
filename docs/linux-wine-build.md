@@ -72,3 +72,15 @@ The proposed profile order is built-in safe defaults, shared global speed config
 - Linux CI and Wine runtime status must be checked on the latest commit before asserting readiness. The current repository does not yet ship a working Linux Bottles deployment manager or a verified live-process attacher.
 
 References: [ArchWiki Rust cross-compilation](https://wiki.archlinux.org/title/rust), [Bottles CLI](https://docs.usebottles.com/advanced/cli), [Wine DLL override behavior](https://manpages.debian.org/unstable/libwine/wine64.1.en.html).
+
+## Preview selections without changing any game
+
+The native Linux manager also supports a **read-only plan** for registered Bottles programs:
+
+```fish
+cargo run --locked --bin intimatr-bottles -- plan --include-bottle 'Games' --include-program '*.exe' --exclude-program '*Launcher*'
+```
+
+Other modes include `plan --all --exclude-bottle 'Online*'` or `plan --include-program 'Disco*.exe'`. Including both bottle and program filters narrows the match by intersection. Multiple patterns within one filter category are alternatives; exclusion always wins. Names and Windows paths use anchored ASCII-case-insensitive `*` and `?` globs with either slash style. The output distinguishes `selected`, `not_included`, `excluded_bottle` and `excluded_program`, and always declares its operation as `read_only_selection`.
+
+`--all` is an explicit opt-in and cannot be combined with include rules; excludes alone do not implicitly select everything. Neither `scan` nor `plan` modifies game data, DLLs, environment settings, registry, launchers or running processes. The plan is a **candidate list**, not a claim that DLL loading will succeed. Real Bottles field verification is still needed.
