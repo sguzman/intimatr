@@ -199,13 +199,12 @@ impl SpeedPreviewExecutor {
         let losing_focus = previous.focused && !snapshot.focused;
         session.coordinator.input_sample(now, snapshot)?;
         let status = session.status();
-        if (previous.preview_multiplier - status.preview_multiplier).abs() > f64::EPSILON
-            || losing_focus
+        if ((previous.preview_multiplier - status.preview_multiplier).abs() > f64::EPSILON
+            || losing_focus)
+            && let Err(error) = synchronize_fixture(status.preview_multiplier)
         {
-            if let Err(error) = synchronize_fixture(status.preview_multiplier) {
-                let _ = session.coordinator.apply(now, SpeedAction::Reset);
-                return Err(error);
-            }
+            let _ = session.coordinator.apply(now, SpeedAction::Reset);
+            return Err(error);
         }
         Ok(status)
     }
@@ -252,11 +251,11 @@ impl SpeedPreviewExecutor {
         // A status poll is observational and never re-anchors a timer lease.
         // Apply the original action to the already-installed fixture clock
         // so its hold duration expires even without a second RPC request.
-        if let Some(action) = action {
-            if let Err(error) = apply_fixture_action(action) {
-                let _ = session.coordinator.apply(now, SpeedAction::Reset);
-                return Err(error.into());
-            }
+        if let Some(action) = action
+            && let Err(error) = apply_fixture_action(action)
+        {
+            let _ = session.coordinator.apply(now, SpeedAction::Reset);
+            return Err(error.into());
         }
         Ok(CommandExecution {
             result: CommandResult::Speed { status },
