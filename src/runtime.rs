@@ -60,9 +60,7 @@ pub fn shutdown() -> Result<(), RuntimeError> {
     // callback. Do this outside the loader lock and before lifecycle teardown
     // so a failed restore can be retried without falsely completing shutdown.
     #[cfg(windows)]
-    if crate::experimental_timer_probe::probe_hook_count() != 0
-        && !crate::experimental_timer_probe::disable_probe()
-    {
+    if !crate::experimental_timer_probe::disable_probe() {
         return Err(RuntimeError::TimerHooksStillActive);
     }
     let should_cleanup = LIFECYCLE.begin_shutdown()?;
