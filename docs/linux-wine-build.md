@@ -188,3 +188,13 @@ intimatr-bottles match-snapshot --bottle 'Bottle Name' --programs /absolute/prog
 ```
 
 The result is a **review-only candidate list** with every `safe_to_attach` value set to false. It deliberately cannot start the actual attachment helper, mutate Bottles configuration or operate on unrelated processes.
+
+## 2026-11-02 — Native Bottles and Wine live-match (read-only)
+
+The Linux controller now supports `intimatr-bottles live-match --bottle NAME --prefix WINEPREFIX --helper /path/to/wine-process-list.exe [--runner /path/to/wine] [--bottles-cli /path/to/bottles-cli]`. It queries the **native** `bottles-cli --json list bottles` and verifies the exact bottle name is present, reads the registered programs using `bottles-cli --json programs -b NAME`, then launches the already-tested read-only Windows PID helper in the **explicitly supplied** initialized Wine prefix. Finally it uses the existing exact full Windows executable-path matching logic and outputs a single JSON result. No files are written by the controller and no game DLL is loaded.
+
+**Identity caveat:** Bottles' list and programs commands do not independently establish that the separately supplied `WINEPREFIX` belongs to the chosen bottle. The combined report therefore explicitly sets `bottle_prefix_association_verified: false`; even unique exact path matches always retain `safe_to_attach: false` and `attachment_attempted: false`. An unknown, missing or ambiguously matched game is never silently elevated to an attachable process. Only programs registered in Bottles are in scope; loose executables are not discovered automatically.
+
+CI launches the controlled Wine target and real PE process helper, while replacing **only** `bottles-cli` with a small fixture implementing the documented JSON commands. It checks that the report includes the target Windows PID without falsely matching an unrelated registration, preserves the unknown bottle-prefix association, rejects a nonexistent bottle, and never grants attachment. Actual native Bottles field validation—including correctly resolving the real prefix and runner, symlinked game paths, and installed games—remains outstanding.
+
+Bottles' documented syntax: https://docs.usebottles.com/advanced/cli

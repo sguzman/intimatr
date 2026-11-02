@@ -153,6 +153,48 @@ jobs:
           grep -q "\"windows_pid\": $windows_pid" target/wine-attach/windows-pids.json
           grep -q '"attachment_attempted": false' target/wine-attach/windows-pids.json
           echo "Wine process inventory independently confirmed target Windows PID"
+          # Mock only native Bottles' read-only JSON CLI; the actual Windows
+          # process inventory still comes from Wine in this test.
+          mkdir -p target/wine-attach/mocks
+          cat > target/wine-attach/mocks/bottles-cli <<'MOCK_BOTTLES'
+          #!/bin/sh
+          case "$*" in
+            "--json list bottles")
+              printf '%s\n' '{"bottles":["Fixture"]}'
+              ;;
+            "--json programs -b Fixture")
+              printf '%s\n' '[{"name":"Unrelated Offline","executable":"Unrelated.exe","path":"C:\\Example\\Unrelated.exe"}]'
+              ;;
+            *)
+              echo "Unexpected Bottles mock arguments: $*" >&2
+              exit 2
+              ;;
+          esac
+          MOCK_BOTTLES
+          chmod +x target/wine-attach/mocks/bottles-cli
+          target/release/intimatr-bottles live-match \
+            --bottle Fixture \
+            --prefix "$WINEPREFIX" \
+            --helper target/wine-attach/wine-process-list.exe \
+            --runner wine \
+            --bottles-cli target/wine-attach/mocks/bottles-cli > target/wine-attach/live-match.json
+          grep -q "\"windows_pid\": $windows_pid" target/wine-attach/live-match.json
+          grep -q '"operation": "read_only_live_bottles_wine_match"' target/wine-attach/live-match.json
+          grep -q '"bottle_prefix_association_verified": false' target/wine-attach/live-match.json
+          grep -q '"status": "not_registered_in_selected_bottle"' target/wine-attach/live-match.json
+          grep -q '"safe_to_attach": false' target/wine-attach/live-match.json
+          grep -q '"attachment_attempted": false' target/wine-attach/live-match.json
+          if target/release/intimatr-bottles live-match \
+            --bottle Missing \
+            --prefix "$WINEPREFIX" \
+            --helper target/wine-attach/wine-process-list.exe \
+            --runner wine \
+            --bottles-cli target/wine-attach/mocks/bottles-cli 2> target/wine-attach/missing-bottle.stderr; then
+            echo "ERROR: a nonexistent bottle was accepted" >&2
+            exit 1
+          fi
+          grep -q 'selected bottle not found' target/wine-attach/missing-bottle.stderr
+          echo "Read-only live Bottles/Wine matching verified with mocked native inventory"
           # Two distinct Linux invocations launch separate Windows helpers
           # against the same already-running fixture. Exactly one may load.
           target/release/intimatr-bottles probe-attach \
