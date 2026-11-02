@@ -84,3 +84,9 @@ cargo run --locked --bin intimatr-bottles -- plan --include-bottle 'Games' --inc
 Other modes include `plan --all --exclude-bottle 'Online*'` or `plan --include-program 'Disco*.exe'`. Including both bottle and program filters narrows the match by intersection. Multiple patterns within one filter category are alternatives; exclusion always wins. Names and Windows paths use anchored ASCII-case-insensitive `*` and `?` globs with either slash style. The output distinguishes `selected`, `not_included`, `excluded_bottle` and `excluded_program`, and always declares its operation as `read_only_selection`.
 
 `--all` is an explicit opt-in and cannot be combined with include rules; excludes alone do not implicitly select everything. Neither `scan` nor `plan` modifies game data, DLLs, environment settings, registry, launchers or running processes. The plan is a **candidate list**, not a claim that DLL loading will succeed. Real Bottles field verification is still needed.
+
+## Isolated Wine DLL load smoke test
+
+A minimal Windows-only test process, `src/bin/wine-load-probe.rs`, and a safe per-executable fixture, `config/wine-load-probe.exe.toml`, prove the **normal in-process LoadLibraryW path**, separate from injecting a third-party game. The test process loads the Linux-built `intimatr.dll`, resolves Intimatr's lifecycle exports, waits for Running, requests orderly shutdown, verifies Stopped, and unloads.
+
+The CI `wine-load-smoke` job runs this in a disposable Ubuntu Wine prefix with UI, debugger, RPC and memory writes disabled; the original Windows CI, Linux GNU cross-build and native Bottles manager continue independently. A passing test proves Wine can load Intimatr in **one deliberately controlled test process**, not that the DLL loads automatically into all games or that timer hooks work. A failed test must be diagnosed, not claimed as a verified integration.

@@ -1,0 +1,20 @@
+# Minimal isolated loader-smoke configuration; this is not a game profile.
+[target]
+executable = "wine-load-probe.exe"
+
+[ui]
+enabled = false
+
+[debugger]
+enabled = false
+ui_enabled = false
+
+[rpc]
+enabled = false
+
+[policy]
+allow_memory_read = true
+allow_memory_write = false
+allow_code_patch = false
+allow_debugger = false
+allow_remote_shutdown = false
