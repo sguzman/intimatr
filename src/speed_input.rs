@@ -145,7 +145,11 @@ mod tests {
             .unwrap();
         let mut input = FocusedInputPump::new(dispatcher);
         assert!(input.watched_keys().is_empty());
-        assert!(input.sample(snapshot(true, &[CONTROL, ALT, SHIFT])).is_empty());
+        assert!(
+            input
+                .sample(snapshot(true, &[CONTROL, ALT, SHIFT]))
+                .is_empty()
+        );
         assert_eq!(
             input.sample(snapshot(false, &[])),
             vec![SpeedAction::FocusLost]
