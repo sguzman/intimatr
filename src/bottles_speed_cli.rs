@@ -241,7 +241,7 @@ mod tests {
         ]);
         let parsed = SpeedForward::parse(&tokens).unwrap();
         assert_eq!(parsed.action, "preset");
-        assert_eq!(parsed.parameters, ["1.5"]);
+        assert_eq!(parsed.parameters, vec!["1.5".to_owned()]);
         assert_eq!(parsed.endpoint_kind, "--pipe");
         tokens.splice(tokens.len() - 4.., args(&["--tcp", "[::1]:31337", "reset"]));
         assert_eq!(SpeedForward::parse(&tokens).unwrap().endpoint_kind, "--tcp");
@@ -250,8 +250,9 @@ mod tests {
             "--tcp", "127.0.0.1:31337", "hold", "2.0", "1200",
         ]);
         let selected = SpeedForward::parse(&hold).unwrap();
-        assert_eq!(selected.parameters, ["2.0", "1200"]);
-        hold[hold.len() - 1] = "60001".into();
+        assert_eq!(selected.parameters, vec!["2.0".to_owned(), "1200".to_owned()]);
+        let last = hold.len() - 1;
+        hold[last] = "60001".into();
         assert!(SpeedForward::parse(&hold).is_err());
     }
 
