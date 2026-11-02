@@ -32,7 +32,7 @@ fn run() -> Result<(), String> {
     let action = args.next().unwrap_or_default();
     if action == "--help" || action == "-h" {
         println!(
-            "Usage:\n  intimatr-bottles scan\n  intimatr-bottles plan (--all | --include-bottle GLOB | --include-program GLOB) [--exclude-bottle GLOB] [--exclude-program GLOB]\n  intimatr-bottles probe-attach --pid PID --prefix WINEPREFIX --helper PATH [--runner WINE]\n  intimatr-bottles profile-check --config TOML --bottle NAME --exe WINDOWS_PATH\n  intimatr-bottles processes --prefix INITIALIZED_WINEPREFIX\n  intimatr-bottles win-processes --prefix INITIALIZED_WINEPREFIX --helper WINE_PROCESS_LIST_EXE [--runner WINE]\n  intimatr-bottles match-snapshot --bottle NAME --programs BOTTLES_JSON --windows WINE_PROCESS_JSON\n\nscan and plan are read-only. probe-attach runs only the strictly allowlisted offline Wine test helper; it cannot attach a real game."
+            "Usage:\n  intimatr-bottles scan\n  intimatr-bottles plan (--all | --include-bottle GLOB | --include-program GLOB) [--exclude-bottle GLOB] [--exclude-program GLOB]\n  intimatr-bottles probe-attach --pid PID --prefix WINEPREFIX --helper PATH [--runner WINE]\n  intimatr-bottles profile-check --config TOML --bottle NAME --exe WINDOWS_PATH\n  intimatr-bottles processes --prefix INITIALIZED_WINEPREFIX\n  intimatr-bottles win-processes --prefix INITIALIZED_WINEPREFIX --helper WINE_PROCESS_LIST_EXE [--runner WINE]\n  intimatr-bottles match-snapshot --bottle NAME --programs BOTTLES_JSON --windows WINE_PROCESS_JSON\n  intimatr-bottles live-match --bottle NAME --prefix WINEPREFIX --helper WINE_PROCESS_LIST_EXE [--runner WINE] [--bottles-cli BOTTLES_CLI]\n\nscan and plan are read-only. probe-attach runs only the strictly allowlisted offline Wine test helper; it cannot attach a real game."
         );
         return Ok(());
     }
@@ -50,6 +50,9 @@ fn run() -> Result<(), String> {
     }
     if action == "match-snapshot" {
         return run_match_snapshot(args.collect());
+    }
+    if action == "live-match" {
+        return run_live_match(args.collect());
     }
     if action != "scan" && action != "plan" {
         return Err(
@@ -115,7 +118,12 @@ fn run() -> Result<(), String> {
 #[cfg(target_os = "linux")]
 fn bottles_json(args: &[&str]) -> Result<String, String> {
     // Invoke the installed native CLI directly, never through a shell.
-    let result = Command::new("bottles-cli")
+    bottles_json_with_command("bottles-cli", args)
+}
+
+#[cfg(target_os = "linux")]
+fn bottles_json_with_command(command: &str, args: &[&str]) -> Result<String, String> {
+    let result = Command::new(command)
         .arg("--json")
         .args(args)
         .output()
@@ -484,7 +492,22 @@ impl WindowsProcessesOptions {
 
 #[cfg(target_os = "linux")]
 fn run_windows_processes(args: Vec<String>) -> Result<(), String> {
-    let opts = WindowsProcessesOptions::parse(&args)?;
+    let options = WindowsProcessesOptions::parse(&args)?;
+    let (_, snapshot) = query_windows_process_snapshot(&options)?;
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&snapshot)
+            .map_err(|error| format!("cannot render Windows process list: {error}"))?
+    );
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn query_windows_process_snapshot(
+    opts: &WindowsProcessesOptions,
+) -> Result<(std::path::PathBuf, intimatr::bottles_live_matches::WindowsProcessSnapshot), String> {
+    use intimatr::bottles_live_matches::WindowsProcessSnapshot;
+
     let prefix = std::fs::canonicalize(&opts.prefix)
         .map_err(|error| format!("cannot resolve Wine prefix: {error}"))?;
     if !prefix.join("drive_c").is_dir() {
@@ -518,22 +541,13 @@ fn run_windows_processes(args: Vec<String>) -> Result<(), String> {
     if result.stdout.len() > 8 * 1024 * 1024 {
         return Err("Wine process list exceeds 8 MiB safety limit".into());
     }
-    let result: serde_json::Value = serde_json::from_slice(&result.stdout)
-        .map_err(|error| format!("invalid Windows process list JSON: {error}"))?;
-    if result["operation"] != "read_only_wine_windows_processes"
-        || result["attachment_attempted"].as_bool() != Some(false)
-        || !result["processes"].is_array()
-    {
-        return Err("unrecognized or unsafe Wine process probe response".into());
-    }
-    println!(
-        "{}",
-        serde_json::to_string_pretty(&result)
-            .map_err(|error| format!("cannot render Windows process list: {error}"))?
-    );
-    Ok(())
+    let text = std::str::from_utf8(&result.stdout)
+        .map_err(|error| format!("non-UTF-8 Wine process list: {error}"))?;
+    let snapshot = WindowsProcessSnapshot::parse(text)?;
+    Ok((prefix, snapshot))
 }
 
+#[cfg(target_os = "linux")]
 #[cfg(all(test, target_os = "linux"))]
 mod windows_processes_tests {
     use super::WindowsProcessesOptions;
@@ -629,4 +643,154 @@ fn run_match_snapshot(args: Vec<String>) -> Result<(), String> {
             .map_err(|error| format!("cannot render read-only match report: {error}"))?
     );
     Ok(())
+}
+
+
+#[cfg(target_os = "linux")]
+#[derive(Debug, PartialEq, Eq)]
+struct LiveMatchOptions {
+    bottle: String,
+    prefix: String,
+    helper: String,
+    runner: String,
+    bottles_cli: String,
+}
+
+#[cfg(target_os = "linux")]
+impl LiveMatchOptions {
+    fn parse(args: &[String]) -> Result<Self, String> {
+        let mut bottle = None;
+        let mut prefix = None;
+        let mut helper = None;
+        let mut runner = None;
+        let mut bottles_cli = None;
+        let mut iter = args.iter();
+        while let Some(flag) = iter.next() {
+            let value = iter
+                .next()
+                .filter(|value| !value.is_empty() && !value.starts_with("--"))
+                .ok_or_else(|| format!("missing value after {flag}"))?;
+            match flag.as_str() {
+                "--bottle" if bottle.is_none() => bottle = Some(value.clone()),
+                "--prefix" if prefix.is_none() => prefix = Some(value.clone()),
+                "--helper" if helper.is_none() => helper = Some(value.clone()),
+                "--runner" if runner.is_none() => runner = Some(value.clone()),
+                "--bottles-cli" if bottles_cli.is_none() => bottles_cli = Some(value.clone()),
+                _ => return Err(format!("duplicate or unsupported live-match option: {flag}")),
+            }
+        }
+        let bottle: String = bottle.ok_or("missing --bottle")?;
+        if bottle.trim().is_empty() {
+            return Err("bottle name must not be empty".into());
+        }
+        let bottles_cli = bottles_cli.unwrap_or_else(|| "bottles-cli".to_owned());
+        if std::path::Path::new(&bottles_cli)
+            .file_name()
+            .is_none_or(|name| name != "bottles-cli")
+        {
+            return Err("expected a native bottles-cli executable".into());
+        }
+        Ok(Self {
+            bottle,
+            prefix: prefix.ok_or("missing --prefix")?,
+            helper: helper.ok_or("missing --helper")?,
+            runner: runner.unwrap_or_else(|| "wine".to_owned()),
+            bottles_cli,
+        })
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn run_live_match(args: Vec<String>) -> Result<(), String> {
+    use intimatr::{
+        bottles::{BottleInventory, parse_bottle_names, parse_registered_programs},
+        bottles_live_matches::match_registered_programs,
+    };
+
+    let options = LiveMatchOptions::parse(&args)?;
+    // A bottle name explicitly present in native Bottles' inventory is required.
+    // This is deliberately NOT proof the operator-provided WINEPREFIX belongs
+    // to that bottle; no attachment capability is granted.
+    let names = parse_bottle_names(&bottles_json_with_command(
+        &options.bottles_cli,
+        &["list", "bottles"],
+    )?)
+    .map_err(|error| format!("invalid native Bottles list: {error}"))?;
+    if !names.iter().any(|name| name == &options.bottle) {
+        return Err("selected bottle not found in native Bottles inventory".into());
+    }
+    let programs = parse_registered_programs(&bottles_json_with_command(
+        &options.bottles_cli,
+        &["programs", "-b", &options.bottle],
+    )?)
+    .map_err(|error| format!("invalid native Bottles programs: {error}"))?;
+    let (prefix, snapshot) = query_windows_process_snapshot(&WindowsProcessesOptions {
+        prefix: options.prefix,
+        helper: options.helper,
+        runner: options.runner,
+    })?;
+    let preview = match_registered_programs(
+        &BottleInventory {
+            bottle: options.bottle.clone(),
+            programs,
+        },
+        &snapshot,
+    );
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&serde_json::json!({
+            "operation": "read_only_live_bottles_wine_match",
+            "selected_bottle": options.bottle,
+            "user_supplied_prefix": prefix,
+            "bottle_prefix_association_verified": false,
+            "windows_process_count": snapshot.processes.len(),
+            "matches": preview.matches,
+            "safe_to_attach": false,
+            "attachment_attempted": false
+        }))
+        .map_err(|error| format!("cannot serialize read-only live-match: {error}"))?
+    );
+    Ok(())
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod live_match_tests {
+    use super::LiveMatchOptions;
+
+    fn args(parts: &[&str]) -> Vec<String> {
+        parts.iter().map(|value| (*value).to_owned()).collect()
+    }
+
+    #[test]
+    fn requires_explicit_bottle_prefix_and_probe() {
+        for invalid in [
+            args(&[]),
+            args(&["--bottle", "Games", "--prefix", "/tmp"]),
+            args(&["--bottle", "Games", "--helper", "wine-process-list.exe"]),
+            args(&[
+                "--bottle", "Games", "--prefix", "/tmp", "--helper", "helper.exe",
+                "--bottles-cli", "/tmp/fake-program",
+            ]),
+            args(&[
+                "--bottle", "Games", "--prefix", "/tmp", "--helper", "helper.exe",
+                "--bottle", "Another",
+            ]),
+        ] {
+            assert!(LiveMatchOptions::parse(&invalid).is_err());
+        }
+    }
+
+    #[test]
+    fn accepts_explicit_mock_cli_and_wine_runner_without_shell_interpolation() {
+        let parsed = LiveMatchOptions::parse(&args(&[
+            "--bottle", "My Games", "--prefix", "/tmp/native prefix",
+            "--helper", "/tmp/wine-process-list.exe",
+            "--bottles-cli", "/tmp/bottles-cli",
+            "--runner", "/home/user/patch runner/wine",
+        ]))
+        .unwrap();
+        assert_eq!(parsed.bottle, "My Games");
+        assert_eq!(parsed.bottles_cli, "/tmp/bottles-cli");
+        assert_eq!(parsed.runner, "/home/user/patch runner/wine");
+    }
 }
