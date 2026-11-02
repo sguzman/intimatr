@@ -73,3 +73,17 @@ The test also confirmed exactly **one IAT slot** patched, all imports restored, 
 - CI's disposable Wine prefix does not represent the user's native Bottles runner or hardware. No anti-cheat/protected target integration is planned.
 
 **Architectural decision for INT-1002:** validate QPC via IAT in a controlled x64 PE fixture before extending to additional timer APIs; prefer a reversible per-import patcher over unvalidated broad process detours at this stage. The Windows clock projection already handles QPC-to-milliseconds unit mapping in pure Rust, but actual multi-API hook consistency remains open.
+
+## 2026-11-02 — Coordinated three-API Wine proof
+
+The **same disposable Windows PE probe** was extended to import `GetTickCount64` and `GetTickCount`, while retaining `QueryPerformanceCounter`. [src/experimental_timer_probe.rs](../src/experimental_timer_probe.rs) now patches those three direct imports in the controlled test executable only, using one [SpeedSession](../src/speed_session.rs) and the QPC-derived [WindowsTimers](../src/speed_timers.rs) projector. Raw API baselines are resolved separately with `GetProcAddress` and remain unpatched.
+
+[Linux/Wine CI run 41368311733](https://github.com/sguzman/intimatr/actions/runs/41368311733) **passed both Linux cross compilation and the isolated Wine runtime test**, recording:
+
+| Requested speed | QPC observed | GetTickCount64 observed | GetTickCount observed |
+| --- | ---: | ---: | ---: |
+| 0.5× | 0.500× | 0.500× | 0.500× |
+| 2× | 2.000× | 2.006× | 2.006× |
+| 1× | 1.000× | 1.000× | 1.000× |
+
+The probe confirmed **three patched IAT slots**, restored all originals, and shut down cleanly. This is a real coordinated clock proof *in an opt-in, single-purpose Wine fixture*. It is not a general-purpose, thread-safe game hook. In particular, `timeGetTime`, late-loaded modules, Win32 `GetProcAddress` paths, synchronization under heavy contention and safe unload during concurrent calls remain unverified. No automatic Bottles deployment, native Linux running-process attachment or game compatibility claim follows from these results. INT-1102/1103 remain **pending/active**, not verified complete; the weighted expansion score remains **16%** until their whole acceptance criteria are satisfied.
