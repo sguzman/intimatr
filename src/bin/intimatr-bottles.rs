@@ -32,7 +32,7 @@ fn run() -> Result<(), String> {
     let action = args.next().unwrap_or_default();
     if action == "--help" || action == "-h" {
         println!(
-            "Usage:\n  intimatr-bottles scan\n  intimatr-bottles plan (--all | --include-bottle GLOB | --include-program GLOB) [--exclude-bottle GLOB] [--exclude-program GLOB]\n  intimatr-bottles probe-attach --pid PID --prefix WINEPREFIX --helper PATH [--runner WINE]\n  intimatr-bottles profile-check --config TOML --bottle NAME --exe WINDOWS_PATH\n  intimatr-bottles processes --prefix INITIALIZED_WINEPREFIX\n\nscan and plan are read-only. probe-attach runs only the strictly allowlisted offline Wine test helper; it cannot attach a real game."
+            "Usage:\n  intimatr-bottles scan\n  intimatr-bottles plan (--all | --include-bottle GLOB | --include-program GLOB) [--exclude-bottle GLOB] [--exclude-program GLOB]\n  intimatr-bottles probe-attach --pid PID --prefix WINEPREFIX --helper PATH [--runner WINE]\n  intimatr-bottles profile-check --config TOML --bottle NAME --exe WINDOWS_PATH\n  intimatr-bottles processes --prefix INITIALIZED_WINEPREFIX\n  intimatr-bottles win-processes --prefix INITIALIZED_WINEPREFIX --helper WINE_PROCESS_LIST_EXE [--runner WINE]\n\nscan and plan are read-only. probe-attach runs only the strictly allowlisted offline Wine test helper; it cannot attach a real game."
         );
         return Ok(());
     }
@@ -45,9 +45,12 @@ fn run() -> Result<(), String> {
     if action == "processes" {
         return run_prefix_processes(args.collect());
     }
+    if action == "win-processes" {
+        return run_windows_processes(args.collect());
+    }
     if action != "scan" && action != "plan" {
         return Err(
-            "expected scan, plan, profile-check, processes or probe-attach (use --help)".to_owned(),
+            "expected scan, plan, profile-check, processes, win-processes or probe-attach (use --help)".to_owned(),
         );
     }
 
@@ -438,5 +441,127 @@ mod process_command_tests {
         ] {
             assert!(run_prefix_processes(bad).is_err());
         }
+    }
+}
+
+
+#[cfg(target_os = "linux")]
+#[derive(Debug, PartialEq, Eq)]
+struct WindowsProcessesOptions {
+    prefix: String,
+    helper: String,
+    runner: String,
+}
+
+#[cfg(target_os = "linux")]
+impl WindowsProcessesOptions {
+    fn parse(args: &[String]) -> Result<Self, String> {
+        let mut prefix = None;
+        let mut helper = None;
+        let mut runner = None;
+        let mut args = args.iter();
+        while let Some(flag) = args.next() {
+            let value = args
+                .next()
+                .filter(|value| !value.is_empty() && !value.starts_with("--"))
+                .ok_or_else(|| format!("missing value after {flag}"))?;
+            match flag.as_str() {
+                "--prefix" if prefix.is_none() => prefix = Some(value.clone()),
+                "--helper" if helper.is_none() => helper = Some(value.clone()),
+                "--runner" if runner.is_none() => runner = Some(value.clone()),
+                _ => return Err(format!("unsupported or repeated option {flag}")),
+            }
+        }
+        Ok(Self {
+            prefix: prefix.ok_or("missing --prefix")?,
+            helper: helper.ok_or("missing --helper")?,
+            runner: runner.unwrap_or_else(|| "wine".into()),
+        })
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn run_windows_processes(args: Vec<String>) -> Result<(), String> {
+    let opts = WindowsProcessesOptions::parse(&args)?;
+    let prefix = std::fs::canonicalize(&opts.prefix)
+        .map_err(|error| format!("cannot resolve Wine prefix: {error}"))?;
+    if !prefix.join("drive_c").is_dir() {
+        return Err("Wine prefix must be initialized with drive_c".into());
+    }
+    let helper = std::fs::canonicalize(&opts.helper)
+        .map_err(|error| format!("cannot locate read-only Windows probe: {error}"))?;
+    if !helper.is_file()
+        || !helper
+            .file_name()
+            .is_some_and(|name| name == "wine-process-list.exe")
+    {
+        return Err("expected exactly wine-process-list.exe".into());
+    }
+    let result = Command::new(&opts.runner)
+        .arg(helper)
+        .env("WINEPREFIX", &prefix)
+        .env("WINEDEBUG", "-all")
+        .output()
+        .map_err(|error| format!("cannot launch read-only Wine probe: {error}"))?;
+    if !result.status.success() {
+        return Err(format!(
+            "Wine process probe exited {:?}: {}",
+            result.status.code(),
+            String::from_utf8_lossy(&result.stderr)
+                .chars()
+                .take(500)
+                .collect::<String>()
+        ));
+    }
+    if result.stdout.len() > 8 * 1024 * 1024 {
+        return Err("Wine process list exceeds 8 MiB safety limit".into());
+    }
+    let result: serde_json::Value = serde_json::from_slice(&result.stdout)
+        .map_err(|error| format!("invalid Windows process list JSON: {error}"))?;
+    if result["operation"] != "read_only_wine_windows_processes"
+        || result["attachment_attempted"] != false
+        || !result["processes"].is_array()
+    {
+        return Err("unrecognized or unsafe Wine process probe response".into());
+    }
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&result)
+            .map_err(|error| format!("cannot render Windows process list: {error}"))?
+    );
+    Ok(())
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod windows_processes_tests {
+    use super::WindowsProcessesOptions;
+
+    fn args(parts: &[&str]) -> Vec<String> {
+        parts.iter().map(|s| (*s).to_owned()).collect()
+    }
+
+    #[test]
+    fn requires_explicit_prefix_and_helper_and_rejects_extra_flags() {
+        for invalid in [
+            args(&[]),
+            args(&["--prefix", "/tmp"]),
+            args(&["--helper", "wine-process-list.exe"]),
+            args(&["--prefix", "/tmp", "--helper", "test.exe", "--unknown", "yes"]),
+            args(&["--prefix", "/tmp", "--helper", "test.exe", "--prefix", "/another"]),
+        ] {
+            assert!(WindowsProcessesOptions::parse(&invalid).is_err());
+        }
+    }
+
+    #[test]
+    fn supports_spaces_in_runner_paths_without_shell() {
+        let parsed = WindowsProcessesOptions::parse(&args(&[
+            "--prefix", "/tmp/Wine prefix",
+            "--helper", "/tmp/wine-process-list.exe",
+            "--runner", "/home/user/wine patched/bin/wine",
+        ]))
+        .unwrap();
+        assert_eq!(parsed.runner, "/home/user/wine patched/bin/wine");
+        assert_eq!(parsed.prefix, "/tmp/Wine prefix");
     }
 }

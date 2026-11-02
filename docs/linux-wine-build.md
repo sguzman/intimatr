@@ -153,3 +153,15 @@ The native Linux `intimatr-bottles processes --prefix INITIALIZED_WINEPREFIX` co
 **Crucial distinction:** inheriting `WINEPREFIX` proves only an environment association. It does **not** prove a process is a Wine game, that its executable matches a registered Bottles program, or that its Linux PID corresponds to a Wine/Windows PID. Therefore every result reports `windows_pid: null`, `windows_executable_verified: false`, and `safe_to_attach: false`. This command never opens a process for injection, attaches a DLL, or modifies a prefix. It is a preliminary, auditable input to future real game mapping, not permission to attach to a listed process.
 
 A Linux CI fixture spawns a harmless same-user process with an isolated `WINEPREFIX`, verifies read-only discovery includes its Linux PID, and checks Windows PID remains explicitly unknown. Native Bottles runner and real-game process identity still require field verification.
+
+## 2026-11-02 — Read-only Windows PID enumeration under the same prefix
+
+The Windows PE helper [wine-process-list.rs](../src/bin/wine-process-list.rs) uses the Win32 ToolHelp **process snapshot API** to enumerate Windows PIDs and reported image names in its own Wine process namespace. Where permissions allow, it also queries the complete Windows image path. The Linux CLI runs that *read-only* helper explicitly under the selected initialized `WINEPREFIX`:
+
+```fish
+intimatr-bottles win-processes --prefix /path/to/your/prefix --helper /path/to/wine-process-list.exe --runner wine
+```
+
+Output is bounded JSON with `windows_pid`, `reported_executable`, `full_image_path`, `image_query_verified`, and `safe_to_attach: false`. A missing full image path is reported as unknown, not reconstructed from the executable basename. The Linux CLI validates the helper's exact filename, process-list JSON shape and `attachment_attempted: false` marker before displaying it. The helper **does not inject, load Intimatr, or change processes**.
+
+CI runs this helper in the **same Wine prefix as the already-running owned attachment fixture** and requires its process snapshot to contain that fixture's independently published Windows PID. This proves how to obtain Windows PID information without confusing it with `/proc` Linux PIDs. Comparing this inventory with registered Bottles executable paths is still a later task; no existing games are identified as safe to attach solely by this result.

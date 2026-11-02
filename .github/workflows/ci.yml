@@ -104,7 +104,7 @@ jobs:
           sudo apt-get install -y gcc-mingw-w64-x86-64 wine64 wine xvfb
 
       - name: Cross-build DLL and Windows probes on Linux
-        run: cargo build --locked --release --target x86_64-pc-windows-gnu --lib --bin wine-load-probe --bin wine-attach-helper --bin wine-attach-target
+        run: cargo build --locked --release --target x86_64-pc-windows-gnu --lib --bin wine-load-probe --bin wine-attach-helper --bin wine-attach-target --bin wine-process-list
 
       - name: Build native Linux test orchestration CLI
         run: cargo build --locked --release --bin intimatr-bottles
@@ -145,6 +145,14 @@ jobs:
           done
           test -s target/wine-attach/attach-target.pid
           windows_pid="$(cat target/wine-attach/attach-target.pid)"
+          cp target/x86_64-pc-windows-gnu/release/wine-process-list.exe target/wine-attach/
+          target/release/intimatr-bottles win-processes \
+            --prefix "$WINEPREFIX" \
+            --helper target/wine-attach/wine-process-list.exe \
+            --runner wine > target/wine-attach/windows-pids.json
+          grep -q "\"windows_pid\": $windows_pid" target/wine-attach/windows-pids.json
+          grep -q '"attachment_attempted": false' target/wine-attach/windows-pids.json
+          echo "Wine process inventory independently confirmed target Windows PID"
           # Two distinct Linux invocations launch separate Windows helpers
           # against the same already-running fixture. Exactly one may load.
           target/release/intimatr-bottles probe-attach \
