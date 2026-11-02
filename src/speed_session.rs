@@ -49,6 +49,14 @@ pub struct SpeedSession {
     timers: WindowsTimers,
     qpc_frequency: u64,
     hold_deadline_qpc: Option<u64>,
+    startup_deadline_qpc: Option<u64>,
+}
+
+/// Convert a bounded real-time interval to QPC ticks without overflow.
+fn duration_qpc_ticks(qpc_frequency: u64, duration_ms: u32) -> u64 {
+    (u128::from(duration_ms) * u128::from(qpc_frequency) / 1000)
+        .max(1)
+        .min(u128::from(u64::MAX)) as u64
 }
 
 impl SpeedSession {
@@ -67,11 +75,23 @@ impl SpeedSession {
             initial_time_get_time,
         )?;
         timers.set_multiplier(real_qpc_origin, controls.effective_multiplier())?;
+        let startup_deadline_qpc = if settings.enabled
+            && settings.initial_multiplier != 1.0
+            && settings.startup_duration_ms > 0
+        {
+            Some(real_qpc_origin.saturating_add(duration_qpc_ticks(
+                qpc_frequency,
+                settings.startup_duration_ms,
+            )))
+        } else {
+            None
+        };
         Ok(Self {
             controls,
             timers,
             qpc_frequency,
             hold_deadline_qpc: None,
+            startup_deadline_qpc,
         })
     }
 
@@ -82,25 +102,38 @@ impl SpeedSession {
 
     /// All API families are projected from the same real QPC sample.
     pub fn sample(&mut self, real_qpc: u64) -> TimerSnapshot {
-        self.expire_hold(real_qpc);
+        self.advance_deadlines(real_qpc);
         self.timers.sample(real_qpc)
     }
 
-    /// Expire at the original deadline, not at the next input poll: otherwise
-    /// a stalled key handler could extend accelerated time beyond its lease.
-    fn expire_hold(&mut self, real_qpc: u64) {
-        let Some(deadline) = self.hold_deadline_qpc else {
-            return;
-        };
-        if real_qpc < deadline {
-            return;
-        }
-        self.hold_deadline_qpc = None;
-        let restored = self.controls.end_hold();
-        if self.timers.set_multiplier(deadline, restored).is_err() {
-            // A validated profile should make this unreachable; never leave
-            // the temporary acceleration active if a clock error occurs.
-            self.timers.reset(deadline);
+    /// Apply pending deadlines in chronological order. Anchoring at their
+    /// original QPC ticks prevents delayed polling from extending acceleration.
+    /// Startup expiry wins a tie: it also cancels any active temporary hold.
+    fn advance_deadlines(&mut self, real_qpc: u64) {
+        loop {
+            let (deadline, startup) = match (self.startup_deadline_qpc, self.hold_deadline_qpc) {
+                (Some(startup), Some(hold)) if startup <= hold => (startup, true),
+                (Some(_), Some(hold)) => (hold, false),
+                (Some(startup), None) => (startup, true),
+                (None, Some(hold)) => (hold, false),
+                (None, None) => break,
+            };
+            if real_qpc < deadline {
+                break;
+            }
+            let restored = if startup {
+                self.startup_deadline_qpc = None;
+                self.hold_deadline_qpc = None;
+                self.controls.reset()
+            } else {
+                self.hold_deadline_qpc = None;
+                self.controls.end_hold()
+            };
+            if self.timers.set_multiplier(deadline, restored).is_err() {
+                // Validated speeds should make this unreachable; reset to 1×
+                // rather than allowing a failed temporary clock to persist.
+                self.timers.reset(deadline);
+            }
         }
     }
 
@@ -110,7 +143,7 @@ impl SpeedSession {
         real_qpc: u64,
         action: SpeedAction,
     ) -> Result<TimerSnapshot, SpeedSessionError> {
-        self.expire_hold(real_qpc);
+        self.advance_deadlines(real_qpc);
         let mut new_deadline = None;
         let multiplier = match action {
             SpeedAction::Increase => self.controls.increase(),
@@ -134,9 +167,7 @@ impl SpeedSession {
                     return Err(SpeedSessionError::UnknownPreset);
                 }
                 // u128 avoids overflow even for high-resolution QPC sources.
-                let ticks = (u128::from(duration_ms) * u128::from(self.qpc_frequency) / 1000)
-                    .max(1)
-                    .min(u128::from(u64::MAX)) as u64;
+                let ticks = duration_qpc_ticks(self.qpc_frequency, duration_ms);
                 new_deadline = Some(real_qpc.saturating_add(ticks));
                 self.controls.effective_multiplier()
             }
@@ -145,6 +176,10 @@ impl SpeedSession {
         };
         let snapshot = self.timers.set_multiplier(real_qpc, multiplier)?;
         self.hold_deadline_qpc = new_deadline;
+        if !matches!(action, SpeedAction::HoldStart { .. } | SpeedAction::HoldRelease) {
+            // Explicit persistent speed decisions supersede a startup timer.
+            self.startup_deadline_qpc = None;
+        }
         Ok(snapshot)
     }
 }
@@ -303,6 +338,62 @@ mod tests {
             assert_eq!(session.multiplier(), 1.0);
         }
         assert_eq!(session.sample(500).tick_count64, 500);
+    }
+
+    #[test]
+    fn bounded_startup_returns_to_normal_at_the_original_deadline() {
+        let settings = SpeedSettings {
+            enabled: true,
+            initial_multiplier: 2.0,
+            startup_duration_ms: 200,
+            ..SpeedSettings::default()
+        };
+        let mut session = SpeedSession::new(&settings, 0, 1_000, 0, 0).unwrap();
+        assert_eq!(session.sample(100).tick_count64, 200);
+        assert_eq!(session.sample(300).tick_count64, 500);
+        assert_eq!(session.multiplier(), 1.0);
+        assert_eq!(session.sample(500).tick_count64, 700);
+    }
+
+    #[test]
+    fn startup_expiry_cancels_overlapping_held_acceleration() {
+        let settings = SpeedSettings {
+            enabled: true,
+            initial_multiplier: 2.0,
+            startup_duration_ms: 200,
+            ..SpeedSettings::default()
+        };
+        let mut session = SpeedSession::new(&settings, 0, 1_000, 0, 0).unwrap();
+        session
+            .apply(
+                100,
+                SpeedAction::HoldStart {
+                    multiplier: 5.0,
+                    duration_ms: 500,
+                },
+            )
+            .unwrap();
+        assert_eq!(session.sample(300).tick_count64, 800);
+        assert_eq!(session.multiplier(), 1.0);
+        assert_eq!(session.sample(600).tick_count64, 1_100);
+        assert_eq!(session.apply(600, SpeedAction::HoldRelease).unwrap().tick_count64, 1_100);
+    }
+
+    #[test]
+    fn explicit_persistent_action_supersedes_startup_timeout() {
+        let settings = SpeedSettings {
+            enabled: true,
+            initial_multiplier: 2.0,
+            startup_duration_ms: 200,
+            ..SpeedSettings::default()
+        };
+        let mut session = SpeedSession::new(&settings, 0, 1_000, 0, 0).unwrap();
+        assert_eq!(
+            session.apply(100, SpeedAction::Increase).unwrap().tick_count64,
+            200
+        );
+        assert_eq!(session.sample(400).tick_count64, 1_100);
+        assert_eq!(session.multiplier(), 3.0);
     }
 
     #[test]

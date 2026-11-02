@@ -48,6 +48,8 @@ impl SharedSpeedConfig {
 pub struct SpeedSettings {
     pub enabled: bool,
     pub initial_multiplier: f64,
+    /// Zero means startup speed persists until explicitly changed.
+    pub startup_duration_ms: u32,
     pub min_multiplier: f64,
     pub max_multiplier: f64,
     pub steps: Vec<f64>,
@@ -58,6 +60,7 @@ impl Default for SpeedSettings {
         Self {
             enabled: false,
             initial_multiplier: 1.0,
+            startup_duration_ms: 0,
             min_multiplier: 0.1,
             max_multiplier: 10.0,
             steps: vec![0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 5.0, 10.0],
@@ -87,6 +90,11 @@ impl SpeedSettings {
         {
             return Err(SpeedProfileError::Invalid(
                 "initial multiplier must lie within speed range",
+            ));
+        }
+        if self.startup_duration_ms > 60_000 {
+            return Err(SpeedProfileError::Invalid(
+                "startup duration must be at most 60000 milliseconds",
             ));
         }
         if self.steps.is_empty() {
@@ -168,6 +176,7 @@ mod tests {
             "steps = [0.5, 1.0, 11.0]",
             "initial_multiplier = nan",
             "max_multiplier = inf",
+            "startup_duration_ms = 60001",
             "mispelled_option = true",
         ];
         for body in invalid {
@@ -177,6 +186,16 @@ mod tests {
                 "expected profile to reject {body}"
             );
         }
+    }
+
+    #[test]
+    fn accepts_bounded_optional_startup_duration() {
+        let profile = SharedSpeedConfig::parse(
+            "version = 1\n[speed]\nenabled = true\ninitial_multiplier = 2.0\nstartup_duration_ms = 500\n",
+        )
+        .unwrap();
+        assert_eq!(profile.speed.startup_duration_ms, 500);
+        assert_eq!(SpeedSettings::default().startup_duration_ms, 0);
     }
 
     #[test]

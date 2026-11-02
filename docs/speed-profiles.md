@@ -12,6 +12,7 @@ version = 1
 [speed]
 enabled = false
 initial_multiplier = 1.0
+startup_duration_ms = 0
 min_multiplier = 0.1
 max_multiplier = 10.0
 steps = [0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 5.0, 10.0]
@@ -22,6 +23,7 @@ steps = [0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 5.0, 10.0]
 | `version` | integer | required | must be `1` |
 | `speed.enabled` | boolean | `false` | disables automatic game-time modification by default |
 | `speed.initial_multiplier` | positive finite float | `1.0` | inside min/max |
+| `speed.startup_duration_ms` | integer | `0` | optional startup reset after 1–60,000 ms; `0` disables the timer |
 | `speed.min_multiplier` | positive finite float | `0.1` | at most `1.0` |
 | `speed.max_multiplier` | positive finite float | `10.0` | at least `1.0` |
 | `speed.steps` | array of positive finite floats | `[0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 5.0, 10.0]` | non-empty, strictly increasing, within bounds, contains `1.0` |
@@ -40,7 +42,7 @@ The runtime must resolve Linux host paths to Wine-visible paths without assuming
 
 ## Keybindings and optional features
 
-Keybinding grammar, increase/decrease, toggle/reset, and held-key speed presets are tracked under milestone 13. They are deliberately not accepted as undocumented keys by this v1 parser. The portable speed session now exposes a provisional bounded `HoldStart { multiplier, duration_ms }` action accepting an existing configured step and a duration from 1 to 60,000 ms, plus `HoldRelease` and `FocusLost`. It automatically restores the previous selection at the deadline; focus loss resets to 1×. These are core APIs, **not yet keyboard bindings or a running Wine-game implementation**. The profile format should be extended in a version-aware compatible way when input integration is ready.
+Keybinding grammar, increase/decrease, toggle/reset, and held-key speed presets are tracked under milestone 13. They are deliberately not accepted as undocumented keys by this v1 parser. The portable speed session now exposes a provisional bounded `HoldStart { multiplier, duration_ms }` action accepting an existing configured step and a duration from 1 to 60,000 ms, plus `HoldRelease` and `FocusLost`. Holds automatically restore the previous selection at their deadline; focus loss resets to 1×. A configured `startup_duration_ms` resets an enabled non-1× initial speed after a bounded real-QPC interval; zero disables this startup timer, and explicit persistent speed changes supersede it. Startup expiry also cancels any overlapping hold. These are core APIs, **not yet keyboard bindings or a running Wine-game implementation**. The profile format should be extended in a version-aware compatible way when input integration is ready.
 
 The future loader manager will opt supported offline games into the DLL; a global profile is **not** blanket permission to inject into all Wine processes. Games with anti-cheat, protected execution or multiplayer features remain excluded.
 
@@ -76,7 +78,7 @@ path = 'C:\Games\NetworkGame.exe'
 exclude = true
 ```
 
-Resolution order is **global → matching bottle → matching full executable path**. The per-rule `[bottles.speed]` and `[games.speed]` tables allow optional `enabled`, `initial_multiplier`, `min_multiplier`, `max_multiplier`, and `steps` keys. Validation applies after merging so an out-of-range final profile fails instead of silently clamping. An `exclude = true` in either the bottle or game layer always wins over a more specific `enabled = true`.
+Resolution order is **global → matching bottle → matching full executable path**. The per-rule `[bottles.speed]` and `[games.speed]` tables allow optional `enabled`, `initial_multiplier`, `startup_duration_ms`, `min_multiplier`, `max_multiplier`, and `steps` keys. Validation applies after merging so an out-of-range final profile fails instead of silently clamping. An `exclude = true` in either the bottle or game layer always wins over a more specific `enabled = true`.
 
 Bottle names are matched with trimmed ASCII-insensitive comparisons. Executable rules require a drive-qualified absolute Windows path, normalize ASCII case and slash separators, and reject `.`, `..`, UNC paths and basename-only rules. The complete bottle-plus-path identity distinguishes same-named `.exe` files in different game directories or bottles. Duplicate normalized rules, unknown fields and invalid effective speeds fail profile loading. Windows Unicode case-folding, mapped-drive aliases, filesystem links and native Bottles path identity remain future compatibility gates.
 

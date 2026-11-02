@@ -14,6 +14,7 @@ use crate::speed_config::{SharedSpeedConfig, SpeedProfileError, SpeedSettings};
 pub struct SpeedOverride {
     pub enabled: Option<bool>,
     pub initial_multiplier: Option<f64>,
+    pub startup_duration_ms: Option<u32>,
     pub min_multiplier: Option<f64>,
     pub max_multiplier: Option<f64>,
     pub steps: Option<Vec<f64>>,
@@ -26,6 +27,9 @@ impl SpeedOverride {
         }
         if let Some(value) = self.initial_multiplier {
             settings.initial_multiplier = value;
+        }
+        if let Some(value) = self.startup_duration_ms {
+            settings.startup_duration_ms = value;
         }
         if let Some(value) = self.min_multiplier {
             settings.min_multiplier = value;

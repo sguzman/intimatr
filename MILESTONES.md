@@ -129,7 +129,7 @@ Work is ordered by dependency: later phases should build on the shared core inst
 ## 13. Hotkeys and speed modulation ⌨️
 **Status:** active (3/10 points verified). **Weight:** 10/100 expansion points.
 - [x] INT-1301 🎚️ Step/preset/toggle/reset state machine (Linux CI 41358317446 core unit tests).
-- [ ] INT-1302 ✋ Hold-to-modulate and optional startup speed (active; portable bounded hold lease, exact-deadline expiry, release/focus-loss semantics implemented; real input integration and startup duration pending).
+- [ ] INT-1302 ✋ Hold-to-modulate and optional startup speed (active; portable bounded holds and bounded startup expiry implemented, including overlapping deadlines; real keyboard/focus integration pending).
 - [ ] INT-1303 🔑 Configurable, conflict-aware hotkeys.
 - [ ] INT-1304 🧷 Authoritative status and recovery.
 
