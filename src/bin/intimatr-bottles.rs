@@ -172,8 +172,8 @@ fn run_probe_attach(args: Vec<String>) -> Result<(), String> {
     use std::{fs, path::Path};
 
     let opts = ProbeAttachOptions::parse(&args)?;
-    let prefix = fs::canonicalize(&opts.prefix)
-        .map_err(|error| format!("invalid Wine prefix: {error}"))?;
+    let prefix =
+        fs::canonicalize(&opts.prefix).map_err(|error| format!("invalid Wine prefix: {error}"))?;
     if !prefix.is_dir() || !prefix.join("system.reg").is_file() {
         return Err("Wine prefix must be an initialized directory containing system.reg".into());
     }
@@ -239,10 +239,23 @@ mod probe_tests {
         for invalid in [
             args(&[]),
             args(&["--pid", "0", "--prefix", "/tmp", "--helper", "test.exe"]),
-            args(&["--pid", "garbage", "--prefix", "/tmp", "--helper", "test.exe"]),
+            args(&[
+                "--pid", "garbage", "--prefix", "/tmp", "--helper", "test.exe",
+            ]),
             args(&["--pid", "3", "--prefix", "/tmp"]),
-            args(&["--pid", "3", "--prefix", "/tmp", "--helper", "test.exe", "--pid", "4"]),
-            args(&["--pid", "3", "--prefix", "/tmp", "--helper", "test.exe", "--unknown", "1"]),
+            args(&[
+                "--pid", "3", "--prefix", "/tmp", "--helper", "test.exe", "--pid", "4",
+            ]),
+            args(&[
+                "--pid",
+                "3",
+                "--prefix",
+                "/tmp",
+                "--helper",
+                "test.exe",
+                "--unknown",
+                "1",
+            ]),
         ] {
             assert!(ProbeAttachOptions::parse(&invalid).is_err());
         }
@@ -251,9 +264,12 @@ mod probe_tests {
     #[test]
     fn parses_test_only_command_without_shell_interpolation() {
         let parsed = ProbeAttachOptions::parse(&args(&[
-            "--pid", "32",
-            "--prefix", "/tmp/owned prefix",
-            "--helper", "/tmp/wine-attach-helper.exe",
+            "--pid",
+            "32",
+            "--prefix",
+            "/tmp/owned prefix",
+            "--helper",
+            "/tmp/wine-attach-helper.exe",
         ]))
         .expect("valid test request");
         assert_eq!(parsed.pid, 32);
