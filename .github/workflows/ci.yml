@@ -160,6 +160,20 @@ jobs:
             .windows_pid == $pid and .pe_image_verified == true
             and .pe_image_architecture == "x86_64"
           )' target/wine-attach/windows-pids.json > /dev/null
+          # The IsWow64Process2 API is optional across Wine runners.
+          # Assert a verified result is consistent with the known x64
+          # fixture, but retain explicit unknowns when unsupported.
+          jq -e --argjson pid "$windows_pid" '.processes[] | select(
+            .windows_pid == $pid and (
+              if .process_architecture_verified then
+                .process_architecture == "x86_64"
+                and .process_architecture_source == "is_wow64_process2"
+              else
+                .process_architecture == null and .process_architecture_source == null
+              end
+            )
+          )' target/wine-attach/windows-pids.json > /dev/null
+          echo "Wine live-process machine query: $(jq -r --argjson pid "$windows_pid" '.processes[] | select(.windows_pid == $pid) | (.process_architecture // "unavailable")' target/wine-attach/windows-pids.json)"
           grep -q '"attachment_attempted": false' target/wine-attach/windows-pids.json
           echo "Wine process inventory independently confirmed target Windows PID"
           # Mock only native Bottles' read-only JSON CLI; the actual Windows
