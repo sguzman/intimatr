@@ -145,11 +145,33 @@ jobs:
           done
           test -s target/wine-attach/attach-target.pid
           windows_pid="$(cat target/wine-attach/attach-target.pid)"
+          # Two distinct Linux invocations launch separate Windows helpers
+          # against the same already-running fixture. Exactly one may load.
           target/release/intimatr-bottles probe-attach \
             --pid "$windows_pid" \
             --prefix "$WINEPREFIX" \
             --helper target/wine-attach/wine-attach-helper.exe \
-            --runner wine
+            --runner wine > target/wine-attach/race-1.stdout 2> target/wine-attach/race-1.stderr &
+          contender_one=$!
+          target/release/intimatr-bottles probe-attach \
+            --pid "$windows_pid" \
+            --prefix "$WINEPREFIX" \
+            --helper target/wine-attach/wine-attach-helper.exe \
+            --runner wine > target/wine-attach/race-2.stdout 2> target/wine-attach/race-2.stderr &
+          contender_two=$!
+          if wait "$contender_one"; then success_one=1; else success_one=0; fi
+          if wait "$contender_two"; then success_two=1; else success_two=0; fi
+          if test $((success_one + success_two)) -ne 1; then
+            echo "ERROR: expected exactly one remote attach success" >&2
+            cat target/wine-attach/race-1.stderr target/wine-attach/race-2.stderr >&2
+            exit 1
+          fi
+          if test "$success_one" -eq 0; then
+            grep -q "refusing duplicate attach" target/wine-attach/race-1.stderr
+          else
+            grep -q "refusing duplicate attach" target/wine-attach/race-2.stderr
+          fi
+          echo "Wine same-target race: one attachment succeeded, one rejected"
           for i in $(seq 1 100); do
             if test -s target/wine-attach/attach-verified.flag; then
               break

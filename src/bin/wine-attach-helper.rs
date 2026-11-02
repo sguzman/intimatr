@@ -29,6 +29,7 @@ mod helper {
     const PAGE_READWRITE: u32 = 0x04;
     const SNAP_MODULE: u32 = 0x0000_0008;
     const WAIT_OBJECT_0: u32 = 0;
+    const WAIT_ABANDONED: u32 = 0x80;
     const WAIT_TIMEOUT: u32 = 258;
 
     #[repr(C)]
@@ -49,6 +50,8 @@ mod helper {
     #[link(name = "kernel32")]
     unsafe extern "system" {
         fn OpenProcess(access: u32, inherit: i32, pid: u32) -> Handle;
+        fn CreateMutexW(attributes: *const c_void, initial_owner: i32, name: *const u16) -> Handle;
+        fn ReleaseMutex(mutex: Handle) -> i32;
         fn CloseHandle(handle: Handle) -> i32;
         fn QueryFullProcessImageNameW(
             handle: Handle,
@@ -95,6 +98,39 @@ mod helper {
         }
     }
 
+    /// Serializes fixture attach attempts across Wine helper processes in
+    /// the same Windows session. Not a cross-prefix or real-game lock.
+    struct AttachMutex(OwnedHandle);
+
+    impl Drop for AttachMutex {
+        fn drop(&mut self) {
+            unsafe { ReleaseMutex(self.0.0) };
+        }
+    }
+
+    fn acquire_attach_mutex(pid: u32) -> Result<AttachMutex, String> {
+        let name = format!("Local\\IntimatrFixtureAttach-{pid}");
+        let wide_name: Vec<u16> = name.encode_utf16().chain(std::iter::once(0)).collect();
+        let mutex = own(
+            unsafe { CreateMutexW(ptr::null(), 0, wide_name.as_ptr()) },
+            "cannot create per-target attachment mutex",
+        )?;
+        match unsafe { WaitForSingleObject(mutex.0, 15_000) } {
+            WAIT_OBJECT_0 => Ok(AttachMutex(mutex)),
+            WAIT_ABANDONED => {
+                // An abandoned owner could have left a remote loader running.
+                // We now own the mutex, but must not proceed with loading.
+                unsafe { ReleaseMutex(mutex.0) };
+                Err("refusing attach: previous helper abandoned its lock".into())
+            }
+            WAIT_TIMEOUT => Err("per-target attachment mutex timed out".into()),
+            _ => Err(format!(
+                "could not acquire attachment mutex: {}",
+                std::io::Error::last_os_error()
+            )),
+        }
+    }
+
     fn wide(value: &std::ffi::OsStr) -> Vec<u16> {
         value.encode_wide().chain(std::iter::once(0)).collect()
     }
@@ -124,8 +160,8 @@ mod helper {
 
     /// Fail closed when the target module list cannot be inspected.
     /// In particular, never issue a second remote LoadLibrary for a target
-    /// already carrying Intimatr. This check is fixture-scoped; a production
-    /// loader will need an atomic attach reservation against concurrent tools.
+    /// already carrying Intimatr. The caller holds the fixture-only named
+    /// mutex across checking, loading, and post-load module verification.
     fn target_has_intimatr(pid: u32) -> Result<bool, String> {
         let snapshot = own(
             unsafe { CreateToolhelp32Snapshot(SNAP_MODULE, pid) },
@@ -265,6 +301,7 @@ mod helper {
         if !target_is_fixture(process.0)? {
             return Err("refusing to attach: target is not wine-attach-target.exe".into());
         }
+        let _attachment_guard = acquire_attach_mutex(pid)?;
         if target_has_intimatr(pid)? {
             return Err("refusing duplicate attach: Intimatr is already loaded".into());
         }

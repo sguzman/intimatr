@@ -199,7 +199,7 @@ mod target {
                                 |error| format!("cannot publish attach status: {error}"),
                             )?;
                             let mut released = false;
-                            for _ in 0..200 {
+                            for _ in 0..400 {
                                 if release.is_file() {
                                     released = true;
                                     break;
