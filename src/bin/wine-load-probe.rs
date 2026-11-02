@@ -303,6 +303,63 @@ mod windows_probe {
         Ok(address)
     }
 
+    /// Validate the actual Windows CLI through the DLL's local RPC server.
+    /// This fixture-only test never attaches to another process or changes
+    /// a real game clock; no global keyboard or timing hook is installed.
+    fn exercise_speed_cli(directory: &Path) -> Result<(), String> {
+        fn command(
+            client: &Path,
+            request: &[&str],
+        ) -> Result<serde_json::Value, String> {
+            let output = std::process::Command::new(client)
+                .args(request)
+                .output()
+                .map_err(|error| format!("cannot spawn speed RPC client: {error}"))?;
+            if !output.status.success() {
+                return Err(format!(
+                    "speed RPC client failed: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                ));
+            }
+            serde_json::from_slice(&output.stdout)
+                .map_err(|error| format!("invalid CLI speed response JSON: {error}"))
+        }
+
+        let client = directory.join("intimatr-speed.exe");
+        if !client.is_file() {
+            return Err(format!(
+                "isolated Windows RPC client not found: {}",
+                client.display()
+            ));
+        }
+        let first = command(&client, &["--tcp", "127.0.0.1:31379", "status"])?;
+        if first["configured"] != true
+            || first["preview_multiplier"] != 1.0
+            || first["clock_applied_to_game"] != false
+        {
+            return Err(format!("unexpected initial shared preview: {first}"));
+        }
+        let increased = command(&client, &["--tcp", "127.0.0.1:31379", "increase"])?;
+        if increased["preview_multiplier"] != 1.5
+            || increased["clock_applied_to_game"] != false
+        {
+            return Err(format!("shared RPC step did not update preview: {increased}"));
+        }
+        let reset = command(&client, &["--tcp", "127.0.0.1:31379", "reset"])?;
+        if reset["preview_multiplier"] != 1.0 {
+            return Err(format!("shared RPC reset did not restore 1x: {reset}"));
+        }
+        let denied = std::process::Command::new(&client)
+            .args(["--tcp", "192.168.1.55:31379", "status"])
+            .output()
+            .map_err(|error| format!("cannot check remote endpoint refusal: {error}"))?;
+        if denied.status.success() {
+            return Err("speed CLI unexpectedly contacted a non-loopback endpoint".into());
+        }
+        println!("Wine speed RPC CLI roundtrip and loopback-only policy verified");
+        Ok(())
+    }
+
     pub fn run() -> Result<(), String> {
         let executable = std::env::current_exe().map_err(|e| e.to_string())?;
         let directory = executable.parent().unwrap_or_else(|| Path::new("."));
@@ -355,6 +412,7 @@ mod windows_probe {
             ));
         }
         println!("Intimatr DLL loaded in Wine process and reached Running");
+        exercise_speed_cli(directory)?;
 
         // A constrained offline fixture is the only process allowed to enable
         // this experimental import hook. The probe verifies actual API time,
