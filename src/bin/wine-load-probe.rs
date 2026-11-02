@@ -433,7 +433,9 @@ mod windows_probe {
             return Err("Intimatr exported shutdown returned failure".into());
         }
         if unsafe { hook_count() } != 0 {
-            return Err("DLL reported Stopped with experimental timer hooks still installed".into());
+            return Err(
+                "DLL reported Stopped with experimental timer hooks still installed".into(),
+            );
         }
         println!("DLL shutdown restored still-installed timer hooks");
         if unsafe { state() } != 5 {
