@@ -216,8 +216,10 @@ impl SpeedHotkeyDispatcher {
     /// The event stream remains disabled until the host explicitly reports
     /// focus. The host must stop feeding unrelated window events.
     pub fn on_focus_gained(&mut self) {
-        self.focused = true;
-        self.pressed.clear();
+        if !self.focused {
+            self.focused = true;
+            self.pressed.clear();
+        }
     }
 
     /// The frontend calls this only for events from its *focused* game window.
@@ -350,11 +352,12 @@ mod tests {
             ..Default::default()
         };
         let mut keys = config.compile(&SpeedSettings::default()).unwrap();
-        keys.on_focus_gained();
         let ctrl = Modifiers {
             ctrl: true,
             ..Default::default()
         };
+        assert_eq!(keys.on_key(event(0x76, ctrl, true, false)), None);
+        keys.on_focus_gained();
         assert_eq!(
             keys.on_key(event(0x76, ctrl, true, false)),
             Some(SpeedAction::Increase)
@@ -425,6 +428,7 @@ mod tests {
         let mut keys = SpeedHotkeyConfig::default()
             .compile(&SpeedSettings::default())
             .unwrap();
+        keys.on_focus_gained();
         assert_eq!(
             keys.on_key(event(0x41, Modifiers::default(), true, false)),
             None
