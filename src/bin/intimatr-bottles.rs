@@ -32,7 +32,7 @@ fn run() -> Result<(), String> {
     let action = args.next().unwrap_or_default();
     if action == "--help" || action == "-h" {
         println!(
-            "Usage:\n  intimatr-bottles scan\n  intimatr-bottles plan (--all | --include-bottle GLOB | --include-program GLOB) [--exclude-bottle GLOB] [--exclude-program GLOB]\n  intimatr-bottles probe-attach --pid PID --prefix WINEPREFIX --helper PATH [--runner WINE]\n  intimatr-bottles profile-check --config TOML --bottle NAME --exe WINDOWS_PATH\n\nscan and plan are read-only. probe-attach runs only the strictly allowlisted offline Wine test helper; it cannot attach a real game."
+            "Usage:\n  intimatr-bottles scan\n  intimatr-bottles plan (--all | --include-bottle GLOB | --include-program GLOB) [--exclude-bottle GLOB] [--exclude-program GLOB]\n  intimatr-bottles probe-attach --pid PID --prefix WINEPREFIX --helper PATH [--runner WINE]\n  intimatr-bottles profile-check --config TOML --bottle NAME --exe WINDOWS_PATH\n  intimatr-bottles processes --prefix INITIALIZED_WINEPREFIX\n\nscan and plan are read-only. probe-attach runs only the strictly allowlisted offline Wine test helper; it cannot attach a real game."
         );
         return Ok(());
     }
@@ -42,8 +42,11 @@ fn run() -> Result<(), String> {
     if action == "profile-check" {
         return run_profile_check(args.collect());
     }
+    if action == "processes" {
+        return run_prefix_processes(args.collect());
+    }
     if action != "scan" && action != "plan" {
-        return Err("expected scan, plan or probe-attach (use --help)".to_owned());
+        return Err("expected scan, plan, profile-check, processes or probe-attach (use --help)".to_owned());
     }
 
     let mut rules = SelectionRules::default();
@@ -395,5 +398,40 @@ mod profile_check_tests {
         .unwrap();
         assert_eq!(options.bottle, "Games");
         assert_eq!(options.executable, r"C:\Games\Game.exe");
+    }
+}
+
+
+#[cfg(target_os = "linux")]
+fn run_prefix_processes(args: Vec<String>) -> Result<(), String> {
+    use std::path::Path;
+    use intimatr::bottles_processes::inspect_prefix_processes;
+
+    if args.len() != 2 || args[0] != "--prefix" || args[1].is_empty() {
+        return Err("usage: intimatr-bottles processes --prefix INITIALIZED_WINEPREFIX".into());
+    }
+    let report = inspect_prefix_processes(Path::new(&args[1]), Path::new("/proc"))?;
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&report)
+            .map_err(|error| format!("cannot encode process report: {error}"))?
+    );
+    Ok(())
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod process_command_tests {
+    use super::run_prefix_processes;
+
+    #[test]
+    fn rejects_missing_and_unexpected_process_discovery_flags() {
+        for bad in [
+            Vec::new(),
+            vec!["--prefix".to_owned()],
+            vec!["--wrong".to_owned(), "/tmp".to_owned()],
+            vec!["--prefix".to_owned(), "/tmp".to_owned(), "--unsafe".to_owned()],
+        ] {
+            assert!(run_prefix_processes(bad).is_err());
+        }
     }
 }

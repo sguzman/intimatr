@@ -246,6 +246,31 @@ jobs:
           grep -q '"excluded": true' target/intimatr-profile-excluded.json
           grep -q '"enabled": false' target/intimatr-profile-excluded.json
 
+      - name: Verify read-only Linux PID inventory and explicit Wine PID uncertainty
+        shell: bash
+        run: |
+          set -euo pipefail
+          prefix="$(pwd)/target/intimatr-proc-qa-$"
+          mkdir -p "$prefix/drive_c"
+          WINEPREFIX="$prefix" sleep 20 &
+          fixture_pid=$!
+          trap 'kill "$fixture_pid" 2>/dev/null || true' EXIT
+          for i in $(seq 1 30); do
+            target/release/intimatr-bottles processes --prefix "$prefix" > target/intimatr-processes.json
+            if grep -q "\"linux_pid\": $fixture_pid" target/intimatr-processes.json; then
+              break
+            fi
+            sleep 0.1
+          done
+          grep -q "\"linux_pid\": $fixture_pid" target/intimatr-processes.json
+          grep -q '"windows_pid": null' target/intimatr-processes.json
+          grep -q '"safe_to_attach": false' target/intimatr-processes.json
+          grep -q '"attachment_attempted": false' target/intimatr-processes.json
+          echo "Verified Linux prefix process discovery without Windows PID guessing"
+          kill "$fixture_pid" 2>/dev/null || true
+          wait "$fixture_pid" || true
+          trap - EXIT
+
       - name: Strict Clippy for Windows GNU target from Linux
         run: cargo clippy --locked --target x86_64-pc-windows-gnu --all-targets --all-features -- -D warnings
 

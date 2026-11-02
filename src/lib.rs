@@ -7,6 +7,8 @@ pub mod analysis;
 pub mod backpressure;
 pub mod bottles;
 pub mod bottles_selection;
+#[cfg(target_os = "linux")]
+pub mod bottles_processes;
 pub mod command;
 pub mod config;
 pub mod debugger;
