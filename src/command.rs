@@ -1270,6 +1270,7 @@ pub enum CommandError {
 impl CommandError {
     pub const fn code(&self) -> &'static str {
         match self {
+            Self::SpeedPreview(_) => "speed_preview_error",
             Self::PolicyDenied { .. } => "policy_denied",
             Self::LimitExceeded { .. } => "limit_exceeded",
             Self::AddressOutOfRange(_) => "address_out_of_range",
