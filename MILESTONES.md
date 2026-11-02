@@ -109,13 +109,13 @@ Work is ordered by dependency: later phases should build on the shared core inst
 **Status:** active (3/9 points verified). **Weight:** 9/100 expansion points.
 - [x] INT-1001 🔎 Inventory regression baseline and integration seams.
 - [ ] INT-1002 ⏱️ Prove timing-hook strategy and clock continuity contract.
-- [ ] INT-1003 🍷 Prove Bottles/Wine loader and configuration-path strategy.
+- [ ] INT-1003 🍷 Prove Bottles/Wine loader and configuration-path strategy (active; isolated 64-bit Wine LoadLibrary smoke passed, live attach/path proof outstanding).
 
 ## 11. Time virtualization engine ⏩
 **Status:** active (4/19 points verified). **Weight:** 19/100 expansion points.
 - [x] INT-1101 🧮 Pure virtual clock model (Linux CI 41357696793, cross-target build and synthetic tests).
 - [ ] INT-1102 🪝 Windows timing-hook backend.
-- [ ] INT-1103 🧭 Clock consistency and live multiplier transitions.
+- [ ] INT-1103 🧭 Clock consistency and live multiplier transitions (active; coordinated pure QPC/millisecond model verified, timing hooks pending).
 - [ ] INT-1104 🧯 Safe hook lifecycle and fallback.
 - [ ] INT-1105 🎮 Offline Wine game proof.
 
@@ -136,7 +136,7 @@ Work is ordered by dependency: later phases should build on the shared core inst
 ## 14. Bottles deployment manager 🍾
 **Status:** active (0/23 points verified; native read-only inventory implemented, real Bottles QA pending). **Weight:** 23/100 expansion points.
 - [ ] INT-1401 🔭 Discover native Bottles and games (active; parser/CLI code committed, real discovery not yet verified).
-- [ ] INT-1402 🧲 Include/exclude filters.
+- [ ] INT-1402 🧲 Include/exclude filters (active; read-only selection CLI and synthetic fixture tests implemented, native Bottles field QA pending).
 - [ ] INT-1403 📋 Non-mutating plan; apply/status operations.
 - [ ] INT-1404 🔌 Verified normal-launch DLL loading.
 - [ ] INT-1405 🛟 Idempotence, backups and rollback (including process attach).
@@ -165,3 +165,5 @@ Work is ordered by dependency: later phases should build on the shared core inst
 **Expanded roadmap and precise task acceptance criteria:** [Speed Control and Bottles Integration Roadmap](docs/speed-control-roadmap.md).
 
 **Progress basis:** Milestones 0–9 retain their historical checked state and are not included in the new 100-point expansion denominator. All milestone 10–17 deliverables started pending. The repository baseline inspection INT-1001 is verified against source and historical CI, earning 3/100 weighted points; Linux-hosted PE build and explicit already-running Wine-process attachment are now firm requirements, with M14 reweighted to accommodate INT-1407 while retaining the 100-point overall denominator; expansion progress is **13%** (previous session 3%, delta +10 percentage points) after verifying INT-1101 pure clock, INT-1201 global speed profile and INT-1301 modulation state machine. INT-1401 has source and CI in progress but earns no weight until real native Bottles inventory is validated. The pure virtual clock and Linux-hosted x86-64 GNU DLL cross-build have been verified through CI; no Windows timer hook or Wine process attachment is verified. Planning/documentation alone does not complete the features. Confirmed changes must satisfy each leaf item's tests and evidence before gaining weighted credit.
+
+**2026-11-02 continued development checkpoint:** timer API projection and shared speed session tests, safe Bottles selection plans, and an isolated `wine-load-probe` were added. [Wine smoke CI 41366257752](https://github.com/sguzman/intimatr/actions/runs/41366257752) verified that the Linux-built DLL loads and shuts down inside a disposable 64-bit Wine process. It does not verify an arbitrary game, runtime attachment, or speed manipulation. **Weighted verified expansion remains 13% (previous 13%, delta +0 pp).** See the detailed roadmap for active tasks and next steps.
