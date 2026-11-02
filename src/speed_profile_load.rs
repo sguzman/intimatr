@@ -78,7 +78,7 @@ pub fn load_preview_profile(
 /// Wrap the established command executor without mutating any game or bottle.
 /// Opt-in is the environment variable *and* enabled=true in validated TOML.
 /// Missing/bad profiles leave speed unconfigured; all other commands proceed.
-pub fn wrap_explicit_preview_from_env(inner: Arc<dyn CommandExecutor>) -> Arc<dyn CommandExecutor> {
+pub fn wrap_explicit_preview_from_env(inner: Arc<dyn CommandExecutor>) -> Arc<SpeedPreviewExecutor> {
     let Some(path) = std::env::var_os(SPEED_PROFILE_ENV) else {
         return Arc::new(SpeedPreviewExecutor::disabled(inner));
     };

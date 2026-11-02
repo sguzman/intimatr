@@ -19,6 +19,7 @@ use crate::{
     debugger_ui::{DebuggerUiError, DebuggerUiHandle},
     platform::windows::{self, WindowsError, memory::CurrentProcessMemory},
     rpc::{self, PostActionHandler, RpcServerError, RpcServerHandle},
+    speed_hotkey_worker::SpeedHotkeyWorker,
     speed_profile_load::wrap_explicit_preview_from_env,
     ui::{self, UiError, UiHandle},
 };
@@ -41,6 +42,8 @@ pub struct RuntimeContext {
     _debugger_ui: Option<DebuggerUiHandle>,
     #[cfg(windows)]
     _rpc_server: Option<RpcServerHandle>,
+    #[cfg(windows)]
+    _speed_hotkey_worker: Option<SpeedHotkeyWorker>,
     _logging_guard: LoggingGuard,
 }
 
@@ -82,6 +85,11 @@ pub fn shutdown() -> Result<(), RuntimeError> {
                 && let Err(error) = ui.stop()
             {
                 warn!(error = %error, "failed to stop main UI during shutdown");
+            }
+            if let Some(mut worker) = context._speed_hotkey_worker.take()
+                && let Err(error) = worker.stop()
+            {
+                warn!(error = %error, "failed to stop focused speed preview on shutdown");
             }
             context.command_executor.shutdown();
         }
@@ -209,7 +217,7 @@ fn bootstrap_inner(
     );
 
     #[cfg(windows)]
-    let command_executor = create_command_executor(&config, &module_directory)?;
+    let (command_executor, hotkey_worker) = create_command_executor(&config, &module_directory)?;
     #[cfg(windows)]
     let rpc_server = start_rpc_if_enabled(&config, Arc::clone(&command_executor))?;
     #[cfg(windows)]
@@ -231,6 +239,8 @@ fn bootstrap_inner(
         _debugger_ui: debugger_ui,
         #[cfg(windows)]
         _rpc_server: rpc_server,
+        #[cfg(windows)]
+        _speed_hotkey_worker: hotkey_worker,
         _logging_guard: logging_guard,
     })
 }
@@ -239,7 +249,7 @@ fn bootstrap_inner(
 fn create_command_executor(
     config: &AppConfig,
     module_directory: &Path,
-) -> Result<Arc<dyn CommandExecutor>, RuntimeError> {
+) -> Result<(Arc<dyn CommandExecutor>, Option<SpeedHotkeyWorker>), RuntimeError> {
     let analysis_directory = module_directory
         .join("analysis")
         .join(&config.target.executable);
@@ -264,7 +274,16 @@ fn create_command_executor(
     let executor: Arc<dyn CommandExecutor> = bounded;
     // The shared profile path must be explicitly supplied by the loader.
     // Invalid/missing profiles disable speed only, retaining all legacy tools.
-    Ok(wrap_explicit_preview_from_env(executor))
+    let preview = wrap_explicit_preview_from_env(executor);
+    let worker = match SpeedHotkeyWorker::start(Arc::clone(&preview)) {
+        Ok(worker) => worker,
+        Err(error) => {
+            warn!(error = %error, "cannot start focused speed preview; scanner and RPC still available");
+            None
+        }
+    };
+    let executor: Arc<dyn CommandExecutor> = preview;
+    Ok((executor, worker))
 }
 
 #[cfg(windows)]
