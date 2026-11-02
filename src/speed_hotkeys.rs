@@ -245,6 +245,9 @@ impl SpeedHotkeyDispatcher {
         {
             self.held = None;
             self.pressed.remove(&held.key);
+            if !event.pressed {
+                self.pressed.remove(&event.virtual_key);
+            }
             // A new keydown in the same event must not also trigger a
             // second command; callers may deliver the next event normally.
             return Some(SpeedAction::HoldRelease);
@@ -431,6 +434,35 @@ mod tests {
                 duration_ms: 150
             })
         );
+    }
+
+    #[test]
+    fn modifier_release_cleans_stale_pressed_state() {
+        let config = SpeedHotkeyConfig {
+            hold: Some(HoldHotkey {
+                chord: "Ctrl+H".into(),
+                multiplier: 2.0,
+                duration_ms: 200,
+            }),
+            ..Default::default()
+        };
+        let mut keys = config.compile(&SpeedSettings::default()).unwrap();
+        let ctrl = Modifiers {
+            ctrl: true,
+            ..Default::default()
+        };
+        keys.on_focus_gained();
+        assert!(keys.on_key(event(0x11, ctrl, true, false)).is_none());
+        assert!(matches!(
+            keys.on_key(event(0x48, ctrl, true, false)),
+            Some(SpeedAction::HoldStart { .. })
+        ));
+        assert_eq!(
+            keys.on_key(event(0x11, Modifiers::default(), false, false)),
+            Some(SpeedAction::HoldRelease)
+        );
+        assert!(!keys.pressed.contains(&0x11));
+        assert!(!keys.pressed.contains(&0x48));
     }
 
     #[test]
