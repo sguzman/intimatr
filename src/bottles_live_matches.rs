@@ -348,10 +348,7 @@ mod tests {
     fn blocks_x86_process_even_when_file_and_registered_executable_agree() {
         let input = r#"{"operation":"read_only_wine_windows_processes","attachment_attempted":false,"processes":[{"windows_pid":55,"reported_executable":"Game.exe","full_image_path":"C:\\Game.exe","image_query_verified":true,"pe_image_architecture":"x86","pe_image_verified":true,"process_architecture":"x86","process_architecture_verified":true,"process_architecture_source":"is_wow64_process2","safe_to_attach":false}]}"#;
         let snapshot = WindowsProcessSnapshot::parse(input).unwrap();
-        let result = match_registered_programs(
-            &bottle(&[("Game", r"C:\Game.exe")]),
-            &snapshot,
-        );
+        let result = match_registered_programs(&bottle(&[("Game", r"C:\Game.exe")]), &snapshot);
         assert_eq!(result.matches[0].architecture_consistent, Some(true));
         assert_eq!(result.matches[0].x64_dll_compatible, Some(false));
         assert_eq!(result.matches[0].status, "unsupported_x64_dll_architecture");
