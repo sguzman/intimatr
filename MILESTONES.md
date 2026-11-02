@@ -130,7 +130,7 @@ Work is ordered by dependency: later phases should build on the shared core inst
 **Status:** active (3/10 points verified). **Weight:** 10/100 expansion points.
 - [x] INT-1301 🎚️ Step/preset/toggle/reset state machine (Linux CI 41358317446 core unit tests).
 - [ ] INT-1302 ✋ Hold-to-modulate and optional startup speed (active; portable bounded holds and bounded startup expiry implemented, including overlapping deadlines; real keyboard/focus integration pending).
-- [ ] INT-1303 🔑 Configurable, conflict-aware hotkeys (active; focused-window edge pump and conservative Windows HWND sampler added; production game window selection, live delivery, and Wayland field QA pending).
+- [ ] INT-1303 🔑 Configurable, conflict-aware hotkeys (active; focused-window pump and conservative same-PID unique game-HWND discovery implemented; live input dispatch, Windows/Wine game verification and Wayland field QA pending).
 - [ ] INT-1304 🧷 Authoritative status and recovery.
 
 ## 14. Bottles deployment manager 🍾

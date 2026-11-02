@@ -13,7 +13,11 @@ use windows_sys::Win32::{
     },
 };
 
-use crate::speed_input::InputSnapshot;
+use crate::{
+    speed_input::InputSnapshot,
+    speed_window::SelectionError,
+    speed_window_windows::find_unique_game_window,
+};
 
 pub struct WindowsFocusedInput {
     target_window: HWND,
@@ -21,6 +25,17 @@ pub struct WindowsFocusedInput {
 }
 
 impl WindowsFocusedInput {
+    /// Automatic enrollment is permitted only if this very process has a
+    /// *single* visible, top-level, non-tool, non-Intimatr window. Otherwise
+    /// it fails closed and does not sample any keys.
+    pub fn from_unique_game_window(watched_keys: &[u16]) -> Result<Self, &'static str> {
+        let window = find_unique_game_window().map_err(|error| match error {
+            SelectionError::NoEligibleWindow => "no eligible focused game HWND",
+            SelectionError::AmbiguousWindows => "multiple possible game HWNDs; selection required",
+        })?;
+        Self::new(window, watched_keys)
+    }
+
     /// Reject null, destroyed, and foreign-process handles before the first
     /// read. Matching only an executable basename does not establish HWND
     /// ownership.

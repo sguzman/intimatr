@@ -116,3 +116,7 @@ Valid modifiers are Ctrl/Control, Alt and Shift, in any order. Keys include lett
 ### Focused game window sampling contract
 
 The portable `FocusedInputPump` accepts explicit focus and key-state snapshots. The optional Windows-only reader uses a **specific HWND supplied by the host**, not a process-name search or compositor-global shortcut. It requires current-process window ownership and the *same* foreground HWND before it reads any key states. Key levels already held upon first focus are ignored until released and pressed again. Losing focus emits one reset and ignores further keys until focus returns. This is a conservative integration boundary only; no production game HWND is registered and no speed command is dispatched to a running Wine game yet. Actual Wayland/Wine behavior requires live owner QA.
+
+### Game window discovery and ambiguity
+
+When a game eventually enables focused hotkey integration, Windows can enumerate only the current DLL host process's top-level windows. Eligible windows are visible, unowned, non-tool and not titled as Intimatr's own main/debugger frontends. Auto-selection is allowed only for **exactly one** candidate. A launcher with its own open window or a second game window produces an ambiguous result, which disables automatic keyboard sampling instead of guessing. This policy does not use Wayland global grabs and is not yet wired to a running game or a production speed hook.
