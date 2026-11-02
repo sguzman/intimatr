@@ -160,8 +160,7 @@ mod windows_probe {
         let ratio64 = virtual64_after.saturating_sub(virtual64_before) as f64 / real64_delta as f64;
         let ratio32 = virtual32_after.wrapping_sub(virtual32_before) as f64 / real32_delta as f64;
         let ratio_winmm =
-            virtual_winmm_after.wrapping_sub(virtual_winmm_before) as f64
-                / real_winmm_delta as f64;
+            virtual_winmm_after.wrapping_sub(virtual_winmm_before) as f64 / real_winmm_delta as f64;
         println!(
             "Wine ms timer hooks: requested={rate:.2}x tick64={ratio64:.3}x tick32={ratio32:.3}x winmm={ratio_winmm:.3}x"
         );
