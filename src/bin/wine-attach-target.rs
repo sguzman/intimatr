@@ -191,6 +191,23 @@ mod target {
                             // before this deliberately controlled target exits.
                             thread::sleep(Duration::from_millis(250));
                             exercise_remote_speed(module)?;
+                            // Keep the disposable process alive long enough to
+                            // assert that a second explicit attach is refused.
+                            let verified = directory.join("attach-verified.flag");
+                            let release = directory.join("attach-release.flag");
+                            std::fs::write(&verified, b"four_timers_verified")
+                                .map_err(|error| format!("cannot publish attach status: {error}"))?;
+                            let mut released = false;
+                            for _ in 0..200 {
+                                if release.is_file() {
+                                    released = true;
+                                    break;
+                                }
+                                thread::sleep(Duration::from_millis(25));
+                            }
+                            if !released {
+                                return Err("test coordinator did not release attach target".into());
+                            }
                             if unsafe { stop() } == 0 || unsafe { state() } != 5 {
                                 return Err("attached DLL failed clean shutdown".into());
                             }
