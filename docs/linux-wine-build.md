@@ -198,3 +198,19 @@ The Linux controller now supports `intimatr-bottles live-match --bottle NAME --p
 CI launches the controlled Wine target and real PE process helper, while replacing **only** `bottles-cli` with a small fixture implementing the documented JSON commands. It checks that the report includes the target Windows PID without falsely matching an unrelated registration, preserves the unknown bottle-prefix association, rejects a nonexistent bottle, and never grants attachment. Actual native Bottles field validation—including correctly resolving the real prefix and runner, symlinked game paths, and installed games—remains outstanding.
 
 Bottles' documented syntax: https://docs.usebottles.com/advanced/cli
+
+## 2026-11-02 — Native Bottles prefix ownership verification
+
+Current source now uses the upstream native Bottles CLI's `info bottles-path` response to locate Bottles' **configured** bottles root, including customized installations. In upstream Bottles, this particular command prints a **plain directory path even when `--json` is supplied**. The JSON `list bottles` response can be a name-keyed object (and `{}` for an empty library), so the native inventory parser handles that schema as well as its older fixtures. The implementation follows Bottles' published [CLI documentation](https://docs.usebottles.com/advanced/cli) and upstream source, not a guessed home-directory location.
+
+The read-only command can now infer the prefix directly:
+
+```fish
+intimatr-bottles live-match --bottle 'My Bottle' --helper /absolute/path/wine-process-list.exe --runner /absolute/path/to/wine
+```
+
+An optional `--prefix /absolute/path/to/prefix` is available for explicit verification. It must resolve to exactly the selected bottle directory under Bottles' configured root. Before starting the Windows probe, the controller validates that the bottle exists in native Bottles' list, its directory is a direct non-symlinked child of the configured root, and the prefix contains `bottle.yml` and `drive_c`. It rejects wrong prefixes, parent traversal, symlink aliases and missing markers. The result includes the canonical bottles root, resolved prefix and its source (`configured_bottles_root` or `explicit_verified`), plus a narrowly scoped `bottle_prefix_association_verified` indicator.
+
+**Scope:** the indicator verifies a directory's association with Bottles' selected name at inspection time. It does **not** establish that a particular game process belongs to the bottle, that the supplied Wine runner is the one configured by Bottles, or that the target can be safely attached. Accordingly `runner_verified: false`, `game_process_identity_verified: false`, `safe_to_attach: false`, and `attachment_attempted: false` remain explicit. The read-only command doesn't load Intimatr into any game. Launching the Windows probe can still cause Wine's ordinary runtime metadata updates inside its prefix.
+
+CI uses a disposable prefix named `Fixture`, a minimal `bottle.yml` marker and a synthetic `bottles-cli` reporting `info bottles-path`. It verifies automatic prefix resolution and refusal of a different explicit initialized prefix before querying Wine. Real native Bottles installations and custom runners have not been inspected, so INT-1401 and INT-1407 remain open.

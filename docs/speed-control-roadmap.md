@@ -203,3 +203,9 @@ In [CI 41469750714](https://github.com/sguzman/intimatr/actions/runs/41469750714
 **Not verified:** a real native Bottles inventory, the actual selected bottle's ownership of the supplied prefix, appropriate runner and process bitness, a real offline game or production-safe game attachment. The helper still refuses attaching to anything except its owned test fixture. No milestone weights are awarded for these incomplete acceptance gates: **expansion 16/100 (previous 16%, delta +0 percentage points)**.
 
 The Bottles JSON syntax is described in https://docs.usebottles.com/advanced/cli. For real system field QA, `live-match` is read-only and does not silently treat an exact Windows executable-path match as permission to load a DLL.
+
+### 📁 Bottles configured-root and prefix identity checkpoint — 2026-11-02
+
+The project now consumes Bottles' actual `info bottles-path` output, accepts the upstream name-keyed `--json list bottles` map (including `{}`), and verifies a selected bottle's initialized direct child directory against an explicit or automatically derived `WINEPREFIX`. The `live-match` command fails closed on a missing/renamed bottle, mismatched prefix, symlinked bottle directory, missing `bottle.yml` or unsupported path format. CI fixtures include an owned Wine prefix, mocked native CLI path discovery, and a deliberate mismatched-prefix rejection. This is a **read-only directory association check**, not process identity or safe attach authorization. Full CI for this checkpoint was still pending when authored.
+
+**INT-1401/1407 remain open** pending actual user's native Bottles path, runner mapping, game process identity and offline-game QA. All matching outputs still retain `safe_to_attach: false`. **Progress 16/100 (previous 16, delta +0 pp).**
