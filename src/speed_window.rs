@@ -71,21 +71,36 @@ mod tests {
     #[test]
     fn chooses_only_unambiguous_owned_game_window() {
         assert_eq!(choose_unique(&[candidate(33)]), Ok(33));
-        assert_eq!(choose_unique(&[candidate(33), candidate(44)]), Err(SelectionError::AmbiguousWindows));
-        assert_eq!(choose_unique(&[candidate(44), candidate(33)]), Err(SelectionError::AmbiguousWindows));
+        assert_eq!(
+            choose_unique(&[candidate(33), candidate(44)]),
+            Err(SelectionError::AmbiguousWindows)
+        );
+        assert_eq!(
+            choose_unique(&[candidate(44), candidate(33)]),
+            Err(SelectionError::AmbiguousWindows)
+        );
         assert_eq!(choose_unique(&[]), Err(SelectionError::NoEligibleWindow));
     }
 
     #[test]
     fn excludes_tool_and_foreign_windows_even_if_foreground() {
-        let mut windows = vec![candidate(33), candidate(44), candidate(55), candidate(66), candidate(77)];
+        let mut windows = vec![
+            candidate(33),
+            candidate(44),
+            candidate(55),
+            candidate(66),
+            candidate(77),
+        ];
         windows[1].current_process = false;
         windows[2].tool_window = true;
         windows[3].owned = true;
         windows[4].visible = false;
         assert_eq!(choose_unique(&windows), Ok(33));
         windows[0].top_level = false;
-        assert_eq!(choose_unique(&windows), Err(SelectionError::NoEligibleWindow));
+        assert_eq!(
+            choose_unique(&windows),
+            Err(SelectionError::NoEligibleWindow)
+        );
     }
 
     #[test]
@@ -93,7 +108,10 @@ mod tests {
         let mut windows = vec![candidate(0), candidate(22), candidate(33)];
         windows[1].title = "Intimatr — Game.exe".into();
         windows[2].title = "Intimatr Debugger — Game.exe".into();
-        assert_eq!(choose_unique(&windows), Err(SelectionError::NoEligibleWindow));
+        assert_eq!(
+            choose_unique(&windows),
+            Err(SelectionError::NoEligibleWindow)
+        );
         windows[2].title = "Actual Game".into();
         assert_eq!(choose_unique(&windows), Ok(33));
     }

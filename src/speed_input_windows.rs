@@ -155,7 +155,10 @@ mod tests {
             ..Default::default()
         };
         let speed = crate::speed_config::SpeedSettings::default();
-        assert!(super::WindowsHotkeyInput::from_game_window(std::ptr::null_mut(), &config, &speed).is_err());
+        assert!(
+            super::WindowsHotkeyInput::from_game_window(std::ptr::null_mut(), &config, &speed)
+                .is_err()
+        );
     }
 
     #[test]

@@ -32,14 +32,14 @@ pub mod speed_config;
 pub mod speed_controls;
 pub mod speed_hotkeys;
 pub mod speed_input;
-pub mod speed_window;
-#[cfg(windows)]
-pub mod speed_window_windows;
 #[cfg(windows)]
 pub mod speed_input_windows;
 pub mod speed_policy;
 pub mod speed_session;
 pub mod speed_timers;
+pub mod speed_window;
+#[cfg(windows)]
+pub mod speed_window_windows;
 
 #[cfg(windows)]
 pub mod debugger_ui;

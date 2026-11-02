@@ -6,8 +6,8 @@ use windows_sys::Win32::{
     Foundation::{BOOL, HWND, LPARAM},
     System::Threading::GetCurrentProcessId,
     UI::WindowsAndMessaging::{
-        EnumWindows, GWL_EXSTYLE, GW_OWNER, GetWindow, GetWindowLongPtrW,
-        GetWindowTextW, GetWindowThreadProcessId, IsWindowVisible, WS_EX_TOOLWINDOW,
+        EnumWindows, GW_OWNER, GWL_EXSTYLE, GetWindow, GetWindowLongPtrW, GetWindowTextW,
+        GetWindowThreadProcessId, IsWindowVisible, WS_EX_TOOLWINDOW,
     },
 };
 
@@ -25,9 +25,7 @@ unsafe extern "system" fn collect_window(hwnd: HWND, param: LPARAM) -> BOOL {
         return 1;
     }
     let mut title = [0u16; MAX_TITLE_UNITS + 1];
-    let size = unsafe {
-        GetWindowTextW(hwnd, title.as_mut_ptr(), title.len() as i32)
-    };
+    let size = unsafe { GetWindowTextW(hwnd, title.as_mut_ptr(), title.len() as i32) };
     let text = String::from_utf16_lossy(&title[..size.max(0) as usize]);
     result.push(WindowCandidate {
         id: hwnd as usize as u64,
@@ -35,8 +33,8 @@ unsafe extern "system" fn collect_window(hwnd: HWND, param: LPARAM) -> BOOL {
         top_level: true, // EnumWindows enumerates top-level windows.
         visible: unsafe { IsWindowVisible(hwnd) } != 0,
         owned: !unsafe { GetWindow(hwnd, GW_OWNER) }.is_null(),
-        tool_window: (unsafe { GetWindowLongPtrW(hwnd, GWL_EXSTYLE) } as u32
-            & WS_EX_TOOLWINDOW) != 0,
+        tool_window: (unsafe { GetWindowLongPtrW(hwnd, GWL_EXSTYLE) } as u32 & WS_EX_TOOLWINDOW)
+            != 0,
         title: text,
     });
     1
