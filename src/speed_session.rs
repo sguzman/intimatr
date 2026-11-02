@@ -20,7 +20,10 @@ pub enum SpeedAction {
     Reset,
     SelectPreset(f64),
     /// A temporary configured preset with a fail-safe real-time expiry.
-    HoldStart { multiplier: f64, duration_ms: u32 },
+    HoldStart {
+        multiplier: f64,
+        duration_ms: u32,
+    },
     HoldRelease,
     /// Losing input focus restores 1× even if the base speed was faster.
     FocusLost,
@@ -254,7 +257,13 @@ mod tests {
             )
             .unwrap();
         assert_eq!(session.multiplier(), 5.0);
-        assert_eq!(session.apply(300, SpeedAction::HoldRelease).unwrap().tick_count64, 750);
+        assert_eq!(
+            session
+                .apply(300, SpeedAction::HoldRelease)
+                .unwrap()
+                .tick_count64,
+            750
+        );
         assert_eq!(session.multiplier(), 1.5);
         session
             .apply(
@@ -265,7 +274,13 @@ mod tests {
                 },
             )
             .unwrap();
-        assert_eq!(session.apply(500, SpeedAction::FocusLost).unwrap().tick_count64, 1_200);
+        assert_eq!(
+            session
+                .apply(500, SpeedAction::FocusLost)
+                .unwrap()
+                .tick_count64,
+            1_200
+        );
         assert_eq!(session.multiplier(), 1.0);
         assert_eq!(session.sample(1_500).tick_count64, 2_200);
     }
