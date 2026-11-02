@@ -393,7 +393,6 @@ pub(crate) fn fixture_preview_select_rate(multiplier: f64) -> Option<f64> {
     status.configured.then_some(status.preview_multiplier)
 }
 
-
 #[cfg(windows)]
 fn handle_rpc_post_action(action: PostAction) {
     match action {
