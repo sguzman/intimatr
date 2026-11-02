@@ -106,9 +106,9 @@ Work is ordered by dependency: later phases should build on the shared core inst
 - [x] Isolate every process run into its own diagnostic log file so field-test logs never append across launches.
 
 ## 10. Speed-control expansion — feasibility and design 🔍
-**Status:** active (3/9 points verified). **Weight:** 9/100 expansion points.
+**Status:** active (6/9 points verified). **Weight:** 9/100 expansion points.
 - [x] INT-1001 🔎 Inventory regression baseline and integration seams.
-- [ ] INT-1002 ⏱️ Prove timing-hook strategy and clock continuity contract.
+- [x] INT-1002 ⏱️ Prove timing-hook feasibility in isolated Wine QPC IAT test (0.500×/2.000×/1.000×, CI 41367449695; restricted fixture only).
 - [ ] INT-1003 🍷 Prove Bottles/Wine loader and configuration-path strategy (active; isolated 64-bit Wine LoadLibrary smoke passed, live attach/path proof outstanding).
 
 ## 11. Time virtualization engine ⏩
@@ -167,3 +167,5 @@ Work is ordered by dependency: later phases should build on the shared core inst
 **Progress basis:** Milestones 0–9 retain their historical checked state and are not included in the new 100-point expansion denominator. All milestone 10–17 deliverables started pending. The repository baseline inspection INT-1001 is verified against source and historical CI, earning 3/100 weighted points; Linux-hosted PE build and explicit already-running Wine-process attachment are now firm requirements, with M14 reweighted to accommodate INT-1407 while retaining the 100-point overall denominator; expansion progress is **13%** (previous session 3%, delta +10 percentage points) after verifying INT-1101 pure clock, INT-1201 global speed profile and INT-1301 modulation state machine. INT-1401 has source and CI in progress but earns no weight until real native Bottles inventory is validated. The pure virtual clock and Linux-hosted x86-64 GNU DLL cross-build have been verified through CI; no Windows timer hook or Wine process attachment is verified. Planning/documentation alone does not complete the features. Confirmed changes must satisfy each leaf item's tests and evidence before gaining weighted credit.
 
 **2026-11-02 continued development checkpoint:** timer API projection and shared speed session tests, safe Bottles selection plans, and an isolated `wine-load-probe` were added. [Wine smoke CI 41366257752](https://github.com/sguzman/intimatr/actions/runs/41366257752) verified that the Linux-built DLL loads and shuts down inside a disposable 64-bit Wine process. It does not verify an arbitrary game, runtime attachment, or speed manipulation. **Weighted verified expansion remains 13% (previous 13%, delta +0 pp).** See the detailed roadmap for active tasks and next steps.
+
+**2026-11-02 timing-hook checkpoint:** INT-1002 is verified by the controlled Windows/Wine QPC IAT timing proof with original-import restoration; see [timing-design.md](docs/timing-design.md). **Expansion 16% (previous 13%, delta +3 percentage points).** This credits only hook feasibility, not production hooking, Bottles or full CI on current main.
