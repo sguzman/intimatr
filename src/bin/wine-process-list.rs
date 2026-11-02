@@ -77,9 +77,7 @@ mod windows {
         if module.is_null() {
             return None;
         }
-        let procedure = unsafe {
-            GetProcAddress(module, c"IsWow64Process2".as_ptr().cast())
-        };
+        let procedure = unsafe { GetProcAddress(module, c"IsWow64Process2".as_ptr().cast()) };
         if procedure.is_null() {
             return None;
         }
@@ -148,14 +146,14 @@ mod windows {
         let process_machine = running_process_architecture(owned.0);
         let mut buffer = [0_u16; 2048];
         let mut length = buffer.len() as u32;
-        let image = if unsafe {
-            QueryFullProcessImageNameW(owned.0, 0, buffer.as_mut_ptr(), &mut length)
-        } == 0
-        {
-            None
-        } else {
-            Some(String::from_utf16_lossy(&buffer[..length as usize]))
-        };
+        let image =
+            if unsafe { QueryFullProcessImageNameW(owned.0, 0, buffer.as_mut_ptr(), &mut length) }
+                == 0
+            {
+                None
+            } else {
+                Some(String::from_utf16_lossy(&buffer[..length as usize]))
+            };
         (image, process_machine)
     }
 

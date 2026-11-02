@@ -62,7 +62,9 @@ impl WindowsProcessSnapshot {
                 != (process.process_architecture.is_some()
                     && process.process_architecture_source.is_some())
             {
-                return Err("Windows process snapshot has inconsistent live machine evidence".into());
+                return Err(
+                    "Windows process snapshot has inconsistent live machine evidence".into(),
+                );
             }
             if process
                 .process_architecture_source
@@ -76,7 +78,9 @@ impl WindowsProcessSnapshot {
                 .as_deref()
                 .is_some_and(|value| !matches!(value, "x86" | "x86_64" | "aarch64"))
             {
-                return Err("Windows process snapshot has unrecognized live process machine".into());
+                return Err(
+                    "Windows process snapshot has unrecognized live process machine".into(),
+                );
             }
             if process
                 .pe_image_architecture
@@ -299,11 +303,11 @@ mod tests {
     fn rejects_forged_live_machine_evidence_and_conflicting_file_architecture() {
         let raw = r#"{"operation":"read_only_wine_windows_processes","attachment_attempted":false,"processes":[{"windows_pid":42,"reported_executable":"Game.exe","full_image_path":"C:\\Game.exe","image_query_verified":true,"pe_image_architecture":"x86_64","pe_image_verified":true,"process_architecture":"x86","process_architecture_verified":true,"process_architecture_source":"is_wow64_process2","safe_to_attach":false}]}"#;
         let parsed = WindowsProcessSnapshot::parse(raw).unwrap();
-        let matched = match_registered_programs(
-            &bottle(&[("Game", r"C:\Game.exe")]),
-            &parsed,
+        let matched = match_registered_programs(&bottle(&[("Game", r"C:\Game.exe")]), &parsed);
+        assert_eq!(
+            matched.matches[0].status,
+            "process_file_architecture_conflict"
         );
-        assert_eq!(matched.matches[0].status, "process_file_architecture_conflict");
         assert_eq!(matched.matches[0].architecture_consistent, Some(false));
         assert!(matched.matches[0].registered_program_name.is_none());
         assert!(!matched.matches[0].safe_to_attach);
