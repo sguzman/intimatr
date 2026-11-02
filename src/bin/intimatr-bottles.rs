@@ -795,11 +795,11 @@ mod live_match_tests {
     }
 
     #[test]
-    fn requires_explicit_bottle_prefix_and_probe() {
+    fn requires_bottle_and_probe_but_not_manual_prefix() {
         for invalid in [
             args(&[]),
             args(&["--bottle", "Games", "--prefix", "/tmp"]),
-            args(&["--bottle", "Games", "--helper", "wine-process-list.exe"]),
+            args(&["--helper", "wine-process-list.exe"]),
             args(&[
                 "--bottle",
                 "Games",
