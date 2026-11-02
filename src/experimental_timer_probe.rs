@@ -511,25 +511,6 @@ pub(crate) fn apply_fixture_command(action: SpeedAction) -> Result<(), &'static 
     Ok(())
 }
 
-pub(crate) fn synchronize_fixture_command(multiplier: f64) -> Result<(), &'static str> {
-    if !is_allowlisted_probe_process() {
-        return Ok(());
-    }
-    let guard = hooks().lock().map_err(|_| "fixture hook state poisoned")?;
-    let Some(active) = guard.as_ref() else {
-        return Ok(());
-    };
-    if active.slots.iter().filter(|slot| slot.active).count() < 4 {
-        return Err("fixture import hook set is incomplete");
-    }
-    drop(guard);
-    if set_probe_rate(multiplier) {
-        Ok(())
-    } else {
-        Err("fixture hook rejected the shared speed command")
-    }
-}
-
 pub fn probe_hook_count() -> u32 {
     hooks()
         .lock()
