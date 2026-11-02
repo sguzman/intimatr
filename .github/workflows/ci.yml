@@ -460,6 +460,23 @@ jobs:
           x86_64-w64-mingw32-objdump -f "$dll"
           sha256sum "$dll"
 
+      - name: Package and verify combined Linux/Wine release bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="ci-${{ github.run_number }}"
+          archive="$(bash scripts/package-linux-release.sh "$version")"
+          bash scripts/verify-linux-release.sh "$archive" "$version"
+
+      - name: Upload verified Linux/Wine bundle and archive checksum
+        uses: actions/upload-artifact@v7
+        with:
+          name: intimatr-linux-wine-bundle-x86_64-${{ github.sha }}
+          path: |
+            dist/intimatr-linux-wine-x86_64-*.tar.gz
+            dist/intimatr-linux-wine-x86_64-*.tar.gz.sha256
+          if-no-files-found: error
+
       - name: Upload Linux-cross-built Windows DLL
         uses: actions/upload-artifact@v7
         with:

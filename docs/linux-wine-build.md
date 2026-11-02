@@ -250,3 +250,14 @@ Intimatr currently builds/ships an x86-64 Windows DLL for Wine. The **read-only 
 When both verified machines are x86 (or both ARM64), a matched registered executable is labeled `unsupported_x64_dll_architecture`, and the command suppresses registered program selection. When file and process machine conflict, `process_file_architecture_conflict` takes precedence. In every case `safe_to_attach` remains false. No 32-bit DLL or ARM64 DLL has been built, and this output must not advertise support for those targets.
 
 Synthetic CI adds a registered second program with a known **x86** Windows PID/image snapshot, and requires `x64_dll_compatible: false`, an explicit unsupported status, a null selected program and no attachment. Actual native Bottles x86 game testing remains open.
+
+## Combined native Linux + Wine bundle (experimental)
+
+The Linux cross-build CI now produces `intimatr-linux-wine-x86_64-VERSION.tar.gz` alongside its archive SHA-256 sidecar. The verified archive contains the native `bin/intimatr-bottles` ELF, `wine/intimatr.dll`, `wine/intimatr-speed.exe`, read-only `wine/wine-process-list.exe`, examples, version marker, per-file SHA-256 checksums, and reference docs. To build it after compiling the native CLI plus Windows GNU binaries:
+
+```bash
+bash scripts/package-linux-release.sh test-1
+bash scripts/verify-linux-release.sh dist/intimatr-linux-wine-x86_64-test-1.tar.gz test-1
+```
+
+The verifier checks file presence, archive and member checksums, version, the Linux ELF and Windows x86-64 PE signatures, and rejects symlink entries. The archive does **not** enable the experimental hook in arbitrary games, automatically enroll Bottles, claim a production-safe attach/unload, or verify the owner's installed Wine runner. Native Bottles field QA and owner acceptance remain required. This is a standalone CI/release *packaging* milestone only and does not earn the broader INT-1702 acceptance weight by itself.
