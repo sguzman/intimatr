@@ -9,7 +9,7 @@ use std::{
     fs,
     net::SocketAddr,
     os::unix::fs::PermissionsExt,
-    path::{Path, PathBuf},
+    path::PathBuf,
     process::Command,
 };
 
