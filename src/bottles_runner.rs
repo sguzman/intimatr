@@ -7,7 +7,11 @@
 //! Therefore this audit NEVER infers a runner from a sibling directory.
 //! Only an explicitly recorded RunnerPath is treated as candidate evidence.
 
-use std::{fs, path::{Path, PathBuf}};
+use std::{
+    fs,
+    os::unix::fs::PermissionsExt,
+    path::{Path, PathBuf},
+};
 use serde::Serialize;
 use serde_json::Value;
 
@@ -100,6 +104,11 @@ pub fn audit_recorded_runner(
     if expected != supplied {
         return Err("supplied Wine runner differs from the recorded Steam runner".into());
     }
+    let metadata = fs::metadata(&expected)
+        .map_err(|error| format!("cannot inspect configured Wine binary: {error}"))?;
+    if !metadata.is_file() || metadata.permissions().mode() & 0o111 == 0 {
+        return Err("configured Wine runner is not an executable file".into());
+    }
     audit.runner_path_verified = true;
     audit.reason = "recorded_steam_runner_binary_matched";
     Ok(())
@@ -176,6 +185,9 @@ mod tests {
         ));
         fs::create_dir_all(root.join("bin")).unwrap();
         fs::write(root.join("bin/wine"), "synthetic executable").unwrap();
+        let mut permissions = fs::metadata(root.join("bin/wine")).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(root.join("bin/wine"), permissions).unwrap();
         let input = format!(
             r#"{{"B":{{"Runner":"GE-Proton","Environment":"Steam","RunnerPath":"{}"}}}}"#,
             root.display()
