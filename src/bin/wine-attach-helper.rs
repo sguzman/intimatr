@@ -122,6 +122,37 @@ mod helper {
             .is_some_and(|file| file.eq_ignore_ascii_case("wine-attach-target.exe")))
     }
 
+    /// Fail closed when the target module list cannot be inspected.
+    /// In particular, never issue a second remote LoadLibrary for a target
+    /// already carrying Intimatr. This check is fixture-scoped; a production
+    /// loader will need an atomic attach reservation against concurrent tools.
+    fn target_has_intimatr(pid: u32) -> Result<bool, String> {
+        let snapshot = own(
+            unsafe { CreateToolhelp32Snapshot(SNAP_MODULE, pid) },
+            "cannot inspect target DLLs",
+        )?;
+        let mut entry: ModuleEntry32W = unsafe { zeroed() };
+        entry.size = size_of::<ModuleEntry32W>() as u32;
+        if unsafe { Module32FirstW(snapshot.0, &mut entry) } == 0 {
+            return Err("cannot inspect the first target module".into());
+        }
+        loop {
+            let end = entry
+                .name
+                .iter()
+                .position(|character| *character == 0)
+                .unwrap_or(entry.name.len());
+            let name = String::from_utf16_lossy(&entry.name[..end]);
+            if name.eq_ignore_ascii_case("intimatr.dll") {
+                return Ok(true);
+            }
+            if unsafe { Module32NextW(snapshot.0, &mut entry) } == 0 {
+                break;
+            }
+        }
+        Ok(false)
+    }
+
     fn local_image_size(base: usize) -> Option<usize> {
         let bytes = base as *const u8;
         let dos = unsafe { ptr::read_unaligned(bytes.cast::<u16>()) };
@@ -234,6 +265,9 @@ mod helper {
         if !target_is_fixture(process.0)? {
             return Err("refusing to attach: target is not wine-attach-target.exe".into());
         }
+        if target_has_intimatr(pid)? {
+            return Err("refusing duplicate attach: Intimatr is already loaded".into());
+        }
         let loader = resolve_remote_loader(pid)?;
         let path = wide(dll.as_os_str());
         let size = path.len() * size_of::<u16>();
@@ -286,7 +320,14 @@ mod helper {
         match unsafe { WaitForSingleObject(thread.0, 10_000) } {
             WAIT_OBJECT_0 => {
                 unsafe { VirtualFreeEx(process.0, remote, 0, MEM_RELEASE) };
-                println!("Wine helper completed remote LoadLibraryW thread for test PID {pid}");
+                // A signaled loader thread does not by itself prove that the
+                // DLL was loaded. Require a target-side module observation.
+                if !target_has_intimatr(pid)? {
+                    return Err("remote loader exited without Intimatr in the target".into());
+                }
+                println!(
+                    "Wine helper confirmed Intimatr module in existing test PID {pid}"
+                );
                 Ok(())
             }
             WAIT_TIMEOUT => {
