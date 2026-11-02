@@ -162,7 +162,7 @@ jobs:
           #!/bin/sh
           case "$*" in
             "--json list bottles")
-              printf '%s\n' '{"Fixture":{"Runner":"test-wine"}}'
+              printf '%s\n' '{"Fixture":{"Runner":"test-wine","Arch":"win64","Environment":"Gaming"}}'
               ;;
             "--json info bottles-path")
               printf '%s' "$RUNNER_TEMP"
@@ -186,6 +186,9 @@ jobs:
           grep -q '"operation": "read_only_live_bottles_wine_match"' target/wine-attach/live-match.json
           grep -q '"bottle_prefix_association_verified": true' target/wine-attach/live-match.json
           grep -q '"runner_verified": false' target/wine-attach/live-match.json
+          grep -q '"configured_runner_name": "test-wine"' target/wine-attach/live-match.json
+          grep -q '"bottle_architecture": "win64"' target/wine-attach/live-match.json
+          grep -q '"reason": "managed_or_external_runner_location_unknown"' target/wine-attach/live-match.json
           grep -q '"game_process_identity_verified": false' target/wine-attach/live-match.json
           grep -q '"status": "not_registered_in_selected_bottle"' target/wine-attach/live-match.json
           grep -q '"safe_to_attach": false' target/wine-attach/live-match.json
