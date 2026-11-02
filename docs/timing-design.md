@@ -40,8 +40,8 @@ A **single clock instance cannot accept raw ticks from different APIs with incom
 ## Explicit research outcome
 
 - **Chosen initial clock model:** scaled elapsed duration with reanchoring, using the pure Rust virtual clock, not direct fixed offset jumps.
-- **Chosen initial API scope:** QueryPerformanceCounter, GetTickCount/64 and timeGetTime; exact detour mechanism undecided pending Wine tests.
-- **Feasibility demonstrated so far:** synthetic deterministic clock transitions exist in source, with CI results as the verification gate. No in-process interception has been proven yet.
+- **Chosen initial API scope:** QueryPerformanceCounter first, followed by GetTickCount/64 and timeGetTime once coordinated hooks and regression coverage exist. **Import-address-table replacement** is the first proven mechanism for a linked 64-bit PE executable; inline detours remain a later alternative for late-bound and non-imported calls.
+- **Feasibility demonstrated so far:** synthetic clock tests plus the isolated 64-bit Wine QPC IAT interception probe described below. Production game hooks, late-loaded modules, timer consistency across real APIs, concurrent-call teardown, and running-process attachment are **not** verified.
 - **Next engineering steps:** run deterministic tests, select hook method via isolated Windows/Wine harness, and prove the same rates under a selected offline game.
 
 External documentation: [Microsoft on Windows DLL runtime loading](https://learn.microsoft.com/en-us/windows/desktop/Dlls/run-time-dynamic-linking), [Rust saturating float-to-integer conversions](https://doc.rust-lang.org/rust-by-example/types/cast.html), [Wine native/builtin DLL override semantics](https://manpages.debian.org/unstable/libwine/wine64.1.en.html).
@@ -49,3 +49,27 @@ External documentation: [Microsoft on Windows DLL runtime loading](https://learn
 ## 2026-11-01 incremental implementation checkpoint
 
 The pure [src/speed_timers.rs](../src/speed_timers.rs) projection and [src/speed_session.rs](../src/speed_session.rs) action/session boundary have source-level synthetic tests for cross-API scaling, wraparound, continuity, invalid rates and preset transitions. These are **not hook installations**. Their acceptance depends on the next CI run and they do not close INT-1102/INT-1103 or INT-1002 until real Windows/Wine timer behavior is verified.
+
+## 2026-11-02 — Opt-in QPC interception proof
+
+[Experimental probe](../src/experimental_timer_probe.rs) patches **only the QueryPerformanceCounter import** in Intimatr's own `wine-load-probe.exe` test executable, and only after explicitly calling `intimatr_timer_probe_enable`. It reads raw QPC through the DLL's separate, untouched import, feeds [SpeedSession](../src/speed_session.rs), and atomically replaces one PE32+ IAT pointer with guarded memory protection changes. No Windows timer hooks are installed during regular Intimatr bootstrap, and the probe rejects executables other than `wine-load-probe.exe`.
+
+The Linux-built Windows executable uses the ordinary imported QPC call and a dynamically resolved **unhooked** QPC call to measure apparent vs real elapsed clock rate. The [Wine smoke step in GitHub Actions run 41367449695](https://github.com/sguzman/intimatr/actions/runs/41367449695) passed, reporting:
+
+| Requested | Measured virtual QPC elapsed / unhooked elapsed |
+| --- | ---: |
+| 0.5× | 0.500× |
+| 2.0× | 2.000× |
+| 1.0× | 1.000× |
+
+The test also confirmed exactly **one IAT slot** patched, all imports restored, and an orderly DLL shutdown. The run's other jobs failed strict style/Clippy checks in the new code; these issues were corrected in later commits, pending passing full CI at the latest HEAD. This is a narrow **compatibility proof**, not a verified general-purpose hook backend.
+
+### Explicit limits and safety follow-ups
+
+- The QPC interception covers calls imported directly by the fixture's main executable. It does not capture `GetProcAddress` calls, modules loaded later, middleware DLLs, other timer APIs, or engine-specific time sources.
+- The minimal experimental IAT patcher has no proven live-game reentrancy, threading, contention, unload race, or partial `VirtualProtect` failure recovery. **Never expand the executable allowlist** or turn it on automatically until those invariants are tested and all restore paths are fail-safe.
+- A failed memory-protection restore can leave a patched slot; the production design must record ownership before mutation and retain the DLL until every slot is safely restored. Exact atomic rollback, page-protection transitions, and module lifetime tracking are required for INT-1102/1104.
+- Speed-rate changes through exported test methods are not yet wired to the existing Intimatr CommandExecutor, egui, configuration loader, RPC or hotkeys. The normal Windows DLL remains unchanged by default.
+- CI's disposable Wine prefix does not represent the user's native Bottles runner or hardware. No anti-cheat/protected target integration is planned.
+
+**Architectural decision for INT-1002:** validate QPC via IAT in a controlled x64 PE fixture before extending to additional timer APIs; prefer a reversible per-import patcher over unvalidated broad process detours at this stage. The Windows clock projection already handles QPC-to-milliseconds unit mapping in pure Rust, but actual multi-API hook consistency remains open.
