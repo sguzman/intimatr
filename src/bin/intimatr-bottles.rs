@@ -32,7 +32,7 @@ fn run() -> Result<(), String> {
     let action = args.next().unwrap_or_default();
     if action == "--help" || action == "-h" {
         println!(
-            "Usage:\n  intimatr-bottles scan\n  intimatr-bottles plan (--all | --include-bottle GLOB | --include-program GLOB) [--exclude-bottle GLOB] [--exclude-program GLOB]\n  intimatr-bottles probe-attach --pid PID --prefix WINEPREFIX --helper PATH [--runner WINE]\n  intimatr-bottles profile-check --config TOML --bottle NAME --exe WINDOWS_PATH\n  intimatr-bottles processes --prefix INITIALIZED_WINEPREFIX\n  intimatr-bottles win-processes --prefix INITIALIZED_WINEPREFIX --helper WINE_PROCESS_LIST_EXE [--runner WINE]\n  intimatr-bottles match-snapshot --bottle NAME --programs BOTTLES_JSON --windows WINE_PROCESS_JSON\n  intimatr-bottles live-match --bottle NAME --prefix WINEPREFIX --helper WINE_PROCESS_LIST_EXE [--runner WINE] [--bottles-cli BOTTLES_CLI]\n\nscan and plan are read-only. probe-attach runs only the strictly allowlisted offline Wine test helper; it cannot attach a real game."
+            "Usage:\n  intimatr-bottles scan\n  intimatr-bottles plan (--all | --include-bottle GLOB | --include-program GLOB) [--exclude-bottle GLOB] [--exclude-program GLOB]\n  intimatr-bottles probe-attach --pid PID --prefix WINEPREFIX --helper PATH [--runner WINE]\n  intimatr-bottles profile-check --config TOML --bottle NAME --exe WINDOWS_PATH\n  intimatr-bottles processes --prefix INITIALIZED_WINEPREFIX\n  intimatr-bottles win-processes --prefix INITIALIZED_WINEPREFIX --helper WINE_PROCESS_LIST_EXE [--runner WINE]\n  intimatr-bottles match-snapshot --bottle NAME --programs BOTTLES_JSON --windows WINE_PROCESS_JSON\n  intimatr-bottles live-match --bottle NAME --helper WINE_PROCESS_LIST_EXE [--prefix WINEPREFIX] [--runner WINE] [--bottles-cli BOTTLES_CLI]\n\nscan and plan are read-only. probe-attach runs only the strictly allowlisted offline Wine test helper; it cannot attach a real game."
         );
         return Ok(());
     }
@@ -655,7 +655,7 @@ fn run_match_snapshot(args: Vec<String>) -> Result<(), String> {
 #[derive(Debug, PartialEq, Eq)]
 struct LiveMatchOptions {
     bottle: String,
-    prefix: String,
+    prefix: Option<String>,
     helper: String,
     runner: String,
     bottles_cli: String,
@@ -701,7 +701,7 @@ impl LiveMatchOptions {
         }
         Ok(Self {
             bottle,
-            prefix: prefix.ok_or("missing --prefix")?,
+            prefix,
             helper: helper.ok_or("missing --helper")?,
             runner: runner.unwrap_or_else(|| "wine".to_owned()),
             bottles_cli,
@@ -731,10 +731,27 @@ fn run_live_match(args: Vec<String>) -> Result<(), String> {
     // Upstream Bottles reports this as a *plain path* even with --json.
     let configured_bottles_root =
         bottles_json_with_command(&options.bottles_cli, &["info", "bottles-path"])?;
+    // Default to the direct bottle directory from Bottles' own path.
+    // A supplied --prefix is still checked against that exact location.
+    let prefix_source = if options.prefix.is_some() {
+        "explicit_verified"
+    } else {
+        "configured_bottles_root"
+    };
+    let selected_prefix = options
+        .prefix
+        .as_ref()
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| {
+            std::path::Path::new(
+                configured_bottles_root.trim_end_matches(['\r', '\n']),
+            )
+            .join(&options.bottle)
+        });
     let ownership = verify_bottle_prefix(
         &configured_bottles_root,
         &options.bottle,
-        std::path::Path::new(&options.prefix),
+        &selected_prefix,
     )?;
     let programs = parse_registered_programs(&bottles_json_with_command(
         &options.bottles_cli,
@@ -742,7 +759,7 @@ fn run_live_match(args: Vec<String>) -> Result<(), String> {
     )?)
     .map_err(|error| format!("invalid native Bottles programs: {error}"))?;
     let (prefix, snapshot) = query_windows_process_snapshot(&WindowsProcessesOptions {
-        prefix: options.prefix,
+        prefix: selected_prefix.to_string_lossy().into_owned(),
         helper: options.helper,
         runner: options.runner,
     })?;
@@ -758,7 +775,8 @@ fn run_live_match(args: Vec<String>) -> Result<(), String> {
         serde_json::to_string_pretty(&serde_json::json!({
             "operation": "read_only_live_bottles_wine_match",
             "selected_bottle": options.bottle,
-            "user_supplied_prefix": prefix,
+            "resolved_prefix": prefix,
+            "prefix_source": prefix_source,
             "bottle_prefix_association_verified": ownership.bottle_prefix_association_verified,
             "configured_bottles_root": ownership.canonical_bottles_root,
             "runner_verified": ownership.runner_verified,
@@ -813,6 +831,19 @@ mod live_match_tests {
     }
 
     #[test]
+    fn may_derive_prefix_from_bottles_root_without_user_path() {
+        let parsed = LiveMatchOptions::parse(&args(&[
+            "--bottle",
+            "My Games",
+            "--helper",
+            "/tmp/wine-process-list.exe",
+        ]))
+        .unwrap();
+        assert_eq!(parsed.prefix, None);
+        assert_eq!(parsed.bottle, "My Games");
+    }
+
+    #[test]
     fn accepts_explicit_mock_cli_and_wine_runner_without_shell_interpolation() {
         let parsed = LiveMatchOptions::parse(&args(&[
             "--bottle",
@@ -828,6 +859,7 @@ mod live_match_tests {
         ]))
         .unwrap();
         assert_eq!(parsed.bottle, "My Games");
+        assert_eq!(parsed.prefix.as_deref(), Some("/tmp/native prefix"));
         assert_eq!(parsed.bottles_cli, "/tmp/bottles-cli");
         assert_eq!(parsed.runner, "/home/user/patch runner/wine");
     }
