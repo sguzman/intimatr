@@ -361,6 +361,45 @@ fn start_debugger_ui_if_enabled(
     Ok(Some(handle))
 }
 
+/// Fixture-only bridge to the *same* command executor used by RPC/UI.
+/// It does not install a hook or assert that game time is accelerated.
+/// The experimental hook module additionally requires its allowlisted
+/// disposable EXE and already-active four-API IAT hook before calling this.
+#[cfg(windows)]
+pub(crate) fn fixture_preview_select_rate(multiplier: f64) -> Option<f64> {
+    use crate::{
+        command::{Command, CommandResult},
+        speed_commands::SpeedRequest,
+    };
+    let executor = {
+        let guard = CONTEXT.lock().ok()?;
+        Arc::clone(&guard.as_ref()?.command_executor)
+    };
+    let result = executor
+        .execute(Command::Speed {
+            request: SpeedRequest::SelectPreset { multiplier },
+        })
+        .ok()?;
+    let CommandResult::Speed { status } = result.result else {
+        return None;
+    };
+    status.configured.then_some(status.preview_multiplier)
+}
+
+#[cfg(windows)]
+pub(crate) fn fixture_preview_reset() {
+    use crate::{command::Command, speed_commands::SpeedRequest};
+    if let Ok(guard) = CONTEXT.lock()
+        && let Some(context) = guard.as_ref()
+    {
+        let executor = Arc::clone(&context.command_executor);
+        drop(guard);
+        let _ = executor.execute(Command::Speed {
+            request: SpeedRequest::Reset,
+        });
+    }
+}
+
 #[cfg(windows)]
 fn handle_rpc_post_action(action: PostAction) {
     match action {
