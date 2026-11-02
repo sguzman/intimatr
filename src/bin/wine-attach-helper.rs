@@ -168,11 +168,12 @@ mod helper {
             if loaded == 0 {
                 continue;
             }
-            if let Some(image_size) = local_image_size(loaded) {
-                if address >= loaded && address < loaded.saturating_add(image_size) {
-                    selected = Some((module_name, address - loaded));
-                    break;
-                }
+            if let Some(image_size) = local_image_size(loaded)
+                && address >= loaded
+                && address < loaded.saturating_add(image_size)
+            {
+                selected = Some((module_name, address - loaded));
+                break;
             }
         }
         let (module_name, rva) = selected.ok_or_else(|| {
