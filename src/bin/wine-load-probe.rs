@@ -401,6 +401,52 @@ mod windows_probe {
         Ok(())
     }
 
+    /// Race import restoration against active timer readers. This test is
+    /// deliberately confined to the disposable Wine fixture; workers stop
+    /// and join before DLL unload, so it does not claim to solve stale IAT
+    /// pointers fetched before restoration.
+    fn exercise_restore_with_concurrent_timer_calls(
+        disable: BoolFn,
+        hook_count: unsafe extern "system" fn() -> u32,
+    ) -> Result<(), String> {
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        let keep_reading = Arc::new(AtomicBool::new(true));
+        let start = Arc::new(Barrier::new(5));
+        let mut workers = Vec::new();
+        for _ in 0..4 {
+            let keep_reading = Arc::clone(&keep_reading);
+            let start = Arc::clone(&start);
+            workers.push(thread::spawn(move || -> Result<(), String> {
+                start.wait();
+                while keep_reading.load(Ordering::Acquire) {
+                    let _ = unsafe { imported_qpc()? };
+                    let _ = unsafe { GetTickCount64() };
+                    let _ = unsafe { GetTickCount() };
+                    let _ = unsafe { timeGetTime() };
+                }
+                Ok(())
+            }));
+        }
+
+        start.wait();
+        thread::sleep(Duration::from_millis(35));
+        let restored = unsafe { disable() } != 0;
+        keep_reading.store(false, Ordering::Release);
+        for worker in workers {
+            worker
+                .join()
+                .map_err(|_| "Wine timer worker panicked during hook restoration")??;
+        }
+        if !restored || unsafe { hook_count() } != 0 {
+            return Err(
+                "hook restoration did not drain callbacks and clear every IAT slot".into(),
+            );
+        }
+        println!("Wine timer hook restoration drained concurrent QPC/millisecond readers");
+        Ok(())
+    }
+
     /// Test-only rendezvous with the Linux-native speed CLI. The host runs
     /// Intimatr's actual Windows RPC client under the same disposable Wine
     /// prefix and asks this already-hooked executable to measure each rate.
@@ -606,9 +652,7 @@ mod windows_probe {
         measure_rate(1.0, shared_rate)?;
         println!("Shared speed commands drove four real Wine timer imports");
         stress_concurrent_timers(set_rate)?;
-        if unsafe { hook_disable() } == 0 || unsafe { hook_count() } != 0 {
-            return Err("experimental timer import restoration failed".into());
-        }
+        exercise_restore_with_concurrent_timer_calls(hook_disable, hook_count)?;
         if unsafe { hook_disable() } == 0 {
             return Err("repeat timer hook disable was not idempotent".into());
         }
