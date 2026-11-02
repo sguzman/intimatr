@@ -79,7 +79,12 @@ impl SelectionRules {
                 let bottle_allowed = self.include_bottle.is_empty()
                     || any_match(&self.include_bottle, &bottle.bottle);
                 let program_allowed = self.include_program.is_empty()
-                    || matches_program(&self.include_program, &program.name, &program.executable, &program.path);
+                    || matches_program(
+                        &self.include_program,
+                        &program.name,
+                        &program.executable,
+                        &program.path,
+                    );
                 let decision = if any_match(&self.exclude_bottle, &bottle.bottle) {
                     SelectionDecision::ExcludedBottle
                 } else if matches_program(
@@ -115,13 +120,13 @@ impl SelectionRules {
 }
 
 fn any_match(patterns: &[String], target: &str) -> bool {
-    patterns.iter().any(|pattern| wildcard_match(pattern, target))
+    patterns
+        .iter()
+        .any(|pattern| wildcard_match(pattern, target))
 }
 
 fn matches_program(patterns: &[String], name: &str, executable: &str, path: &str) -> bool {
-    any_match(patterns, name)
-        || any_match(patterns, executable)
-        || any_match(patterns, path)
+    any_match(patterns, name) || any_match(patterns, executable) || any_match(patterns, path)
 }
 
 /// Anchored, case-insensitive ASCII glob with ? and *; both Windows and
@@ -146,8 +151,8 @@ pub fn wildcard_match(pattern: &str, value: &str) -> bool {
             }
         } else {
             for j in 1..=value.len() {
-                next[j] = prior[j - 1]
-                    && (token == '?' || token.eq_ignore_ascii_case(&value[j - 1]));
+                next[j] =
+                    prior[j - 1] && (token == '?' || token.eq_ignore_ascii_case(&value[j - 1]));
             }
         }
         prior = next;
@@ -198,7 +203,10 @@ mod tests {
     #[test]
     fn filters_intersect_and_deny_overrides_allow() {
         let inventory = vec![
-            bottle("Games", &[("Disco", "Disco.exe"), ("Launcher", "Launcher.exe")]),
+            bottle(
+                "Games",
+                &[("Disco", "Disco.exe"), ("Launcher", "Launcher.exe")],
+            ),
             bottle("Tests", &[("Disco", "Disco.exe"), ("Dredge", "Dredge.exe")]),
         ];
         let rules = SelectionRules {
@@ -210,7 +218,10 @@ mod tests {
         let plan = rules.plan(&inventory).unwrap();
         assert_eq!(plan.selected_count, 1);
         assert_eq!(plan.programs[0].decision, SelectionDecision::Selected);
-        assert_eq!(plan.programs[1].decision, SelectionDecision::ExcludedProgram);
+        assert_eq!(
+            plan.programs[1].decision,
+            SelectionDecision::ExcludedProgram
+        );
         assert_eq!(plan.programs[2].decision, SelectionDecision::NotIncluded);
         assert_eq!(plan.programs[3].decision, SelectionDecision::NotIncluded);
     }
