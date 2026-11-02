@@ -258,7 +258,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          prefix="$(pwd)/target/intimatr-proc-qa-$"
+          prefix="$(pwd)/target/intimatr-proc-qa-fixture"
           mkdir -p "$prefix/drive_c"
           WINEPREFIX="$prefix" sleep 20 &
           fixture_pid=$!
@@ -300,6 +300,17 @@ jobs:
       - name: Cross-build Wine-target Windows DLL on Linux
         run: cargo build --locked --release --lib --target x86_64-pc-windows-gnu
 
+      - name: Cross-build read-only Windows PID probe for native Wine users
+        run: cargo build --locked --release --bin wine-process-list --target x86_64-pc-windows-gnu
+
+      - name: Verify read-only Windows PID probe PE artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          probe="target/x86_64-pc-windows-gnu/release/wine-process-list.exe"
+          test -s "$probe"
+          file "$probe" | grep -Eq 'PE32[+].*x86-64'
+
       - name: Verify Windows PE x86-64 DLL artifact
         shell: bash
         run: |
@@ -316,6 +327,13 @@ jobs:
         with:
           name: intimatr-wine-windows-x86_64-${{ github.sha }}
           path: target/x86_64-pc-windows-gnu/release/intimatr.dll
+          if-no-files-found: error
+
+      - name: Upload read-only Wine Windows PID probe
+        uses: actions/upload-artifact@v7
+        with:
+          name: intimatr-wine-process-list-windows-x86_64-${{ github.sha }}
+          path: target/x86_64-pc-windows-gnu/release/wine-process-list.exe
           if-no-files-found: error
 
       - name: Upload native Linux Bottles inventory CLI
