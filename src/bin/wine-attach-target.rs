@@ -38,7 +38,10 @@ mod target {
     fn resolve(module: *mut c_void, name: &std::ffi::CStr) -> Result<*const c_void, String> {
         let result = unsafe { GetProcAddress(module, name.as_ptr().cast()) };
         if result.is_null() {
-            Err(format!("missing required DLL export: {}", name.to_string_lossy()))
+            Err(format!(
+                "missing required DLL export: {}",
+                name.to_string_lossy()
+            ))
         } else {
             Ok(result)
         }
@@ -62,18 +65,13 @@ mod target {
         if kernel.is_null() || winmm.is_null() {
             return Err("could not locate original timer modules".into());
         }
-        let real_qpc: QpcFn = unsafe {
-            std::mem::transmute(resolve(kernel, c"QueryPerformanceCounter")?)
-        };
-        let real_tick64: Timer64Fn = unsafe {
-            std::mem::transmute(resolve(kernel, c"GetTickCount64")?)
-        };
-        let real_tick32: Timer32Fn = unsafe {
-            std::mem::transmute(resolve(kernel, c"GetTickCount")?)
-        };
-        let real_winmm: Timer32Fn = unsafe {
-            std::mem::transmute(resolve(winmm, c"timeGetTime")?)
-        };
+        let real_qpc: QpcFn =
+            unsafe { std::mem::transmute(resolve(kernel, c"QueryPerformanceCounter")?) };
+        let real_tick64: Timer64Fn =
+            unsafe { std::mem::transmute(resolve(kernel, c"GetTickCount64")?) };
+        let real_tick32: Timer32Fn =
+            unsafe { std::mem::transmute(resolve(kernel, c"GetTickCount")?) };
+        let real_winmm: Timer32Fn = unsafe { std::mem::transmute(resolve(winmm, c"timeGetTime")?) };
         let hooked_qpc: QpcFn = QueryPerformanceCounter;
         let vq1 = read_qpc(hooked_qpc)?;
         let rq1 = read_qpc(real_qpc)?;
@@ -112,8 +110,13 @@ mod target {
             "Remote-attached Wine clocks requested={rate:.2}x qpc={:.3}x tick64={:.3}x tick32={:.3}x winmm={:.3}x",
             observed[0], observed[1], observed[2], observed[3]
         );
-        if observed.iter().any(|measured| (measured - rate).abs() > 0.30) {
-            return Err(format!("remote-attached clock ratios not within tolerance at {rate}x"));
+        if observed
+            .iter()
+            .any(|measured| (measured - rate).abs() > 0.30)
+        {
+            return Err(format!(
+                "remote-attached clock ratios not within tolerance at {rate}x"
+            ));
         }
         Ok(())
     }
@@ -139,7 +142,9 @@ mod target {
             }
             for speed in [0.5, 2.0, 1.0] {
                 if unsafe { change(speed) } == 0 {
-                    return Err(format!("remote-attached target rejected valid speed {speed}"));
+                    return Err(format!(
+                        "remote-attached target rejected valid speed {speed}"
+                    ));
                 }
                 check_scaled_clocks(speed)?;
             }
