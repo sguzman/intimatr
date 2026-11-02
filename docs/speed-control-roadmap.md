@@ -301,3 +301,7 @@ The Windows-only `intimatr-speed` binary gives a narrow, explicit endpoint-speci
 ### 🛡️ HWND identity epoch (2026-11-02)
 
 The focused Win32 preview worker now tracks the **identity** of the single approved game window, not only whether *some* current-process HWND is foreground. A direct transition between two different approved HWNDs injects one focus-loss snapshot before the new window may seed its own key state. Ambiguous, hidden, foreign or absent candidates also clear the tracked identity. Portable tests cover direct target replacement, no candidate, null identity and reacquisition. This prevents held keys in a launcher/recreated game window from being misread as a new speed action; it is still not a guarantee of actual Wayland keyboard compatibility. INT-1303 remains open; verified expansion 16% (delta +0 pp).
+
+### 🔌 Windows speed CLI executable under real Wine RPC — 2026-11-02
+
+The isolated Wine loader now explicitly enables a loopback-only TCP RPC server and invokes the same `intimatr-speed.exe` Windows PE CLI distributed with the new release tooling. It verifies live client/server status, in-memory 1×→1.5×→1× commands, the honest `clock_applied_to_game=false` result and remote-address denial **before** the separate four-timer interception test. This does not install hooks or attach to a real game. CI verification remains pending; INT-1503 and INT-1602 still require real configured Bottles QA before credit. **Expansion 16/100, delta +0 pp.**

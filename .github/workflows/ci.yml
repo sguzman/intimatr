@@ -66,6 +66,7 @@ jobs:
           New-Item -ItemType Directory -Force "$destination/config" | Out-Null
           Copy-Item "$source/intimatr.dll" "$destination/intimatr.dll"
           Copy-Item "$source/wine-load-probe.exe" "$destination/wine-load-probe.exe"
+          Copy-Item "$source/intimatr-speed.exe" "$destination/intimatr-speed.exe"
           Copy-Item "config/wine-load-probe.exe.toml" "$destination/config/wine-load-probe.exe.toml"
           Push-Location $destination
           try {
@@ -135,6 +136,7 @@ jobs:
           mkdir -p target/wine-smoke/config
           cp target/x86_64-pc-windows-gnu/release/intimatr.dll target/wine-smoke/
           cp target/x86_64-pc-windows-gnu/release/wine-load-probe.exe target/wine-smoke/
+          cp target/x86_64-pc-windows-gnu/release/intimatr-speed.exe target/wine-smoke/
           cp config/wine-load-probe.exe.toml target/wine-smoke/config/
           export WINEPREFIX="$RUNNER_TEMP/intimatr-wine-smoke"
           export WINEARCH=win64

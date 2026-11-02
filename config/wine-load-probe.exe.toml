@@ -10,7 +10,9 @@ enabled = false
 ui_enabled = false
 
 [rpc]
-enabled = false
+enabled = true
+transport = "tcp"
+bind = "127.0.0.1:31379"
 
 [policy]
 allow_memory_read = true
