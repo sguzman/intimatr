@@ -715,15 +715,15 @@ fn run_live_match(args: Vec<String>) -> Result<(), String> {
         bottles::{BottleInventory, parse_bottle_names, parse_registered_programs},
         bottles_live_matches::match_registered_programs,
         bottles_prefix::verify_bottle_prefix,
+        bottles_runner::{audit_recorded_runner, audit_runner_metadata},
     };
 
     let options = LiveMatchOptions::parse(&args)?;
     // Require both a registered bottle name and a verified direct prefix
     // child of Bottles' configured root. This still grants no attach access.
-    let names = parse_bottle_names(&bottles_json_with_command(
-        &options.bottles_cli,
-        &["list", "bottles"],
-    )?)
+    let bottle_list_json =
+        bottles_json_with_command(&options.bottles_cli, &["list", "bottles"])?;
+    let names = parse_bottle_names(&bottle_list_json)
     .map_err(|error| format!("invalid native Bottles list: {error}"))?;
     if !names.iter().any(|name| name == &options.bottle) {
         return Err("selected bottle not found in native Bottles inventory".into());
@@ -748,6 +748,8 @@ fn run_live_match(args: Vec<String>) -> Result<(), String> {
         });
     let ownership =
         verify_bottle_prefix(&configured_bottles_root, &options.bottle, &selected_prefix)?;
+    let mut runner_audit = audit_runner_metadata(&bottle_list_json, &options.bottle)?;
+    audit_recorded_runner(&mut runner_audit, std::path::Path::new(&options.runner))?;
     let programs = parse_registered_programs(&bottles_json_with_command(
         &options.bottles_cli,
         &["programs", "-b", &options.bottle],
@@ -774,7 +776,8 @@ fn run_live_match(args: Vec<String>) -> Result<(), String> {
             "prefix_source": prefix_source,
             "bottle_prefix_association_verified": ownership.bottle_prefix_association_verified,
             "configured_bottles_root": ownership.canonical_bottles_root,
-            "runner_verified": ownership.runner_verified,
+            "runner_verified": runner_audit.runner_path_verified,
+            "runner_audit": runner_audit,
             "game_process_identity_verified": ownership.game_process_identity_verified,
             "windows_process_count": snapshot.processes.len(),
             "matches": preview.matches,
