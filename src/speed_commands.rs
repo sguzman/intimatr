@@ -23,7 +23,7 @@ use crate::{
 
 const PREVIEW_FREQUENCY: u64 = 1_000_000_000;
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case")]
 pub enum SpeedRequest {
     Status,
@@ -190,7 +190,10 @@ impl SpeedPreviewExecutor {
         };
         let now = session.now();
         if let Some(action) = request.action() {
-            session.coordinator.apply(now, action)?;
+            session
+                .coordinator
+                .apply(now, action)
+                .map_err(SpeedPreviewError::from)?;
         } else {
             session.coordinator.sample(now);
         }
@@ -225,7 +228,6 @@ impl CommandExecutor for SpeedPreviewExecutor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::command::PostAction;
     use crate::speed_hotkeys::HoldHotkey;
     use std::sync::atomic::{AtomicBool, Ordering};
 
