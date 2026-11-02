@@ -60,9 +60,7 @@ struct ProbeHooks {
 }
 
 static HOOKS: OnceLock<Mutex<Option<ProbeHooks>>> = OnceLock::new();
-static ACTIVE_CALLBACKS: CallbackTracker = CallbackTracker {
-    active: std::sync::atomic::AtomicUsize::new(0),
-};
+static ACTIVE_CALLBACKS: CallbackTracker = CallbackTracker::new();
 
 // Published only while owning HOOKS. Contended API reads return the last
 // scaled sample rather than a raw counter that could jump backwards at 2x.
