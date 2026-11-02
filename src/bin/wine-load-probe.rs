@@ -13,9 +13,9 @@ mod windows_probe {
         ffi::{CStr, c_void},
         os::windows::ffi::OsStrExt,
         path::Path,
+        sync::{Arc, Barrier},
         thread,
         time::Duration,
-        sync::{Arc, Barrier},
     };
 
     #[link(name = "kernel32")]
@@ -247,7 +247,9 @@ mod windows_probe {
         if unsafe { set_rate(1.0) } == 0 {
             return Err("could not reset speed after concurrency test".to_owned());
         }
-        println!("Wine timer concurrency: 4 workers x 15000 samples, 30 rate updates, no backward jumps");
+        println!(
+            "Wine timer concurrency: 4 workers x 15000 samples, 30 rate updates, no backward jumps"
+        );
         Ok(())
     }
 

@@ -469,7 +469,10 @@ pub fn set_probe_rate(multiplier: f64) -> bool {
     let Some(real) = native_qpc() else {
         return false;
     };
-    if let Ok(snapshot) = active.session.apply(real, SpeedAction::SelectPreset(multiplier)) {
+    if let Ok(snapshot) = active
+        .session
+        .apply(real, SpeedAction::SelectPreset(multiplier))
+    {
         publish(snapshot);
         true
     } else {
