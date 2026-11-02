@@ -114,13 +114,34 @@ mod tests {
     #[test]
     fn toggle_reset_and_preset_remain_continuous() {
         let mut session = SpeedSession::new(&SpeedSettings::default(), 0, 1_000, 0, 0).unwrap();
-        assert_eq!(session.apply(100, SpeedAction::Increase).unwrap().tick_count64, 100);
+        assert_eq!(
+            session
+                .apply(100, SpeedAction::Increase)
+                .unwrap()
+                .tick_count64,
+            100
+        );
         assert_eq!(session.sample(300).tick_count64, 400);
-        assert_eq!(session.apply(300, SpeedAction::Toggle).unwrap().tick_count64, 400);
+        assert_eq!(
+            session
+                .apply(300, SpeedAction::Toggle)
+                .unwrap()
+                .tick_count64,
+            400
+        );
         assert_eq!(session.sample(400).tick_count64, 500);
-        assert_eq!(session.apply(400, SpeedAction::Toggle).unwrap().tick_count64, 500);
+        assert_eq!(
+            session
+                .apply(400, SpeedAction::Toggle)
+                .unwrap()
+                .tick_count64,
+            500
+        );
         assert_eq!(session.sample(500).tick_count64, 650);
-        assert_eq!(session.apply(500, SpeedAction::Reset).unwrap().tick_count64, 650);
+        assert_eq!(
+            session.apply(500, SpeedAction::Reset).unwrap().tick_count64,
+            650
+        );
         assert_eq!(session.sample(600).tick_count64, 750);
         assert!(session.apply(600, SpeedAction::SelectPreset(0.5)).is_ok());
         assert_eq!(session.sample(800).tick_count64, 850);

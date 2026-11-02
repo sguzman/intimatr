@@ -158,7 +158,8 @@ mod tests {
 
     #[test]
     fn full_width_clock_stays_monotonic_while_32_bit_clock_wraps() {
-        let mut timers = WindowsTimers::new(0, 1_000, u64::from(u32::MAX) - 4, u32::MAX - 4).unwrap();
+        let mut timers =
+            WindowsTimers::new(0, 1_000, u64::from(u32::MAX) - 4, u32::MAX - 4).unwrap();
         let after = timers.sample(10);
         assert_eq!(after.tick_count64, u64::from(u32::MAX) + 6);
         assert_eq!(after.tick_count, 5);
