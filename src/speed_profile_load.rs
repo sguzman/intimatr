@@ -5,12 +5,7 @@
 //! identity or an executable basename. Malformed/unavailable paths fail closed
 //! for speed only and cannot prevent legacy scanner/debugger startup.
 
-use std::{
-    fs::File,
-    io::Read,
-    path::Path,
-    sync::Arc,
-};
+use std::{fs::File, io::Read, path::Path, sync::Arc};
 
 use thiserror::Error;
 use tracing::{info, warn};
@@ -39,7 +34,9 @@ pub enum PreviewProfileLoadError {
     TooLarge,
     #[error(transparent)]
     Invalid(#[from] SpeedProfileError),
-    #[error("bottle/game override resolution requires verified bottle and full executable identity")]
+    #[error(
+        "bottle/game override resolution requires verified bottle and full executable identity"
+    )]
     UnresolvedOverrides,
 }
 
@@ -73,18 +70,15 @@ pub fn load_preview_profile(
     if bytes.len() as u64 > MAX_PROFILE_BYTES {
         return Err(PreviewProfileLoadError::TooLarge);
     }
-    let text = String::from_utf8(bytes).map_err(|error| {
-        std::io::Error::new(std::io::ErrorKind::InvalidData, error)
-    })?;
+    let text = String::from_utf8(bytes)
+        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?;
     parse_preview_profile(&text)
 }
 
 /// Wrap the established command executor without mutating any game or bottle.
 /// Opt-in is the environment variable *and* enabled=true in validated TOML.
 /// Missing/bad profiles leave speed unconfigured; all other commands proceed.
-pub fn wrap_explicit_preview_from_env(
-    inner: Arc<dyn CommandExecutor>,
-) -> Arc<dyn CommandExecutor> {
+pub fn wrap_explicit_preview_from_env(inner: Arc<dyn CommandExecutor>) -> Arc<dyn CommandExecutor> {
     let Some(path) = std::env::var_os(SPEED_PROFILE_ENV) else {
         return Arc::new(SpeedPreviewExecutor::disabled(inner));
     };
@@ -96,7 +90,9 @@ pub fn wrap_explicit_preview_from_env(
             "explicit-shared-profile",
         ) {
             Ok(executor) => {
-                info!("explicit shared speed preview configured; game timing hooks remain disabled");
+                info!(
+                    "explicit shared speed preview configured; game timing hooks remain disabled"
+                );
                 Arc::new(executor)
             }
             Err(error) => {
@@ -122,7 +118,11 @@ mod tests {
     #[test]
     fn disabled_and_implicit_settings_fail_closed() {
         assert!(parse_preview_profile("version = 1").unwrap().is_none());
-        assert!(parse_preview_profile("version = 1\n[speed]\nenabled = false").unwrap().is_none());
+        assert!(
+            parse_preview_profile("version = 1\n[speed]\nenabled = false")
+                .unwrap()
+                .is_none()
+        );
         assert!(parse_preview_profile("version = 2").is_err());
     }
 
