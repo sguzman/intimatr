@@ -433,6 +433,9 @@ jobs:
           test -s "$probe"
           file "$probe" | grep -Eq 'PE32[+].*x86-64'
 
+      - name: Cross-build Windows speed RPC client for Wine
+        run: cargo build --locked --release --bin intimatr-speed --target x86_64-pc-windows-gnu
+
       - name: Verify Windows Wine speed client PE artifact
         shell: bash
         run: |

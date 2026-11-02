@@ -307,10 +307,7 @@ mod windows_probe {
     /// This fixture-only test never attaches to another process or changes
     /// a real game clock; no global keyboard or timing hook is installed.
     fn exercise_speed_cli(directory: &Path) -> Result<(), String> {
-        fn command(
-            client: &Path,
-            request: &[&str],
-        ) -> Result<serde_json::Value, String> {
+        fn command(client: &Path, request: &[&str]) -> Result<serde_json::Value, String> {
             let output = std::process::Command::new(client)
                 .args(request)
                 .output()
@@ -340,10 +337,10 @@ mod windows_probe {
             return Err(format!("unexpected initial shared preview: {first}"));
         }
         let increased = command(&client, &["--tcp", "127.0.0.1:31379", "increase"])?;
-        if increased["preview_multiplier"] != 1.5
-            || increased["clock_applied_to_game"] != false
-        {
-            return Err(format!("shared RPC step did not update preview: {increased}"));
+        if increased["preview_multiplier"] != 1.5 || increased["clock_applied_to_game"] != false {
+            return Err(format!(
+                "shared RPC step did not update preview: {increased}"
+            ));
         }
         let reset = command(&client, &["--tcp", "127.0.0.1:31379", "reset"])?;
         if reset["preview_multiplier"] != 1.0 {
