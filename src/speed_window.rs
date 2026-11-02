@@ -18,6 +18,7 @@ pub struct WindowCandidate {
 pub enum SelectionError {
     NoEligibleWindow,
     AmbiguousWindows,
+    EnumerationFailed,
 }
 
 impl WindowCandidate {

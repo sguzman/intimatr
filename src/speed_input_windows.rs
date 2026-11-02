@@ -31,6 +31,7 @@ impl WindowsFocusedInput {
         let window = find_unique_game_window().map_err(|error| match error {
             SelectionError::NoEligibleWindow => "no eligible focused game HWND",
             SelectionError::AmbiguousWindows => "multiple possible game HWNDs; selection required",
+            SelectionError::EnumerationFailed => "game HWND enumeration failed",
         })?;
         Self::new(window, watched_keys)
     }

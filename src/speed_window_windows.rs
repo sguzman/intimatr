@@ -42,20 +42,22 @@ unsafe extern "system" fn collect_window(hwnd: HWND, param: LPARAM) -> i32 {
 
 /// Snapshot all top-level HWNDs in this process. Candidate filtering and
 /// collision handling happen in the portable window policy.
-pub fn enumerate_owned_windows() -> Vec<WindowCandidate> {
+pub fn enumerate_owned_windows() -> Result<Vec<WindowCandidate>, SelectionError> {
     let mut candidates = Vec::new();
     let user_data = (&raw mut candidates) as isize;
     // SAFETY: callback runs synchronously and the Vec remains live and
     // exclusively owned until EnumWindows returns.
-    unsafe { EnumWindows(Some(collect_window), user_data) };
-    candidates
+    if unsafe { EnumWindows(Some(collect_window), user_data) } == 0 {
+        return Err(SelectionError::EnumerationFailed);
+    }
+    Ok(candidates)
 }
 
 /// Never guess which HWND belongs to the game when there are multiple viable
 /// windows (e.g., game + launcher). A caller can disable speed hotkeys and
 /// report a meaningful unavailable/ambiguous state instead.
 pub fn find_unique_game_window() -> Result<HWND, SelectionError> {
-    let id = choose_unique(&enumerate_owned_windows())?;
+    let id = choose_unique(&enumerate_owned_windows()?)?;
     Ok(id as usize as HWND)
 }
 
