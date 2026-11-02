@@ -10,11 +10,11 @@
 use std::{
     ffi::c_void,
     ptr,
-    time::Duration,
     sync::{
         Mutex, OnceLock,
         atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering},
     },
+    time::Duration,
 };
 
 use crate::{
