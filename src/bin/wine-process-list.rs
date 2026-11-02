@@ -49,6 +49,57 @@ mod windows {
             size: *mut u32,
         ) -> i32;
         fn CloseHandle(handle: Handle) -> i32;
+        fn GetModuleHandleA(name: *const u8) -> Handle;
+        fn GetProcAddress(module: Handle, name: *const u8) -> *const c_void;
+    }
+
+    type Wow64Process2 = unsafe extern "system" fn(Handle, *mut u16, *mut u16) -> i32;
+
+    #[derive(Clone, Copy)]
+    struct ObservedProcessMachine {
+        architecture: &'static str,
+        source: &'static str,
+    }
+
+    fn machine_architecture(machine: u16) -> Option<&'static str> {
+        match machine {
+            0x014c => Some("x86"),
+            0x8664 => Some("x86_64"),
+            0xaa64 => Some("aarch64"),
+            _ => None,
+        }
+    }
+
+    /// Query the *running process*, not the PE file. Wine versions missing
+    /// IsWow64Process2 return None: no legacy API fallback guesses bitness.
+    fn running_process_architecture(handle: Handle) -> Option<ObservedProcessMachine> {
+        let module = unsafe { GetModuleHandleA(c"kernel32.dll".as_ptr().cast()) };
+        if module.is_null() {
+            return None;
+        }
+        let procedure = unsafe {
+            GetProcAddress(module, c"IsWow64Process2".as_ptr().cast())
+        };
+        if procedure.is_null() {
+            return None;
+        }
+        let call = unsafe { std::mem::transmute::<*const c_void, Wow64Process2>(procedure) };
+        let mut process_machine = 0_u16;
+        let mut native_machine = 0_u16;
+        if unsafe { call(handle, &mut process_machine, &mut native_machine) } == 0 {
+            return None;
+        }
+        // IMAGE_FILE_MACHINE_UNKNOWN (0) means not WOW64: use the
+        // native machine only when it is explicitly recognized.
+        let machine = if process_machine == 0 {
+            native_machine
+        } else {
+            process_machine
+        };
+        machine_architecture(machine).map(|architecture| ObservedProcessMachine {
+            architecture,
+            source: "is_wow64_process2",
+        })
     }
 
     struct OwnedHandle(Handle);
@@ -67,6 +118,9 @@ mod windows {
         image_query_verified: bool,
         pe_image_architecture: Option<&'static str>,
         pe_image_verified: bool,
+        process_architecture: Option<&'static str>,
+        process_architecture_verified: bool,
+        process_architecture_source: Option<&'static str>,
         safe_to_attach: bool,
     }
 
@@ -85,19 +139,24 @@ mod windows {
         String::from_utf16_lossy(&values[..length])
     }
 
-    fn image_path(pid: u32) -> Option<String> {
+    fn inspect_process(pid: u32) -> (Option<String>, Option<ObservedProcessMachine>) {
         let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
         if handle.is_null() {
-            return None;
+            return (None, None);
         }
         let owned = OwnedHandle(handle);
+        let process_machine = running_process_architecture(owned.0);
         let mut buffer = [0_u16; 2048];
         let mut length = buffer.len() as u32;
-        if unsafe { QueryFullProcessImageNameW(owned.0, 0, buffer.as_mut_ptr(), &mut length) } == 0
+        let image = if unsafe {
+            QueryFullProcessImageNameW(owned.0, 0, buffer.as_mut_ptr(), &mut length)
+        } == 0
         {
-            return None;
-        }
-        Some(String::from_utf16_lossy(&buffer[..length as usize]))
+            None
+        } else {
+            Some(String::from_utf16_lossy(&buffer[..length as usize]))
+        };
+        (image, process_machine)
     }
 
     fn run() -> Result<(), String> {
@@ -124,7 +183,7 @@ mod windows {
         loop {
             let pid = entry.process_id;
             if pid > 0 {
-                let path = image_path(pid);
+                let (path, process_machine) = inspect_process(pid);
                 // Parsing PE headers from this reported file path is
                 // read-only evidence of FILE machine, not proof of process
                 // machine, image ownership, or safe injection.
@@ -139,6 +198,9 @@ mod windows {
                     full_image_path: path,
                     pe_image_architecture: architecture,
                     pe_image_verified: architecture.is_some(),
+                    process_architecture: process_machine.map(|value| value.architecture),
+                    process_architecture_verified: process_machine.is_some(),
+                    process_architecture_source: process_machine.map(|value| value.source),
                     safe_to_attach: false,
                 });
             }
