@@ -156,6 +156,78 @@ fn speed_preview_rpc_round_trips_and_shares_in_memory_state() {
 
 #[cfg(windows)]
 #[test]
+fn packaged_speed_cli_queries_real_loopback_rpc_and_rejects_remote_addresses() {
+    let config = RpcConfig {
+        transport: RpcTransport::Tcp,
+        bind: "127.0.0.1:0".to_owned(),
+        ..RpcConfig::default()
+    };
+    let dispatcher: Arc<dyn CommandExecutor> = Arc::new(TestExecutor);
+    let preview: Arc<dyn CommandExecutor> = Arc::new(
+        SpeedPreviewExecutor::with_profile(
+            dispatcher,
+            &SpeedSettings {
+                enabled: true,
+                ..SpeedSettings::default()
+            },
+            &SpeedHotkeyConfig::default(),
+            "cli-integration-fixture",
+        )
+        .unwrap(),
+    );
+    let mut server = start_server(
+        config,
+        preview,
+        post_action_recorder(Arc::new(AtomicBool::new(false))),
+    )
+    .unwrap();
+    let endpoint = match server.endpoint() {
+        RpcEndpoint::Tcp(address) => *address,
+        other => panic!("expected local TCP endpoint, found {other:?}"),
+    };
+    let executable = env!("CARGO_BIN_EXE_intimatr-speed");
+
+    let output = std::process::Command::new(executable)
+        .args(["--tcp", &endpoint.to_string(), "status"])
+        .output()
+        .expect("Windows speed CLI should spawn");
+    assert!(
+        output.status.success(),
+        "CLI status failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let json: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("speed CLI should print JSON");
+    assert_eq!(json["configured"], true);
+    assert_eq!(json["profile"], "cli-integration-fixture");
+    assert_eq!(json["preview_multiplier"], 1.0);
+    assert_eq!(json["clock_applied_to_game"], false);
+
+    let increase = std::process::Command::new(executable)
+        .args(["--tcp", &endpoint.to_string(), "increase"])
+        .output()
+        .expect("Windows speed CLI should spawn for mutation");
+    assert!(
+        increase.status.success(),
+        "CLI increase failed: {}",
+        String::from_utf8_lossy(&increase.stderr)
+    );
+    let changed: serde_json::Value = serde_json::from_slice(&increase.stdout).unwrap();
+    assert_eq!(changed["preview_multiplier"], 1.5);
+    assert_eq!(changed["clock_applied_to_game"], false);
+
+    let denied = std::process::Command::new(executable)
+        .args(["--tcp", "192.168.1.55:4000", "status"])
+        .output()
+        .expect("Windows speed CLI should reject foreign host");
+    assert!(!denied.status.success());
+    assert!(String::from_utf8_lossy(&denied.stderr).contains("loopback"));
+
+    server.stop().unwrap();
+}
+
+#[cfg(windows)]
+#[test]
 fn windows_named_pipe_client_and_server_round_trip() {
     let config = RpcConfig {
         transport: RpcTransport::NamedPipe,
