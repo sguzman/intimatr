@@ -7,7 +7,7 @@
 
 use std::{fs, net::SocketAddr, os::unix::fs::PermissionsExt, path::PathBuf, process::Command};
 
-const USAGE: &str = "Usage: intimatr-bottles speed --prefix ABSOLUTE_WINEPREFIX --runner ABSOLUTE_WINE --client ABSOLUTE_INTIMATR_SPEED_EXE (--tcp LOOPBACK_IP:PORT | --pipe NAME) (status | increase | decrease | toggle | reset | preset MULTIPLIER)";
+const USAGE: &str = "Usage: intimatr-bottles speed --prefix ABSOLUTE_WINEPREFIX --runner ABSOLUTE_WINE --client ABSOLUTE_INTIMATR_SPEED_EXE (--tcp LOOPBACK_IP:PORT | --pipe NAME) (status | increase | decrease | toggle | reset | preset MULTIPLIER | hold MULTIPLIER DURATION_MS | release)";
 
 #[derive(Debug, Clone, PartialEq)]
 struct SpeedForward {
@@ -17,7 +17,7 @@ struct SpeedForward {
     endpoint_kind: &'static str,
     endpoint: String,
     action: String,
-    preset: Option<String>,
+    parameters: Vec<String>,
 }
 
 fn take_value(args: &[String], at: &mut usize, option: &str) -> Result<String, String> {
@@ -73,23 +73,37 @@ impl SpeedForward {
         }
         let action = args.get(i).ok_or(USAGE)?.clone();
         i += 1;
-        let preset = match action.as_str() {
-            "status" | "increase" | "decrease" | "toggle" | "reset" => None,
-            "preset" => {
+        let mut parameters = Vec::new();
+        match action.as_str() {
+            "status" | "increase" | "decrease" | "toggle" | "reset" | "release" => {}
+            "preset" | "hold" => {
                 let raw = args
                     .get(i)
-                    .ok_or("preset requires a finite positive multiplier")?;
-                let speed: f64 = raw
+                    .ok_or("speed multiplier must be a finite positive number")?;
+                let rate: f64 = raw
                     .parse()
-                    .map_err(|_| "preset requires a finite positive multiplier")?;
-                if !speed.is_finite() || speed <= 0.0 {
-                    return Err("preset requires a finite positive multiplier".into());
+                    .map_err(|_| "speed multiplier must be a finite positive number")?;
+                if !rate.is_finite() || rate <= 0.0 {
+                    return Err("speed multiplier must be a finite positive number".into());
                 }
+                parameters.push(raw.clone());
                 i += 1;
-                Some(raw.clone())
+                if action == "hold" {
+                    let raw = args
+                        .get(i)
+                        .ok_or("hold duration must be 1..=60000 milliseconds")?;
+                    let duration: u32 = raw
+                        .parse()
+                        .map_err(|_| "hold duration must be 1..=60000 milliseconds")?;
+                    if !(1..=60_000).contains(&duration) {
+                        return Err("hold duration must be 1..=60000 milliseconds".into());
+                    }
+                    parameters.push(raw.clone());
+                    i += 1;
+                }
             }
             _ => return Err(format!("unsupported speed action {action}. {USAGE}")),
-        };
+        }
         if i != args.len() {
             return Err("unexpected extra arguments after speed action".into());
         }
@@ -104,7 +118,7 @@ impl SpeedForward {
             endpoint_kind,
             endpoint,
             action,
-            preset,
+            parameters,
         })
     }
 
@@ -144,9 +158,7 @@ impl SpeedForward {
             .env("WINEPREFIX", &self.prefix)
             .arg(&self.client)
             .args([self.endpoint_kind, &self.endpoint, &self.action]);
-        if let Some(preset) = &self.preset {
-            command.arg(preset);
-        }
+        command.args(&self.parameters);
         let output = command
             .output()
             .map_err(|error| format!("cannot start selected Wine runner: {error}"))?;
@@ -229,10 +241,18 @@ mod tests {
         ]);
         let parsed = SpeedForward::parse(&tokens).unwrap();
         assert_eq!(parsed.action, "preset");
-        assert_eq!(parsed.preset.as_deref(), Some("1.5"));
+        assert_eq!(parsed.parameters, ["1.5"]);
         assert_eq!(parsed.endpoint_kind, "--pipe");
         tokens.splice(tokens.len() - 4.., args(&["--tcp", "[::1]:31337", "reset"]));
         assert_eq!(SpeedForward::parse(&tokens).unwrap().endpoint_kind, "--tcp");
+        let mut hold = args(&[
+            "--prefix", "/tmp/prefix", "--runner", "/bin/wine", "--client", "/tmp/speed.exe",
+            "--tcp", "127.0.0.1:31337", "hold", "2.0", "1200",
+        ]);
+        let selected = SpeedForward::parse(&hold).unwrap();
+        assert_eq!(selected.parameters, ["2.0", "1200"]);
+        hold[hold.len() - 1] = "60001".into();
+        assert!(SpeedForward::parse(&hold).is_err());
     }
 
     #[test]
@@ -264,7 +284,7 @@ mod tests {
             endpoint_kind: "--tcp",
             endpoint: "127.0.0.1:1234".to_owned(),
             action: "status".to_owned(),
-            preset: None,
+            parameters: Vec::new(),
         };
         let result = request.execute().unwrap();
         let parts = result.lines().collect::<Vec<_>>();
