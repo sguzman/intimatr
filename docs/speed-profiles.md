@@ -40,7 +40,7 @@ The runtime must resolve Linux host paths to Wine-visible paths without assuming
 
 ## Keybindings and optional features
 
-Keybinding grammar, increase/decrease, toggle/reset, and held-key speed presets are tracked under milestone 13. They are deliberately not accepted as undocumented keys by this v1 parser. The profile format should be extended in a version-aware compatible way when that implementation is ready.
+Keybinding grammar, increase/decrease, toggle/reset, and held-key speed presets are tracked under milestone 13. They are deliberately not accepted as undocumented keys by this v1 parser. The portable speed session now exposes a provisional bounded `HoldStart { multiplier, duration_ms }` action accepting an existing configured step and a duration from 1 to 60,000 ms, plus `HoldRelease` and `FocusLost`. It automatically restores the previous selection at the deadline; focus loss resets to 1×. These are core APIs, **not yet keyboard bindings or a running Wine-game implementation**. The profile format should be extended in a version-aware compatible way when input integration is ready.
 
 The future loader manager will opt supported offline games into the DLL; a global profile is **not** blanket permission to inject into all Wine processes. Games with anti-cheat, protected execution or multiplayer features remain excluded.
 
