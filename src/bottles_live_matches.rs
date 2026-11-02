@@ -18,6 +18,12 @@ pub struct WindowsProcessRecord {
     pub pe_image_architecture: Option<String>,
     #[serde(default)]
     pub pe_image_verified: bool,
+    #[serde(default)]
+    pub process_architecture: Option<String>,
+    #[serde(default)]
+    pub process_architecture_verified: bool,
+    #[serde(default)]
+    pub process_architecture_source: Option<String>,
     pub safe_to_attach: bool,
 }
 
@@ -52,6 +58,26 @@ impl WindowsProcessSnapshot {
                     "Windows process snapshot has inconsistent PE image verification".into(),
                 );
             }
+            if process.process_architecture_verified
+                != (process.process_architecture.is_some()
+                    && process.process_architecture_source.is_some())
+            {
+                return Err("Windows process snapshot has inconsistent live machine evidence".into());
+            }
+            if process
+                .process_architecture_source
+                .as_deref()
+                .is_some_and(|source| source != "is_wow64_process2")
+            {
+                return Err("Windows process snapshot has unrecognized architecture source".into());
+            }
+            if process
+                .process_architecture
+                .as_deref()
+                .is_some_and(|value| !matches!(value, "x86" | "x86_64" | "aarch64"))
+            {
+                return Err("Windows process snapshot has unrecognized live process machine".into());
+            }
             if process
                 .pe_image_architecture
                 .as_deref()
@@ -77,6 +103,10 @@ pub struct ProcessProgramMatch {
     pub verified_executable_path: Option<String>,
     pub pe_image_architecture: Option<String>,
     pub pe_image_verified: bool,
+    pub process_architecture: Option<String>,
+    pub process_architecture_verified: bool,
+    pub process_architecture_source: Option<String>,
+    pub architecture_consistent: Option<bool>,
     pub registered_program_name: Option<String>,
     pub status: &'static str,
     pub safe_to_attach: bool,
@@ -99,7 +129,14 @@ pub fn match_registered_programs(
     let mut matches = Vec::new();
     for process in &snapshot.processes {
         let mut found = None;
-        let status = if !process.image_query_verified {
+        let architecture_consistent = process
+            .process_architecture
+            .as_ref()
+            .zip(process.pe_image_architecture.as_ref())
+            .map(|(observed, file)| observed == file);
+        let status = if architecture_consistent == Some(false) {
+            "process_file_architecture_conflict"
+        } else if !process.image_query_verified {
             "image_path_unknown"
         } else if let Some(path) = process.full_image_path.as_deref() {
             if let Ok(key) = game_path_key(path) {
@@ -130,6 +167,10 @@ pub fn match_registered_programs(
             verified_executable_path: process.full_image_path.clone(),
             pe_image_architecture: process.pe_image_architecture.clone(),
             pe_image_verified: process.pe_image_verified,
+            process_architecture: process.process_architecture.clone(),
+            process_architecture_verified: process.process_architecture_verified,
+            process_architecture_source: process.process_architecture_source.clone(),
+            architecture_consistent,
             registered_program_name: found,
             status,
             safe_to_attach: false,
@@ -177,6 +218,9 @@ mod tests {
                     image_query_verified: path.is_some(),
                     pe_image_architecture: None,
                     pe_image_verified: false,
+                    process_architecture: None,
+                    process_architecture_verified: false,
+                    process_architecture_source: None,
                     safe_to_attach: false,
                 })
                 .collect(),
@@ -246,6 +290,37 @@ mod tests {
                 "\"image_query_verified\":false",
             ),
             valid.replace("\"windows_pid\":2", "\"windows_pid\":0"),
+        ] {
+            assert!(WindowsProcessSnapshot::parse(&invalid).is_err());
+        }
+    }
+
+    #[test]
+    fn rejects_forged_live_machine_evidence_and_conflicting_file_architecture() {
+        let raw = r#"{"operation":"read_only_wine_windows_processes","attachment_attempted":false,"processes":[{"windows_pid":42,"reported_executable":"Game.exe","full_image_path":"C:\\Game.exe","image_query_verified":true,"pe_image_architecture":"x86_64","pe_image_verified":true,"process_architecture":"x86","process_architecture_verified":true,"process_architecture_source":"is_wow64_process2","safe_to_attach":false}]}"#;
+        let parsed = WindowsProcessSnapshot::parse(raw).unwrap();
+        let matched = match_registered_programs(
+            &bottle(&[("Game", r"C:\Game.exe")]),
+            &parsed,
+        );
+        assert_eq!(matched.matches[0].status, "process_file_architecture_conflict");
+        assert_eq!(matched.matches[0].architecture_consistent, Some(false));
+        assert!(matched.matches[0].registered_program_name.is_none());
+        assert!(!matched.matches[0].safe_to_attach);
+
+        for invalid in [
+            raw.replace(
+                "\"process_architecture_verified\":true",
+                "\"process_architecture_verified\":false",
+            ),
+            raw.replace(
+                "\"process_architecture_source\":\"is_wow64_process2\"",
+                "\"process_architecture_source\":\"untrusted\"",
+            ),
+            raw.replace(
+                "\"process_architecture\":\"x86\"",
+                "\"process_architecture\":\"unknown\"",
+            ),
         ] {
             assert!(WindowsProcessSnapshot::parse(&invalid).is_err());
         }
