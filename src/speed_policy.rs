@@ -136,7 +136,10 @@ pub fn validate_overrides(profile: &SharedSpeedConfig) -> Result<(), SpeedProfil
         let mut effective = profile.speed.clone();
         rule.speed.apply_to(&mut effective);
         effective.validate()?;
-        profile.hotkeys.compile(&effective).map_err(SpeedProfileError::Invalid)?;
+        profile
+            .hotkeys
+            .compile(&effective)
+            .map_err(SpeedProfileError::Invalid)?;
     }
 
     let mut games = HashSet::new();
@@ -156,7 +159,10 @@ pub fn validate_overrides(profile: &SharedSpeedConfig) -> Result<(), SpeedProfil
         }
         rule.speed.apply_to(&mut effective);
         effective.validate()?;
-        profile.hotkeys.compile(&effective).map_err(SpeedProfileError::Invalid)?;
+        profile
+            .hotkeys
+            .compile(&effective)
+            .map_err(SpeedProfileError::Invalid)?;
     }
     Ok(())
 }
@@ -191,7 +197,9 @@ impl SharedSpeedConfig {
             rule.speed.apply_to(&mut settings);
         }
         settings.validate()?;
-        self.hotkeys.compile(&settings).map_err(SpeedProfileError::Invalid)?;
+        self.hotkeys
+            .compile(&settings)
+            .map_err(SpeedProfileError::Invalid)?;
         let excluded = matched_bottle.is_some_and(|rule| rule.exclude)
             || matched_game.is_some_and(|rule| rule.exclude);
         if excluded {

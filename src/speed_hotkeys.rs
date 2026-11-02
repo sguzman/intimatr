@@ -280,8 +280,17 @@ mod tests {
         );
         assert_eq!(parse_chord("F24").unwrap().key, 0x87);
         for invalid in [
-            "", "+A", "A+", "Ctrl++A", "Ctrl+Ctrl+A", "Meta+A",
-            "Win+G", "Ctrl+Ctrl", "Ctrl+F25", "F0", "Ctrl+€",
+            "",
+            "+A",
+            "A+",
+            "Ctrl++A",
+            "Ctrl+Ctrl+A",
+            "Meta+A",
+            "Win+G",
+            "Ctrl+Ctrl",
+            "Ctrl+F25",
+            "F0",
+            "Ctrl+€",
         ] {
             assert!(parse_chord(invalid).is_err(), "{invalid}");
         }
@@ -308,9 +317,9 @@ mod tests {
     #[test]
     fn hold_must_use_allowed_step_and_bounded_duration() {
         let speed = SpeedSettings::default();
-        for (multiplier, duration_ms) in [
-            (1.25, 200), (f64::INFINITY, 200), (2.0, 0), (2.0, 60_001),
-        ] {
+        for (multiplier, duration_ms) in
+            [(1.25, 200), (f64::INFINITY, 200), (2.0, 0), (2.0, 60_001)]
+        {
             let config = SpeedHotkeyConfig {
                 hold: Some(HoldHotkey {
                     chord: "Alt+F7".into(),
@@ -330,40 +339,79 @@ mod tests {
             ..Default::default()
         };
         let mut keys = config.compile(&SpeedSettings::default()).unwrap();
-        let ctrl = Modifiers { ctrl: true, ..Default::default() };
-        assert_eq!(keys.on_key(event(0x76, ctrl, true, false)), Some(SpeedAction::Increase));
+        let ctrl = Modifiers {
+            ctrl: true,
+            ..Default::default()
+        };
+        assert_eq!(
+            keys.on_key(event(0x76, ctrl, true, false)),
+            Some(SpeedAction::Increase)
+        );
         assert_eq!(keys.on_key(event(0x76, ctrl, true, true)), None);
         assert_eq!(keys.on_key(event(0x76, ctrl, true, false)), None);
         assert_eq!(keys.on_key(event(0x76, ctrl, false, false)), None);
-        assert_eq!(keys.on_key(event(0x76, ctrl, true, false)), Some(SpeedAction::Increase));
+        assert_eq!(
+            keys.on_key(event(0x76, ctrl, true, false)),
+            Some(SpeedAction::Increase)
+        );
     }
 
     #[test]
     fn hold_release_survives_modifier_release_and_focus_loss() {
         let config = SpeedHotkeyConfig {
-            hold: Some(HoldHotkey { chord: "Ctrl+H".into(), multiplier: 2.0, duration_ms: 150 }),
+            hold: Some(HoldHotkey {
+                chord: "Ctrl+H".into(),
+                multiplier: 2.0,
+                duration_ms: 150,
+            }),
             ..Default::default()
         };
         let mut keys = config.compile(&SpeedSettings::default()).unwrap();
-        let ctrl = Modifiers { ctrl: true, ..Default::default() };
+        let ctrl = Modifiers {
+            ctrl: true,
+            ..Default::default()
+        };
         let none = Modifiers::default();
         assert_eq!(
             keys.on_key(event(0x48, ctrl, true, false)),
-            Some(SpeedAction::HoldStart { multiplier: 2.0, duration_ms: 150 })
+            Some(SpeedAction::HoldStart {
+                multiplier: 2.0,
+                duration_ms: 150
+            })
         );
         assert_eq!(keys.on_key(event(0x48, ctrl, true, true)), None);
-        assert_eq!(keys.on_key(event(0x11, none, false, false)), Some(SpeedAction::HoldRelease));
+        assert_eq!(
+            keys.on_key(event(0x11, none, false, false)),
+            Some(SpeedAction::HoldRelease)
+        );
         assert_eq!(keys.on_key(event(0x48, none, false, false)), None);
-        assert_eq!(keys.on_key(event(0x48, ctrl, true, false)), Some(SpeedAction::HoldStart { multiplier: 2.0, duration_ms: 150 }));
+        assert_eq!(
+            keys.on_key(event(0x48, ctrl, true, false)),
+            Some(SpeedAction::HoldStart {
+                multiplier: 2.0,
+                duration_ms: 150
+            })
+        );
         assert_eq!(keys.on_focus_lost(), SpeedAction::FocusLost);
         assert_eq!(keys.on_key(event(0x48, none, false, false)), None);
-        assert_eq!(keys.on_key(event(0x48, ctrl, true, false)), Some(SpeedAction::HoldStart { multiplier: 2.0, duration_ms: 150 }));
+        assert_eq!(
+            keys.on_key(event(0x48, ctrl, true, false)),
+            Some(SpeedAction::HoldStart {
+                multiplier: 2.0,
+                duration_ms: 150
+            })
+        );
     }
 
     #[test]
     fn no_default_binding_intercepts_any_game_key() {
-        let mut keys = SpeedHotkeyConfig::default().compile(&SpeedSettings::default()).unwrap();
-        assert_eq!(keys.on_key(event(0x41, Modifiers::default(), true, false)), None);
+        let mut keys = SpeedHotkeyConfig::default()
+            .compile(&SpeedSettings::default())
+            .unwrap();
+        assert_eq!(
+            keys.on_key(event(0x41, Modifiers::default(), true, false)),
+            None
+        );
         assert_eq!(keys.on_focus_lost(), SpeedAction::FocusLost);
     }
 }
