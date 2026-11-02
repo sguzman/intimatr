@@ -20,7 +20,7 @@ mod windows_client {
 
     const MAX_REQUEST_BYTES: usize = 256 * 1024;
     const MAX_RESPONSE_BYTES: usize = 1024 * 1024;
-    const USAGE: &str = "Usage: intimatr-speed (--pipe PIPE_NAME | --tcp 127.0.0.1:PORT) (status | increase | decrease | toggle | reset | preset MULTIPLIER)\nOnly an explicitly selected Intimatr endpoint is contacted; speed state may be preview-only.";
+    const USAGE: &str = "Usage: intimatr-speed (--pipe PIPE_NAME | --tcp 127.0.0.1:PORT) (status | increase | decrease | toggle | reset | preset MULTIPLIER | hold MULTIPLIER DURATION_MS | release)\nOnly an explicitly selected Intimatr endpoint is contacted; speed state may be preview-only.";
 
     #[derive(Debug, Clone, PartialEq)]
     enum Endpoint {
@@ -29,15 +29,16 @@ mod windows_client {
     }
 
     fn parse(args: &[String]) -> Result<(Endpoint, SpeedRequest), String> {
-        let (transport, address, action, preset) = match args {
-            [transport, address, action] => {
-                (transport.as_str(), address.as_str(), action.as_str(), None)
-            }
-            [transport, address, action, preset] => (
-                transport.as_str(),
-                address.as_str(),
-                action.as_str(),
-                Some(preset.as_str()),
+        let (transport, address, action, first, second) = match args {
+            [transport, address, action] => (
+                transport.as_str(), address.as_str(), action.as_str(), None, None,
+            ),
+            [transport, address, action, first] => (
+                transport.as_str(), address.as_str(), action.as_str(), Some(first.as_str()), None,
+            ),
+            [transport, address, action, first, second] => (
+                transport.as_str(), address.as_str(), action.as_str(),
+                Some(first.as_str()), Some(second.as_str()),
             ),
             _ => return Err(USAGE.to_owned()),
         };
@@ -67,13 +68,13 @@ mod windows_client {
             }
             _ => return Err(USAGE.to_owned()),
         };
-        let request = match (action, preset) {
-            ("status", None) => SpeedRequest::Status,
-            ("increase", None) => SpeedRequest::Increase,
-            ("decrease", None) => SpeedRequest::Decrease,
-            ("toggle", None) => SpeedRequest::Toggle,
-            ("reset", None) => SpeedRequest::Reset,
-            ("preset", Some(raw)) => {
+        let request = match (action, first, second) {
+            ("status", None, None) => SpeedRequest::Status,
+            ("increase", None, None) => SpeedRequest::Increase,
+            ("decrease", None, None) => SpeedRequest::Decrease,
+            ("toggle", None, None) => SpeedRequest::Toggle,
+            ("reset", None, None) => SpeedRequest::Reset,
+            ("preset", Some(raw), None) => {
                 let multiplier: f64 = raw
                     .parse()
                     .map_err(|_| "preset must be a finite positive number")?;
@@ -81,6 +82,25 @@ mod windows_client {
                     return Err("preset must be a finite positive number".into());
                 }
                 SpeedRequest::SelectPreset { multiplier }
+            }
+            ("release", None, None) => SpeedRequest::HoldRelease,
+            ("hold", Some(raw), Some(duration)) => {
+                let multiplier: f64 = raw
+                    .parse()
+                    .map_err(|_| "hold multiplier must be finite and positive")?;
+                let duration_ms: u32 = duration
+                    .parse()
+                    .map_err(|_| "hold duration must be 1..=60000 milliseconds")?;
+                if !multiplier.is_finite() || multiplier <= 0.0 {
+                    return Err("hold multiplier must be finite and positive".into());
+                }
+                if !(1..=60_000).contains(&duration_ms) {
+                    return Err("hold duration must be 1..=60000 milliseconds".into());
+                }
+                SpeedRequest::HoldStart {
+                    multiplier,
+                    duration_ms,
+                }
             }
             _ => return Err(USAGE.to_owned()),
         };
@@ -139,6 +159,14 @@ mod windows_client {
                 parse(&args(&["--pipe", "intimatr-Game", "reset"])),
                 Ok((Endpoint::Pipe(_), SpeedRequest::Reset))
             ));
+            assert!(matches!(
+                parse(&args(&["--pipe", "intimatr-Game", "hold", "2", "200"])),
+                Ok((Endpoint::Pipe(_), SpeedRequest::HoldStart { multiplier: 2.0, duration_ms: 200 }))
+            ));
+            assert!(matches!(
+                parse(&args(&["--pipe", "intimatr-Game", "release"])),
+                Ok((Endpoint::Pipe(_), SpeedRequest::HoldRelease))
+            ));
         }
 
         #[test]
@@ -151,6 +179,9 @@ mod windows_client {
                 args(&["--pipe", r"\\.\pipe\untrusted", "status"]),
                 args(&["--tcp", "127.0.0.1:4000", "preset", "NaN"]),
                 args(&["--tcp", "127.0.0.1:4000", "preset", "-2"]),
+                args(&["--tcp", "127.0.0.1:4000", "hold", "2", "0"]),
+                args(&["--tcp", "127.0.0.1:4000", "hold", "NaN", "200"]),
+                args(&["--tcp", "127.0.0.1:4000", "hold", "2", "60001"]),
                 args(&["--tcp", "127.0.0.1:4000", "preset"]),
                 args(&["status"]),
             ] {

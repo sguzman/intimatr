@@ -488,6 +488,29 @@ pub fn set_probe_rate(multiplier: f64) -> bool {
 /// The shared command executor may synchronize rate changes only while
 /// an explicitly allowlisted disposable test process already has all four
 /// IAT imports installed. This never authorizes hook installation.
+/// Apply the original user action to the already-installed fixture hooks.
+/// Unlike replaying a raw multiplier, an active hold retains its lease
+/// deadline; repeated status reads cannot restart that deadline.
+pub(crate) fn apply_fixture_command(action: SpeedAction) -> Result<(), &'static str> {
+    if !is_allowlisted_probe_process() {
+        return Ok(());
+    }
+    let mut guard = hooks().lock().map_err(|_| "fixture hook state poisoned")?;
+    let Some(active) = guard.as_mut() else {
+        return Ok(());
+    };
+    if active.slots.iter().filter(|slot| slot.active).count() < 4 {
+        return Err("fixture import hook set is incomplete");
+    }
+    let real = native_qpc().ok_or("fixture QPC unavailable")?;
+    let snapshot = active
+        .session
+        .apply(real, action)
+        .map_err(|_| "fixture clock rejected shared speed action")?;
+    publish(snapshot);
+    Ok(())
+}
+
 pub(crate) fn synchronize_fixture_command(multiplier: f64) -> Result<(), &'static str> {
     if !is_allowlisted_probe_process() {
         return Ok(());

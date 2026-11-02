@@ -103,6 +103,15 @@ pub enum SpeedPreviewError {
 /// Keep the *isolated* IAT fixture in sync with shared UI/RPC/input
 /// commands. Ordinary Windows/Wine games never enter this path because the
 /// experimental IAT backend refuses every non-fixture executable.
+fn apply_fixture_action(action: SpeedAction) -> Result<(), SpeedPreviewError> {
+    #[cfg(windows)]
+    crate::experimental_timer_probe::apply_fixture_command(action)
+        .map_err(SpeedPreviewError::FixtureClock)?;
+    #[cfg(not(windows))]
+    let _ = action;
+    Ok(())
+}
+
 fn synchronize_fixture(multiplier: f64) -> Result<(), SpeedPreviewError> {
     #[cfg(windows)]
     crate::experimental_timer_probe::synchronize_fixture_command(multiplier)
@@ -186,11 +195,17 @@ impl SpeedPreviewExecutor {
             .map_err(|_| SpeedPreviewError::StatePoisoned)?;
         let session = guard.as_mut().ok_or(SpeedPreviewError::Unconfigured)?;
         let now = session.now();
+        let previous = session.coordinator.status();
+        let losing_focus = previous.focused && !snapshot.focused;
         session.coordinator.input_sample(now, snapshot)?;
         let status = session.status();
-        if let Err(error) = synchronize_fixture(status.preview_multiplier) {
-            let _ = session.coordinator.apply(now, SpeedAction::Reset);
-            return Err(error);
+        if (previous.preview_multiplier - status.preview_multiplier).abs() > f64::EPSILON
+            || losing_focus
+        {
+            if let Err(error) = synchronize_fixture(status.preview_multiplier) {
+                let _ = session.coordinator.apply(now, SpeedAction::Reset);
+                return Err(error);
+            }
         }
         Ok(status)
     }
@@ -224,7 +239,8 @@ impl SpeedPreviewExecutor {
             return Err(SpeedPreviewError::Unconfigured.into());
         };
         let now = session.now();
-        if let Some(action) = request.action() {
+        let action = request.action();
+        if let Some(action) = action {
             session
                 .coordinator
                 .apply(now, action)
@@ -233,9 +249,14 @@ impl SpeedPreviewExecutor {
             let _ = session.coordinator.sample(now);
         }
         let status = session.status();
-        if let Err(error) = synchronize_fixture(status.preview_multiplier) {
-            let _ = session.coordinator.apply(now, SpeedAction::Reset);
-            return Err(error.into());
+        // A status poll is observational and never re-anchors a timer lease.
+        // Apply the original action to the already-installed fixture clock
+        // so its hold duration expires even without a second RPC request.
+        if let Some(action) = action {
+            if let Err(error) = apply_fixture_action(action) {
+                let _ = session.coordinator.apply(now, SpeedAction::Reset);
+                return Err(error.into());
+            }
         }
         Ok(CommandExecution {
             result: CommandResult::Speed { status },
