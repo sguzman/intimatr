@@ -40,7 +40,7 @@ unsafe extern "system" {
 struct ProbeHooks {
     session: SpeedSession,
     /// Valid only for the lifetime of the host executable (never freed here).
-    slots: Vec<(usize, usize)>,
+    slots: Vec<(usize, usize, usize)>,
 }
 
 static HOOKS: OnceLock<Mutex<Option<ProbeHooks>>> = OnceLock::new();
@@ -77,13 +77,51 @@ unsafe extern "system" fn intercepted_qpc(value: *mut i64) -> i32 {
     1
 }
 
-fn get_qpc_address() -> Option<usize> {
+unsafe extern "system" fn intercepted_tick_count64() -> u64 {
+    let Some(real) = native_qpc() else {
+        return unsafe { GetTickCount64() };
+    };
+    match hooks().try_lock() {
+        Ok(mut guard) => guard
+            .as_mut()
+            .map(|active| active.session.sample(real).tick_count64)
+            .unwrap_or_else(|| unsafe { GetTickCount64() }),
+        Err(_) => unsafe { GetTickCount64() },
+    }
+}
+
+unsafe extern "system" fn intercepted_tick_count() -> u32 {
+    let Some(real) = native_qpc() else {
+        return unsafe { GetTickCount() };
+    };
+    match hooks().try_lock() {
+        Ok(mut guard) => guard
+            .as_mut()
+            .map(|active| active.session.sample(real).tick_count)
+            .unwrap_or_else(|| unsafe { GetTickCount() }),
+        Err(_) => unsafe { GetTickCount() },
+    }
+}
+
+fn original_timer_addresses() -> Option<[(usize, usize); 3]> {
     let kernel = unsafe { GetModuleHandleW(wide_literal_kernel32().as_ptr()) };
     if kernel.is_null() {
         return None;
     }
-    let address = unsafe { GetProcAddress(kernel, c"QueryPerformanceCounter".as_ptr().cast()) };
-    (!address.is_null()).then_some(address as usize)
+    let imports = [
+        (c"QueryPerformanceCounter", intercepted_qpc as *const () as usize),
+        (c"GetTickCount64", intercepted_tick_count64 as *const () as usize),
+        (c"GetTickCount", intercepted_tick_count as *const () as usize),
+    ];
+    let mut results = [(0, 0); 3];
+    for (index, (name, replacement)) in imports.iter().enumerate() {
+        let address = unsafe { GetProcAddress(kernel, name.as_ptr().cast()) };
+        if address.is_null() {
+            return None;
+        }
+        results[index] = (address as usize, *replacement);
+    }
+    Some(results)
 }
 
 fn wide_literal_kernel32() -> &'static [u16] {
@@ -107,7 +145,7 @@ unsafe fn read_usize(image: *const u8, size: usize, offset: usize) -> Option<usi
         .then(|| unsafe { ptr::read_unaligned(image.add(offset).cast::<usize>()) })
 }
 
-fn qpc_import_slots() -> Option<Vec<(usize, usize)>> {
+fn timer_import_slots() -> Option<Vec<(usize, usize, usize)>> {
     let image = unsafe { GetModuleHandleW(ptr::null()) }.cast::<u8>();
     if image.is_null() {
         return None;
@@ -137,7 +175,7 @@ fn qpc_import_slots() -> Option<Vec<(usize, usize)>> {
         return None;
     }
 
-    let original = get_qpc_address()?;
+    let originals = original_timer_addresses()?;
     let mut slots = Vec::new();
     for desc in 0..MAX_DESCRIPTORS {
         let offset = imports.checked_add(desc * 20)?;
@@ -154,8 +192,14 @@ fn qpc_import_slots() -> Option<Vec<(usize, usize)>> {
             if resolved == 0 {
                 break;
             }
-            if resolved == original {
-                slots.push((unsafe { image.add(thunk_offset) } as usize, resolved));
+            for (original, replacement) in originals {
+                if resolved == original {
+                    slots.push((
+                        unsafe { image.add(thunk_offset) } as usize,
+                        resolved,
+                        replacement,
+                    ));
+                }
             }
         }
     }
@@ -201,7 +245,7 @@ pub fn enable_probe() -> bool {
         return true;
     }
 
-    let (Some(real_qpc), Some(slots)) = (native_qpc(), qpc_import_slots()) else {
+    let (Some(real_qpc), Some(slots)) = (native_qpc(), timer_import_slots()) else {
         return false;
     };
     let mut frequency = 0_i64;
@@ -225,20 +269,18 @@ pub fn enable_probe() -> bool {
     };
     // Sample before hooking; the tracked timeline is continuous.
     session.sample(now);
-    let replacement = intercepted_qpc as *const () as usize;
     let mut installed = Vec::new();
-    for (slot, original) in slots {
+    for (slot, original, replacement) in slots {
         if !unsafe { patch_slot(slot, original, replacement) } {
-            for (prior_slot, prior_value) in &installed {
-                // Recovery best-effort; fail closed and retain code ownership
-                // rather than pretending a partially patched process is safe.
-                if !unsafe { patch_slot(*prior_slot, replacement, *prior_value) } {
+            for (prior_slot, prior_value, prior_replacement) in &installed {
+                // The disposable fixture is single-threaded while enabling.
+                if !unsafe { patch_slot(*prior_slot, *prior_replacement, *prior_value) } {
                     return false;
                 }
             }
             return false;
         }
-        installed.push((slot, original));
+        installed.push((slot, original, replacement));
     }
     *guard = Some(ProbeHooks {
         session,
@@ -278,8 +320,8 @@ pub fn disable_probe() -> bool {
     let Some(active) = guard.as_ref() else {
         return true;
     };
-    for (slot, original) in &active.slots {
-        if !unsafe { patch_slot(*slot, intercepted_qpc as *const () as usize, *original) } {
+    for (slot, original, replacement) in &active.slots {
+        if !unsafe { patch_slot(*slot, *replacement, *original) } {
             return false;
         }
     }
