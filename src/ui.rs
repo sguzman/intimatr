@@ -23,7 +23,7 @@ mod speed;
 use speed::SpeedView;
 
 use crate::{
-    speed_commands::{SpeedPreviewStatus, SpeedRequest},
+    speed_commands::SpeedRequest,
     command::{
         ActiveScanInfo, Command, CommandExecutor, CommandResult, ModuleInfo, ScanCandidateInfo,
         ScanSummary, ThreadInfo, WatchValue,
