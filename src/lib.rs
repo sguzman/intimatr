@@ -8,6 +8,7 @@ pub mod backpressure;
 pub mod bottles;
 #[cfg(target_os = "linux")]
 pub mod bottles_processes;
+pub mod bottles_live_matches;
 pub mod bottles_selection;
 pub mod command;
 pub mod config;

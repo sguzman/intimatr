@@ -81,7 +81,7 @@ fn bottle_key(name: &str) -> Result<String, SpeedProfileError> {
     Ok(name.to_ascii_lowercase())
 }
 
-fn game_path_key(path: &str) -> Result<String, SpeedProfileError> {
+pub(crate) fn game_path_key(path: &str) -> Result<String, SpeedProfileError> {
     let text = path.trim();
     let mut chars = text.chars();
     let drive = chars
