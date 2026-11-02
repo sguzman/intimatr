@@ -75,7 +75,9 @@ impl FocusedWindowEpoch {
             self.active_window = None;
             return crate::speed_input::InputSnapshot::default();
         }
-        let switched = self.active_window.is_some_and(|previous| previous != window);
+        let switched = self
+            .active_window
+            .is_some_and(|previous| previous != window);
         self.active_window = Some(window);
         if switched {
             crate::speed_input::InputSnapshot::default()
