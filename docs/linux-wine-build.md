@@ -108,3 +108,19 @@ Wine attach target observed Running then Stopped
 **Scope and important limitations:** this proves a *controlled* already-running Windows process can load the DLL through Wine on the tested Ubuntu x86-64 runner. The helper is hard-allowlisted to that exact fixture, does not enumerate or select personal games, and is not installed into Bottles. It is not a general-purpose injector, anti-cheat bypass, or a process-attach service. It does not prove compatibility with the user's native Bottles runner, cross-bitness, a real game, repeated attachment, timing hooks in the remote target, or safe live-game teardown. The run's independent strict lint jobs failed a helper style check subsequently corrected; the latest full CI result must be checked before broader verification claims.
 
 **Next engineering gates:** connect the native Linux Bottles manager to targeted process/prefix discovery and an opt-in same-prefix Windows helper, add actual DLL readiness/status confirmation (not merely a remote thread return), verify correct process identity and compatibility before any application, and test duplicate attach/rollback. No automatic game-wide changes are authorized by this fixture.
+
+## 2026-11-02 — Native Linux controller → remote Wine speed control
+
+**Verified in [CI run 41373127184](https://github.com/sguzman/intimatr/actions/runs/41373127184), job `wine-load-smoke`.** On an isolated Ubuntu Linux host, the native `intimatr-bottles probe-attach` controller launched the cross-built Windows helper inside a disposable Wine prefix and attached `intimatr.dll` to an **already-running** `wine-attach-target.exe` (Windows PID 32 in this run). The target independently loaded the four timer hooks after Intimatr reached Running, measured rate changes against unmodified system timer addresses, restored its imports and shut down cleanly.
+
+| Requested | QPC | GetTickCount64 | GetTickCount | timeGetTime |
+| --- | ---: | ---: | ---: | ---: |
+| 0.5× | 0.500× | 0.494× | 0.494× | 0.494× |
+| 2× | 2.000× | 2.006× | 2.006× | 2.006× |
+| 1× | 1.000× | 1.000× | 1.000× | 1.000× |
+
+The CI log reported `"operation":"fixture_only_remote_load"` with `"game_attachment":false`, then the target printed `Wine attach target verified 0.5x/2x/1x timers, then Stopped`. The CLI tests require explicit PID/prefix/helper arguments, reject unknown or duplicate options, require a valid preinitialized prefix containing `drive_c` (not an eagerly written `system.reg` snapshot), and restrict the helper filename. The Windows helper additionally verifies the selected process image is `wine-attach-target.exe` and refuses other names.
+
+**This is not a production game-injection feature.** No user Bottles library was read or changed. Real game/prefix identification, 32-bit support, opt-in match filters for live Windows processes, engine-specific timing APIs, environment compatibility with the user's patched Wine runner, anti-cheat exclusion, duplicate attachment, and full lifecycle teardown under a live game remain unverified. The test's `helper_exited_successfully` field means the helper returned successfully, **not** that the CLI independently interrogated and authenticated the target's live Intimatr status; the CI target supplies that separate confirmation.
+
+Current verified scope remains limited to disposable x86-64 fixtures; these results support continuing INT-1003, INT-1407, INT-1102/1103 but do not close their full acceptance tests.
