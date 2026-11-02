@@ -32,6 +32,7 @@ mod helper {
     const WAIT_TIMEOUT: u32 = 258;
 
     #[repr(C)]
+    #[allow(dead_code)]
     struct ModuleEntry32W {
         size: u32,
         module_id: u32,

@@ -10,7 +10,7 @@ fn main() {
 
 #[cfg(windows)]
 mod target {
-    use std::{ffi::c_void, os::windows::ffi::OsStrExt, path::Path, thread, time::Duration};
+    use std::{ffi::c_void, path::Path, thread, time::Duration};
 
     #[link(name = "kernel32")]
     unsafe extern "system" {
