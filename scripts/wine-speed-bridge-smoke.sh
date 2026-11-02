@@ -17,13 +17,30 @@ done
 
 fixture_pid=''
 cleanup() {
+  local result=$?
+  trap - EXIT
   if [[ -n "$fixture_pid" ]]; then
     kill "$fixture_pid" 2>/dev/null || true
     wait "$fixture_pid" 2>/dev/null || true
   fi
   rm -f "$fixture_dir"/bridge-*.flag
-  # Only dispose this script's unique temp prefix, never an existing bottle.
-  rm -rf -- "$prefix"
+  # Wine helper subprocesses may outlive the fixture and still create prefix
+  # files. Stop and drain only this unique disposable test prefix.
+  if command -v wineserver >/dev/null 2>&1; then
+    WINEPREFIX="$prefix" wineserver -k >/dev/null 2>&1 || true
+    WINEPREFIX="$prefix" wineserver -w >/dev/null 2>&1 || true
+  fi
+  # A file race with Wine's final teardown is not a timing-test failure.
+  for _ in 1 2 3 4 5; do
+    if rm -rf -- "$prefix" 2>/dev/null; then
+      break
+    fi
+    sleep 0.1
+  done
+  if [[ -d "$prefix" ]]; then
+    echo "Warning: disposable Wine test prefix could not be fully removed: $prefix" >&2
+  fi
+  exit "$result"
 }
 trap cleanup EXIT
 
