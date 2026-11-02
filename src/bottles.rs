@@ -35,19 +35,22 @@ pub enum BottlesInventoryError {
     InvalidProgram,
 }
 
-/// Accept explicit JSON arrays or a top-level `bottles` collection.
+/// Accept explicit JSON arrays, a top-level `bottles` collection, or
+/// Bottles' native name-keyed JSON object (including an empty object).
 ///
-/// The Bottles CLI documentation documents JSON output but does not guarantee
-/// a stable full list-bottles schema. Reject unknown shapes rather than
-/// inventing bottle names or inspecting arbitrary Wine directories.
+/// Its upstream CLI serializes the native bottle map for `--json list bottles`.
+/// A top-level map with other non-bottle values fails closed.
 pub fn parse_bottle_names(input: &str) -> Result<Vec<String>, BottlesInventoryError> {
     let root: Value = serde_json::from_str(input)?;
     let collection = match &root {
         Value::Array(_) => &root,
-        Value::Object(map) => map
-            .get("bottles")
-            .or_else(|| map.get("Bottles"))
-            .ok_or(BottlesInventoryError::UnsupportedList)?,
+        Value::Object(map) => {
+            if let Some(explicit) = map.get("bottles").or_else(|| map.get("Bottles")) {
+                explicit
+            } else {
+                &root
+            }
+        }
         _ => return Err(BottlesInventoryError::UnsupportedList),
     };
 
@@ -71,9 +74,12 @@ pub fn parse_bottle_names(input: &str) -> Result<Vec<String>, BottlesInventoryEr
             }
         }
         Value::Object(map) => {
-            for name in map.keys() {
+            for (name, configuration) in map {
                 if name.trim().is_empty() {
                     return Err(BottlesInventoryError::MissingBottleName);
+                }
+                if !configuration.is_object() {
+                    return Err(BottlesInventoryError::UnsupportedList);
                 }
                 names.push(name.clone());
             }
@@ -111,6 +117,11 @@ mod tests {
     #[test]
     fn reads_empty_and_named_bottles() {
         assert!(parse_bottle_names("[]").unwrap().is_empty());
+        assert!(parse_bottle_names("{}").unwrap().is_empty());
+        assert_eq!(
+            parse_bottle_names(r#"{"Gaming":{"Runner":"caffe"},"Media":{}}"#).unwrap(),
+            vec!["Gaming", "Media"]
+        );
         assert!(parse_bottle_names(r#"{"bottles":[]}"#).unwrap().is_empty());
         assert_eq!(
             parse_bottle_names(r#"{"bottles":["Gaming", "Media", "Gaming"]}"#).unwrap(),
@@ -126,8 +137,9 @@ mod tests {
     fn rejects_unknown_bottle_shapes_and_missing_names() {
         for invalid in [
             "not json",
-            "{}",
             "42",
+            r#"{"Unexpected":true}"#,
+            r#"{"Unexpected":"text"}"#,
             r#"{"bottles":null}"#,
             r#"{"bottles":[""]}"#,
             r#"{"bottles":[{}]}"#,
