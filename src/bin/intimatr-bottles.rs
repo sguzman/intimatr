@@ -358,16 +358,24 @@ mod profile_check_tests {
             args(&[]),
             args(&["--config", "/tmp/profile.toml", "--bottle", "Games"]),
             args(&[
-                "--config", "/tmp/profile.toml",
-                "--bottle", "Games",
-                "--exe", "C:/Games/Game.exe",
-                "--exe", "C:/Other.exe",
+                "--config",
+                "/tmp/profile.toml",
+                "--bottle",
+                "Games",
+                "--exe",
+                "C:/Games/Game.exe",
+                "--exe",
+                "C:/Other.exe",
             ]),
             args(&[
-                "--config", "/tmp/profile.toml",
-                "--bottle", "Games",
-                "--exe", "C:/Games/Game.exe",
-                "--unknown", "yes",
+                "--config",
+                "/tmp/profile.toml",
+                "--bottle",
+                "Games",
+                "--exe",
+                "C:/Games/Game.exe",
+                "--unknown",
+                "yes",
             ]),
         ] {
             assert!(ProfileCheckOptions::parse(&invalid).is_err());
@@ -377,9 +385,12 @@ mod profile_check_tests {
     #[test]
     fn parses_read_only_profile_inspection_without_bottles() {
         let options = ProfileCheckOptions::parse(&args(&[
-            "--config", "/tmp/speed global.toml",
-            "--bottle", "Games",
-            "--exe", r"C:\Games\Game.exe",
+            "--config",
+            "/tmp/speed global.toml",
+            "--bottle",
+            "Games",
+            "--exe",
+            r"C:\Games\Game.exe",
         ]))
         .unwrap();
         assert_eq!(options.bottle, "Games");
