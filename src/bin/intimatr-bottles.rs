@@ -714,12 +714,12 @@ fn run_live_match(args: Vec<String>) -> Result<(), String> {
     use intimatr::{
         bottles::{BottleInventory, parse_bottle_names, parse_registered_programs},
         bottles_live_matches::match_registered_programs,
+        bottles_prefix::verify_bottle_prefix,
     };
 
     let options = LiveMatchOptions::parse(&args)?;
-    // A bottle name explicitly present in native Bottles' inventory is required.
-    // This is deliberately NOT proof the operator-provided WINEPREFIX belongs
-    // to that bottle; no attachment capability is granted.
+    // Require both a registered bottle name and a verified direct prefix
+    // child of Bottles' configured root. This still grants no attach access.
     let names = parse_bottle_names(&bottles_json_with_command(
         &options.bottles_cli,
         &["list", "bottles"],
@@ -728,6 +728,14 @@ fn run_live_match(args: Vec<String>) -> Result<(), String> {
     if !names.iter().any(|name| name == &options.bottle) {
         return Err("selected bottle not found in native Bottles inventory".into());
     }
+    // Upstream Bottles reports this as a *plain path* even with --json.
+    let configured_bottles_root =
+        bottles_json_with_command(&options.bottles_cli, &["info", "bottles-path"])?;
+    let ownership = verify_bottle_prefix(
+        &configured_bottles_root,
+        &options.bottle,
+        std::path::Path::new(&options.prefix),
+    )?;
     let programs = parse_registered_programs(&bottles_json_with_command(
         &options.bottles_cli,
         &["programs", "-b", &options.bottle],
@@ -751,7 +759,10 @@ fn run_live_match(args: Vec<String>) -> Result<(), String> {
             "operation": "read_only_live_bottles_wine_match",
             "selected_bottle": options.bottle,
             "user_supplied_prefix": prefix,
-            "bottle_prefix_association_verified": false,
+            "bottle_prefix_association_verified": ownership.bottle_prefix_association_verified,
+            "configured_bottles_root": ownership.canonical_bottles_root,
+            "runner_verified": ownership.runner_verified,
+            "game_process_identity_verified": ownership.game_process_identity_verified,
             "windows_process_count": snapshot.processes.len(),
             "matches": preview.matches,
             "safe_to_attach": false,

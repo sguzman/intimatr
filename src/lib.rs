@@ -8,6 +8,8 @@ pub mod backpressure;
 pub mod bottles;
 pub mod bottles_live_matches;
 #[cfg(target_os = "linux")]
+pub mod bottles_prefix;
+#[cfg(target_os = "linux")]
 pub mod bottles_processes;
 pub mod bottles_selection;
 pub mod command;

@@ -131,7 +131,9 @@ jobs:
           cp target/x86_64-pc-windows-gnu/release/wine-attach-target.exe target/wine-attach/
           cp target/x86_64-pc-windows-gnu/release/wine-attach-helper.exe target/wine-attach/
           cp config/wine-attach-target.exe.toml target/wine-attach/config/
-          export WINEPREFIX="$RUNNER_TEMP/intimatr-wine-attach"
+          export WINEPREFIX="$RUNNER_TEMP/Fixture"
+          mkdir -p "$WINEPREFIX"
+          printf 'Name: Fixture\n' > "$WINEPREFIX/bottle.yml"
           export WINEARCH=win64
           export WINEDEBUG=-all
           xvfb-run -a wine target/wine-attach/wine-attach-target.exe &
@@ -160,7 +162,10 @@ jobs:
           #!/bin/sh
           case "$*" in
             "--json list bottles")
-              printf '%s\n' '{"bottles":["Fixture"]}'
+              printf '%s\n' '{"Fixture":{"Runner":"test-wine"}}'
+              ;;
+            "--json info bottles-path")
+              printf '%s' "$RUNNER_TEMP"
               ;;
             "--json programs -b Fixture")
               printf '%s\n' '[{"name":"Unrelated Offline","executable":"Unrelated.exe","path":"C:\\Example\\Unrelated.exe"}]'
@@ -180,7 +185,9 @@ jobs:
             --bottles-cli target/wine-attach/mocks/bottles-cli > target/wine-attach/live-match.json
           grep -q "\"windows_pid\": $windows_pid" target/wine-attach/live-match.json
           grep -q '"operation": "read_only_live_bottles_wine_match"' target/wine-attach/live-match.json
-          grep -q '"bottle_prefix_association_verified": false' target/wine-attach/live-match.json
+          grep -q '"bottle_prefix_association_verified": true' target/wine-attach/live-match.json
+          grep -q '"runner_verified": false' target/wine-attach/live-match.json
+          grep -q '"game_process_identity_verified": false' target/wine-attach/live-match.json
           grep -q '"status": "not_registered_in_selected_bottle"' target/wine-attach/live-match.json
           grep -q '"safe_to_attach": false' target/wine-attach/live-match.json
           grep -q '"attachment_attempted": false' target/wine-attach/live-match.json
