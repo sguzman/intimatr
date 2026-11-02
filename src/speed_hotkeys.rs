@@ -90,6 +90,7 @@ pub struct SpeedHotkeyDispatcher {
     bindings: Vec<(KeyChord, Action)>,
     pressed: HashSet<u16>,
     held: Option<KeyChord>,
+    focused: bool,
 }
 
 impl SpeedHotkeyConfig {
@@ -129,6 +130,7 @@ impl SpeedHotkeyConfig {
             bindings,
             pressed: HashSet::new(),
             held: None,
+            focused: false,
         })
     }
 }
@@ -212,10 +214,20 @@ fn parse_key(raw: &str) -> Result<u16, &'static str> {
 }
 
 impl SpeedHotkeyDispatcher {
+    /// The event stream remains disabled until the host explicitly reports
+    /// focus. The host must stop feeding unrelated window events.
+    pub fn on_focus_gained(&mut self) {
+        self.focused = true;
+        self.pressed.clear();
+    }
+
     /// The frontend calls this only for events from its *focused* game window.
     /// Repeated keydown events cannot change speed more than once per press.
     /// Releases for a held chord are recognized even when modifiers changed.
     pub fn on_key(&mut self, event: KeyEvent) -> Option<SpeedAction> {
+        if !self.focused {
+            return None;
+        }
         if let Some(held) = self.held {
             if (!event.pressed && event.virtual_key == held.key)
                 || !event.modifiers.includes(held.modifiers)
@@ -253,6 +265,7 @@ impl SpeedHotkeyDispatcher {
     /// The host must call this when the game loses focus or the input
     /// stream is interrupted; it must stop sending keys until focus returns.
     pub fn on_focus_lost(&mut self) -> SpeedAction {
+        self.focused = false;
         self.pressed.clear();
         self.held = None;
         SpeedAction::FocusLost
@@ -339,6 +352,7 @@ mod tests {
             ..Default::default()
         };
         let mut keys = config.compile(&SpeedSettings::default()).unwrap();
+        keys.on_focus_gained();
         let ctrl = Modifiers {
             ctrl: true,
             ..Default::default()
@@ -367,6 +381,7 @@ mod tests {
             ..Default::default()
         };
         let mut keys = config.compile(&SpeedSettings::default()).unwrap();
+        keys.on_focus_gained();
         let ctrl = Modifiers {
             ctrl: true,
             ..Default::default()
@@ -394,6 +409,10 @@ mod tests {
         );
         assert_eq!(keys.on_focus_lost(), SpeedAction::FocusLost);
         assert_eq!(keys.on_key(event(0x48, none, false, false)), None);
+        // A stale event stream must not reactivate a hold until the host
+        // reports that the intended game window has regained focus.
+        assert_eq!(keys.on_key(event(0x48, ctrl, true, false)), None);
+        keys.on_focus_gained();
         assert_eq!(
             keys.on_key(event(0x48, ctrl, true, false)),
             Some(SpeedAction::HoldStart {
