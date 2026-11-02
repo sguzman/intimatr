@@ -194,6 +194,40 @@ mod tests {
     }
 
     #[test]
+    fn focused_chords_use_one_shared_speed_session_with_continuous_clock() {
+        use crate::speed_session::SpeedSession;
+
+        let mut input = pump();
+        let mut session = SpeedSession::new(&SpeedSettings::default(), 0, 1_000, 0, 0).unwrap();
+
+        assert!(input.sample(snapshot(true, &[])).is_empty());
+        for action in input.sample(snapshot(true, &[CONTROL, 0x76])) {
+            session.apply(100, action).unwrap();
+        }
+        assert_eq!(session.multiplier(), 1.5);
+        assert_eq!(session.sample(200).tick_count64, 250);
+        assert!(input.sample(snapshot(true, &[CONTROL])).is_empty());
+
+        for action in input.sample(snapshot(true, &[CONTROL, 0x48])) {
+            session.apply(200, action).unwrap();
+        }
+        assert_eq!(session.multiplier(), 2.0);
+        assert_eq!(session.sample(300).tick_count64, 450);
+
+        for action in input.sample(snapshot(true, &[0x48])) {
+            session.apply(300, action).unwrap();
+        }
+        assert_eq!(session.multiplier(), 1.5);
+        assert_eq!(session.sample(400).tick_count64, 600);
+
+        for action in input.sample(snapshot(false, &[])) {
+            session.apply(400, action).unwrap();
+        }
+        assert_eq!(session.multiplier(), 1.0);
+        assert_eq!(session.sample(500).tick_count64, 700);
+    }
+
+    #[test]
     fn reserved_keys_are_not_polled_and_one_shot_reset_is_stable() {
         let mut input = pump();
         assert!(!input.watched_keys().contains(&0x2d));
