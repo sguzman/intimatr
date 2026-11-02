@@ -566,19 +566,13 @@ pub extern "system" fn intimatr_timer_probe_shared_rate(multiplier: f64) -> i32 
     if !is_allowlisted_probe_process() || probe_hook_count() < 4 {
         return 0;
     }
-    // The command is authoritative for validation and selection. The clock
-    // backend has a different real-QPC epoch, so it receives only the speed
-    // multiplier, not the preview's synthetic virtual timestamps.
-    let Some(selected) = crate::runtime::fixture_preview_select_rate(multiplier) else {
-        return 0;
-    };
-    if !set_probe_rate(selected) {
-        // An unexpected backend failure must not leave the preview claiming
-        // acceleration while the fixture's timer hooks cannot follow it.
-        crate::runtime::fixture_preview_reset();
-        return 0;
+    // The shared executor already applies this validated action to the
+    // installed, fixture-only IAT clock. Reapplying the preset here would
+    // unnecessarily reset its timer epoch twice.
+    match crate::runtime::fixture_preview_select_rate(multiplier) {
+        Some(selected) if selected == multiplier => 1,
+        _ => 0,
     }
-    1
 }
 
 #[unsafe(no_mangle)]
