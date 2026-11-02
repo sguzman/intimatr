@@ -10,10 +10,10 @@ fn main() {
 #[cfg(windows)]
 mod windows_probe {
     use std::{
-        ffi::{OsStr, c_void},
+        ffi::c_void,
         os::windows::ffi::OsStrExt,
         path::Path,
-        ptr, thread,
+        thread,
         time::Duration,
     };
 
@@ -59,12 +59,12 @@ mod windows_probe {
             ));
         }
 
-        let wide: Vec<u16> = OsStr::new(dll.as_os_str())
+        let wide: Vec<u16> = dll.as_os_str()
             .encode_wide()
             .chain(std::iter::once(0))
             .collect();
         let handle = unsafe { LoadLibraryW(wide.as_ptr()) };
-        if handle == ptr::null_mut() {
+        if handle.is_null() {
             return Err(format!(
                 "LoadLibraryW failed for {}: {}",
                 dll.display(),
