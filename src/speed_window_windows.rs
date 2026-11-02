@@ -3,7 +3,7 @@
 //! only reports candidate handles and never polls or injects keyboard events.
 
 use windows_sys::Win32::{
-    Foundation::{BOOL, HWND, LPARAM},
+    Foundation::{HWND, LPARAM},
     System::Threading::GetCurrentProcessId,
     UI::WindowsAndMessaging::{
         EnumWindows, GW_OWNER, GWL_EXSTYLE, GetWindow, GetWindowLongPtrW, GetWindowTextW,
@@ -15,7 +15,7 @@ use crate::speed_window::{SelectionError, WindowCandidate, choose_unique};
 
 const MAX_TITLE_UNITS: usize = 256;
 
-unsafe extern "system" fn collect_window(hwnd: HWND, param: LPARAM) -> BOOL {
+unsafe extern "system" fn collect_window(hwnd: HWND, param: LPARAM) -> i32 {
     // SAFETY: enumerate_owned_windows passes a valid, uniquely borrowed
     // mutable Vec for the duration of the synchronous EnumWindows call.
     let result = unsafe { &mut *(param as *mut Vec<WindowCandidate>) };
