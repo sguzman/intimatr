@@ -56,6 +56,15 @@ pub fn shutdown_requested() -> bool {
 }
 
 pub fn shutdown() -> Result<(), RuntimeError> {
+    // Never report Stopped while this DLL still owns a live executable IAT
+    // callback. Do this outside the loader lock and before lifecycle teardown
+    // so a failed restore can be retried without falsely completing shutdown.
+    #[cfg(windows)]
+    if crate::experimental_timer_probe::probe_hook_count() != 0
+        && !crate::experimental_timer_probe::disable_probe()
+    {
+        return Err(RuntimeError::TimerHooksStillActive);
+    }
     let should_cleanup = LIFECYCLE.begin_shutdown()?;
     if !should_cleanup {
         return Ok(());
@@ -449,6 +458,9 @@ pub enum RuntimeError {
     #[cfg(windows)]
     #[error(transparent)]
     DebuggerUi(#[from] DebuggerUiError),
+    #[cfg(windows)]
+    #[error("experimental timer hooks could not be fully restored; refuse to stop or unload")]
+    TimerHooksStillActive,
     #[error("Intimatr runtime context mutex was poisoned")]
     ContextPoisoned,
     #[error("Intimatr runtime is already initialized")]
