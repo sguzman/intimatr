@@ -53,6 +53,38 @@ pub fn choose_unique(candidates: &[WindowCandidate]) -> Result<u64, SelectionErr
     selected.ok_or(SelectionError::NoEligibleWindow)
 }
 
+/// Preserve the identity of the one approved input window. A direct
+/// switch from one live HWND to a different HWND must inject one synthetic
+/// focus-loss sample before the new window's keyboard state is accepted.
+/// This prevents a key held in a launcher/popup from becoming a speed action.
+#[derive(Debug, Default)]
+pub struct FocusedWindowEpoch {
+    active_window: Option<u64>,
+}
+
+impl FocusedWindowEpoch {
+    pub fn observe(
+        &mut self,
+        candidate: Option<(u64, crate::speed_input::InputSnapshot)>,
+    ) -> crate::speed_input::InputSnapshot {
+        let Some((window, snapshot)) = candidate else {
+            self.active_window = None;
+            return crate::speed_input::InputSnapshot::default();
+        };
+        if window == 0 || !snapshot.focused {
+            self.active_window = None;
+            return crate::speed_input::InputSnapshot::default();
+        }
+        let switched = self.active_window.is_some_and(|previous| previous != window);
+        self.active_window = Some(window);
+        if switched {
+            crate::speed_input::InputSnapshot::default()
+        } else {
+            snapshot
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -67,6 +99,26 @@ mod tests {
             tool_window: false,
             title: "Offline Game".to_owned(),
         }
+    }
+
+    #[test]
+    fn target_window_switch_forces_a_focus_loss_before_accepting_new_keys() {
+        use crate::speed_input::InputSnapshot;
+
+        let focused = |keys: &[u16]| InputSnapshot {
+            focused: true,
+            down_keys: keys.to_vec(),
+        };
+        let mut epoch = FocusedWindowEpoch::default();
+        assert!(epoch.observe(Some((10, focused(&[0x11])))).focused);
+        assert!(epoch.observe(Some((10, focused(&[0x11, 0x76])))).focused);
+        let switched = epoch.observe(Some((20, focused(&[0x11, 0x76]))));
+        assert!(!switched.focused);
+        assert!(switched.down_keys.is_empty());
+        assert!(epoch.observe(Some((20, focused(&[0x11, 0x76])))).focused);
+        assert!(!epoch.observe(None).focused);
+        assert!(epoch.observe(Some((20, focused(&[0x76])))).focused);
+        assert!(!epoch.observe(Some((0, focused(&[0x76])))).focused);
     }
 
     #[test]
