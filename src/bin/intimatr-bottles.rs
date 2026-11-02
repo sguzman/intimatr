@@ -743,16 +743,11 @@ fn run_live_match(args: Vec<String>) -> Result<(), String> {
         .as_ref()
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| {
-            std::path::Path::new(
-                configured_bottles_root.trim_end_matches(['\r', '\n']),
-            )
-            .join(&options.bottle)
+            std::path::Path::new(configured_bottles_root.trim_end_matches(['\r', '\n']))
+                .join(&options.bottle)
         });
-    let ownership = verify_bottle_prefix(
-        &configured_bottles_root,
-        &options.bottle,
-        &selected_prefix,
-    )?;
+    let ownership =
+        verify_bottle_prefix(&configured_bottles_root, &options.bottle, &selected_prefix)?;
     let programs = parse_registered_programs(&bottles_json_with_command(
         &options.bottles_cli,
         &["programs", "-b", &options.bottle],
