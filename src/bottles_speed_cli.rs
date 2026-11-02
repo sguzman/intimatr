@@ -246,11 +246,23 @@ mod tests {
         tokens.splice(tokens.len() - 4.., args(&["--tcp", "[::1]:31337", "reset"]));
         assert_eq!(SpeedForward::parse(&tokens).unwrap().endpoint_kind, "--tcp");
         let mut hold = args(&[
-            "--prefix", "/tmp/prefix", "--runner", "/bin/wine", "--client", "/tmp/speed.exe",
-            "--tcp", "127.0.0.1:31337", "hold", "2.0", "1200",
+            "--prefix",
+            "/tmp/prefix",
+            "--runner",
+            "/bin/wine",
+            "--client",
+            "/tmp/speed.exe",
+            "--tcp",
+            "127.0.0.1:31337",
+            "hold",
+            "2.0",
+            "1200",
         ]);
         let selected = SpeedForward::parse(&hold).unwrap();
-        assert_eq!(selected.parameters, vec!["2.0".to_owned(), "1200".to_owned()]);
+        assert_eq!(
+            selected.parameters,
+            vec!["2.0".to_owned(), "1200".to_owned()]
+        );
         let last = hold.len() - 1;
         hold[last] = "60001".into();
         assert!(SpeedForward::parse(&hold).is_err());
