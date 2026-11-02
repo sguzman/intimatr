@@ -439,9 +439,7 @@ mod windows_probe {
                 .map_err(|_| "Wine timer worker panicked during hook restoration")??;
         }
         if !restored || unsafe { hook_count() } != 0 {
-            return Err(
-                "hook restoration did not drain callbacks and clear every IAT slot".into(),
-            );
+            return Err("hook restoration did not drain callbacks and clear every IAT slot".into());
         }
         println!("Wine timer hook restoration drained concurrent QPC/millisecond readers");
         Ok(())
