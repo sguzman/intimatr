@@ -19,7 +19,7 @@ use crate::{
     debugger_ui::{DebuggerUiError, DebuggerUiHandle},
     platform::windows::{self, WindowsError, memory::CurrentProcessMemory},
     rpc::{self, PostActionHandler, RpcServerError, RpcServerHandle},
-    speed_commands::SpeedPreviewExecutor,
+    speed_profile_load::wrap_explicit_preview_from_env,
     ui::{self, UiError, UiHandle},
 };
 #[cfg(windows)]
@@ -262,9 +262,9 @@ fn create_command_executor(
         config.runtime.command_queue_capacity,
     )?;
     let executor: Arc<dyn CommandExecutor> = bounded;
-    // Keep speed preview disabled until a validated, explicitly sourced
-    // shared profile is available; scanner/debugger commands are forwarded.
-    Ok(Arc::new(SpeedPreviewExecutor::disabled(executor)))
+    // The shared profile path must be explicitly supplied by the loader.
+    // Invalid/missing profiles disable speed only, retaining all legacy tools.
+    Ok(wrap_explicit_preview_from_env(executor))
 }
 
 #[cfg(windows)]

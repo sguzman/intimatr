@@ -92,6 +92,8 @@ pub enum SpeedPreviewError {
     Unconfigured,
     #[error("speed preview state mutex is poisoned")]
     StatePoisoned,
+    #[error("speed preview requires an enabled shared profile")]
+    InactiveProfile,
     #[error(transparent)]
     Coordinator(#[from] SpeedCoordinatorError),
 }
@@ -146,6 +148,9 @@ impl SpeedPreviewExecutor {
         hotkeys: &SpeedHotkeyConfig,
         label: &str,
     ) -> Result<Self, SpeedPreviewError> {
+        if !settings.enabled {
+            return Err(SpeedPreviewError::InactiveProfile);
+        }
         let coordinator = SpeedCoordinator::new(settings, hotkeys, 0, PREVIEW_FREQUENCY, 0, 0)?;
         Ok(Self {
             inner,
@@ -274,7 +279,10 @@ mod tests {
     fn configured(inner: Arc<dyn CommandExecutor>) -> SpeedPreviewExecutor {
         SpeedPreviewExecutor::with_profile(
             inner,
-            &SpeedSettings::default(),
+            &SpeedSettings {
+                enabled: true,
+                ..SpeedSettings::default()
+            },
             &SpeedHotkeyConfig {
                 increase: Some("Ctrl+F7".to_owned()),
                 hold: Some(HoldHotkey {
@@ -294,6 +302,19 @@ mod tests {
             CommandResult::Speed { status } => status,
             _ => panic!("expected speed preview result"),
         }
+    }
+
+    #[test]
+    fn disabled_profile_does_not_enable_preview() {
+        assert!(matches!(
+            SpeedPreviewExecutor::with_profile(
+                stub(),
+                &SpeedSettings::default(),
+                &SpeedHotkeyConfig::default(),
+                "disabled"
+            ),
+            Err(SpeedPreviewError::InactiveProfile)
+        ));
     }
 
     #[test]
