@@ -19,6 +19,7 @@ use crate::{
     debugger_ui::{DebuggerUiError, DebuggerUiHandle},
     platform::windows::{self, WindowsError, memory::CurrentProcessMemory},
     rpc::{self, PostActionHandler, RpcServerError, RpcServerHandle},
+    speed_commands::SpeedPreviewExecutor,
     ui::{self, UiError, UiHandle},
 };
 #[cfg(windows)]
@@ -261,7 +262,9 @@ fn create_command_executor(
         config.runtime.command_queue_capacity,
     )?;
     let executor: Arc<dyn CommandExecutor> = bounded;
-    Ok(executor)
+    // Keep speed preview disabled until a validated, explicitly sourced
+    // shared profile is available; scanner/debugger commands are forwarded.
+    Ok(Arc::new(SpeedPreviewExecutor::disabled(executor)))
 }
 
 #[cfg(windows)]

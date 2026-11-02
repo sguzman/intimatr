@@ -47,6 +47,9 @@ impl Default for CommandLimits {
 pub enum Command {
     Ping,
     LifecycleState,
+    Speed {
+        request: crate::speed_commands::SpeedRequest,
+    },
     ListMemoryRegions,
     ReadMemory {
         address: u64,
@@ -147,6 +150,7 @@ impl Command {
     pub const fn name(&self) -> &'static str {
         match self {
             Self::Ping => "ping",
+            Self::Speed { .. } => "speed",
             Self::LifecycleState => "lifecycle_state",
             Self::ListMemoryRegions => "list_memory_regions",
             Self::ReadMemory { .. } => "read_memory",
@@ -187,6 +191,9 @@ impl Command {
 #[serde(tag = "result", rename_all = "snake_case")]
 pub enum CommandResult {
     Pong,
+    Speed {
+        status: crate::speed_commands::SpeedPreviewStatus,
+    },
     Lifecycle {
         state: String,
         shutdown_requested: bool,
@@ -472,6 +479,9 @@ where
 
         let execution = match command {
             Command::Ping => CommandExecution::immediate(CommandResult::Pong),
+            Command::Speed { .. } => return Err(CommandError::NotImplemented(
+                "speed commands require the explicit preview executor",
+            )),
             Command::LifecycleState => CommandExecution::immediate(CommandResult::Lifecycle {
                 state: format!("{:?}", crate::runtime::lifecycle_state()).to_ascii_lowercase(),
                 shutdown_requested: crate::runtime::shutdown_requested(),
@@ -1218,6 +1228,8 @@ fn ensure_address_range(address: usize, size: usize) -> Result<(), CommandError>
 
 #[derive(Debug, Error)]
 pub enum CommandError {
+    #[error(transparent)]
+    SpeedPreview(#[from] crate::speed_commands::SpeedPreviewError),
     #[error("{capability} is disabled by policy")]
     PolicyDenied { capability: &'static str },
     #[error("requested {requested} units for {resource}, limit is {limit}")]
