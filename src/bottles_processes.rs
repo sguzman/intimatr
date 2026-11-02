@@ -146,9 +146,10 @@ mod linux {
                 PrefixEnvironment::Ambiguous => report.ambiguous_prefix_environments += 1,
                 PrefixEnvironment::Other => {}
                 PrefixEnvironment::Matched => {
-                    let linux_binary = fs::read_link(directory.join("exe"))
-                        .ok()
-                        .and_then(|path| path.file_name().map(|name| name.to_string_lossy().into_owned()));
+                    let linux_binary = fs::read_link(directory.join("exe")).ok().and_then(|path| {
+                        path.file_name()
+                            .map(|name| name.to_string_lossy().into_owned())
+                    });
                     report.processes.push(PrefixProcess {
                         linux_pid: pid,
                         linux_binary,
@@ -175,10 +176,8 @@ mod linux {
         impl Fixture {
             fn new() -> Self {
                 let id = COUNTER.fetch_add(1, Ordering::Relaxed);
-                let root = std::env::temp_dir().join(format!(
-                    "intimatr-proc-test-{}-{id}",
-                    std::process::id()
-                ));
+                let root = std::env::temp_dir()
+                    .join(format!("intimatr-proc-test-{}-{id}", std::process::id()));
                 fs::create_dir_all(&root).unwrap();
                 Self(root)
             }

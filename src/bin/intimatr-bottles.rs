@@ -46,7 +46,9 @@ fn run() -> Result<(), String> {
         return run_prefix_processes(args.collect());
     }
     if action != "scan" && action != "plan" {
-        return Err("expected scan, plan, profile-check, processes or probe-attach (use --help)".to_owned());
+        return Err(
+            "expected scan, plan, profile-check, processes or probe-attach (use --help)".to_owned(),
+        );
     }
 
     let mut rules = SelectionRules::default();
@@ -401,11 +403,10 @@ mod profile_check_tests {
     }
 }
 
-
 #[cfg(target_os = "linux")]
 fn run_prefix_processes(args: Vec<String>) -> Result<(), String> {
-    use std::path::Path;
     use intimatr::bottles_processes::inspect_prefix_processes;
+    use std::path::Path;
 
     if args.len() != 2 || args[0] != "--prefix" || args[1].is_empty() {
         return Err("usage: intimatr-bottles processes --prefix INITIALIZED_WINEPREFIX".into());
@@ -429,7 +430,11 @@ mod process_command_tests {
             Vec::new(),
             vec!["--prefix".to_owned()],
             vec!["--wrong".to_owned(), "/tmp".to_owned()],
-            vec!["--prefix".to_owned(), "/tmp".to_owned(), "--unsafe".to_owned()],
+            vec![
+                "--prefix".to_owned(),
+                "/tmp".to_owned(),
+                "--unsafe".to_owned(),
+            ],
         ] {
             assert!(run_prefix_processes(bad).is_err());
         }
