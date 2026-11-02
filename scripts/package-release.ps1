@@ -14,6 +14,13 @@ if (-not (Test-Path $dll -PathType Leaf)) {
 if ((Get-Item $dll).Length -le 0) {
     throw "Release DLL is empty: $dll"
 }
+$client = "target/x86_64-pc-windows-msvc/release/intimatr-speed.exe"
+if (-not (Test-Path $client -PathType Leaf)) {
+    throw "Windows speed RPC client was not built: $client"
+}
+if ((Get-Item $client).Length -le 0) {
+    throw "Windows speed RPC client is empty: $client"
+}
 
 $protocolMatch = Select-String -Path "src/rpc/protocol.rs" -Pattern 'pub const PROTOCOL_VERSION: u16 = ([0-9]+);' | Select-Object -First 1
 if (-not $protocolMatch) {
@@ -67,6 +74,7 @@ foreach ($file in $requiredFiles) {
 }
 
 Copy-Item $dll $root
+Copy-Item $client $root
 $pdb = "target/x86_64-pc-windows-msvc/release/intimatr.pdb"
 if (Test-Path $pdb -PathType Leaf) {
     Copy-Item $pdb $root
@@ -79,7 +87,9 @@ foreach ($doc in $releaseDocs) {
 }
 
 $dllHash = (Get-FileHash $dll -Algorithm SHA256).Hash.ToLowerInvariant()
+$clientHash = (Get-FileHash $client -Algorithm SHA256).Hash.ToLowerInvariant()
 "$dllHash  intimatr.dll" | Set-Content -Path (Join-Path $root "SHA256SUMS.txt") -Encoding utf8
+"$clientHash  intimatr-speed.exe" | Add-Content -Path (Join-Path $root "SHA256SUMS.txt") -Encoding utf8
 
 @"
 Intimatr v$Version

@@ -30,7 +30,7 @@ jobs:
         run: cargo test --locked --all-targets --all-features
 
       - name: Build x86_64 Windows DLL and isolated timer probe
-        run: cargo build --locked --release --lib --bin wine-load-probe --target x86_64-pc-windows-msvc
+        run: cargo build --locked --release --lib --bin wine-load-probe --bin intimatr-speed --target x86_64-pc-windows-msvc
 
       - name: Verify DLL artifact
         shell: pwsh
@@ -44,6 +44,18 @@ jobs:
             throw "DLL artifact is empty: $dll"
           }
           Write-Host "Verified $dll ($($item.Length) bytes)"
+
+      - name: Verify Windows speed RPC client executable
+        shell: pwsh
+        run: |
+          $client = "target/x86_64-pc-windows-msvc/release/intimatr-speed.exe"
+          if (-not (Test-Path $client -PathType Leaf)) {
+            throw "Missing Windows speed RPC client executable: $client"
+          }
+          if ((Get-Item $client).Length -le 0) {
+            throw "Windows speed RPC client is empty: $client"
+          }
+          Write-Host "Verified $client"
 
       - name: Run native Windows four-timer and rollback smoke
         shell: pwsh
@@ -86,6 +98,13 @@ jobs:
 
 
 
+      - name: Upload Windows speed RPC client
+        uses: actions/upload-artifact@v7
+        with:
+          name: intimatr-speed-windows-msvc-x86_64-${{ github.sha }}
+          path: target/x86_64-pc-windows-msvc/release/intimatr-speed.exe
+          if-no-files-found: error
+
   # Disposable Wine prefix, no personal Bottles state or game executables.
   wine-load-smoke:
     runs-on: ubuntu-24.04
@@ -104,7 +123,7 @@ jobs:
           sudo apt-get install -y gcc-mingw-w64-x86-64 wine64 wine xvfb
 
       - name: Cross-build DLL and Windows probes on Linux
-        run: cargo build --locked --release --target x86_64-pc-windows-gnu --lib --bin wine-load-probe --bin wine-attach-helper --bin wine-attach-target --bin wine-process-list
+        run: cargo build --locked --release --target x86_64-pc-windows-gnu --lib --bin wine-load-probe --bin wine-attach-helper --bin wine-attach-target --bin wine-process-list --bin intimatr-speed
 
       - name: Build native Linux test orchestration CLI
         run: cargo build --locked --release --bin intimatr-bottles
@@ -412,6 +431,15 @@ jobs:
           test -s "$probe"
           file "$probe" | grep -Eq 'PE32[+].*x86-64'
 
+      - name: Verify Windows Wine speed client PE artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          client="target/x86_64-pc-windows-gnu/release/intimatr-speed.exe"
+          test -s "$client"
+          file "$client" | grep -Eq 'PE32[+].*x86-64'
+          sha256sum "$client"
+
       - name: Verify Windows PE x86-64 DLL artifact
         shell: bash
         run: |
@@ -435,6 +463,13 @@ jobs:
         with:
           name: intimatr-wine-process-list-windows-x86_64-${{ github.sha }}
           path: target/x86_64-pc-windows-gnu/release/wine-process-list.exe
+          if-no-files-found: error
+
+      - name: Upload Linux-cross-built Windows speed RPC client
+        uses: actions/upload-artifact@v7
+        with:
+          name: intimatr-speed-wine-windows-x86_64-${{ github.sha }}
+          path: target/x86_64-pc-windows-gnu/release/intimatr-speed.exe
           if-no-files-found: error
 
       - name: Upload native Linux Bottles inventory CLI

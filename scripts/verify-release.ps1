@@ -23,6 +23,7 @@ try {
 
     $requiredFiles = @(
         "intimatr.dll",
+        "intimatr-speed.exe",
         "README.md",
         "project.md",
         "VERSION.txt",
@@ -64,6 +65,60 @@ try {
     $actualDllHash = (Get-FileHash $dll -Algorithm SHA256).Hash.ToLowerInvariant()
     if ($actualDllHash -ne $expectedDllHash) {
         throw "Packaged DLL checksum mismatch: expected $expectedDllHash, got $actualDllHash"
+    }
+
+    $client = Join-Path $tempRoot "intimatr-speed.exe"
+    if ((Get-Item $client).Length -le 0) {
+        throw "Packaged speed RPC client is empty"
+    }
+    $clientSumLines = @(Get-Content $sumFile | Where-Object {
+        $_ -match '^[0-9a-fA-F]{64}\s+intimatr-speed\.exe
+    $versionFile = Join-Path $tempRoot "VERSION.txt"
+    $versionLines = Get-Content $versionFile
+
+    $versionLine = $versionLines | Where-Object { $_ -match '^Intimatr v\S.*$' } | Select-Object -First 1
+    if (-not $versionLine) {
+        throw "VERSION.txt does not contain an Intimatr version line"
+    }
+    $versionMatch = [regex]::Match($versionLine, '^Intimatr v(.+?)\s*$')
+    if (-not $versionMatch.Success) {
+        throw "VERSION.txt has an invalid Intimatr version line: $versionLine"
+    }
+    $packagedVersion = $versionMatch.Groups[1].Value.Trim()
+
+    if ($ExpectedVersion -and $packagedVersion -ne $ExpectedVersion) {
+        throw "Packaged version '$packagedVersion' does not match expected version '$ExpectedVersion'"
+    }
+
+    $protocolLine = $versionLines | Where-Object { $_ -match '^RPC protocol: [0-9]+\s*$' } | Select-Object -First 1
+    if (-not $protocolLine) {
+        throw "VERSION.txt does not contain an RPC protocol version"
+    }
+
+    $workspaceLine = $versionLines | Where-Object { $_ -match '^Analysis workspace format: [0-9]+\s*$' } | Select-Object -First 1
+    if (-not $workspaceLine) {
+        throw "VERSION.txt does not contain an analysis workspace version"
+    }
+
+    Write-Host "Verified release archive: $archive"
+    Write-Host "Version: $packagedVersion"
+    Write-Host "DLL SHA256: $actualDllHash"
+    Write-Output $archive
+}
+finally {
+    if (Test-Path $tempRoot) {
+        Remove-Item $tempRoot -Recurse -Force
+    }
+}
+
+    })
+    if ($clientSumLines.Count -ne 1) {
+        throw "SHA256SUMS.txt must contain exactly one speed client checksum"
+    }
+    $expectedClientHash = $clientSumLines[0].Substring(0, 64).ToLowerInvariant()
+    $actualClientHash = (Get-FileHash $client -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($actualClientHash -ne $expectedClientHash) {
+        throw "Packaged speed RPC client checksum mismatch: expected $expectedClientHash, got $actualClientHash"
     }
 
     $versionFile = Join-Path $tempRoot "VERSION.txt"

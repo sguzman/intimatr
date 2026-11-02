@@ -141,3 +141,18 @@ The client handles framing, protocol version checks, request-ID matching, and re
 Connection I/O runs on a dedicated Tokio runtime owned by an Intimatr RPC thread. Command execution runs through blocking worker tasks so long scalar scans, advanced analysis, or debugger operations do not block the I/O reactor. Scan cancellation tokens live in the shared dispatcher, allowing another connected frontend to request cancellation while a scalar scan is active.
 
 Watch definitions, scalar scan sessions, analysis workspaces, debugger state, breakpoints, and debugger events live behind the same dispatcher used by native frontends. RPC therefore observes the same IDs and state rather than maintaining transport-specific copies.
+
+## Speed preview command client (Windows/Wine)
+
+The release now bundles `intimatr-speed.exe` alongside the DLL. It uses the existing version-1 RPC framing and **only** connects to an explicit local endpoint; it never identifies or injects a game process. Example commands for an Intimatr instance with RPC enabled:
+
+```powershell
+./intimatr-speed.exe --tcp 127.0.0.1:31337 status
+./intimatr-speed.exe --tcp 127.0.0.1:31337 increase
+./intimatr-speed.exe --tcp 127.0.0.1:31337 preset 2.0
+./intimatr-speed.exe --pipe intimatr reset
+```
+
+Use the endpoint actually configured by the target's `config/<Executable>.toml`; TCP is limited to numeric loopback and the pipe option to a simple local pipe name. The executable prints the exact `SpeedPreviewStatus` JSON, including `configured`, `preview_multiplier`, `focused`, `last_action` and `clock_applied_to_game`. With no explicitly enabled shared speed profile, `status` returns `configured=false` and speed mutations fail closed. In the current general-purpose DLL, `clock_applied_to_game=false` is expected: **changing preview speed does not accelerate a real game**. Real hooking remains restricted to Intimatr's opt-in disposable Wine fixtures. This command client must not be described as a production game speed controller until that limitation is lifted through verified offline-game QA.
+
+The Windows MSVC release archive checks SHA-256 hashes for **both** `intimatr.dll` and `intimatr-speed.exe`. Linux GNU cross-build CI uploads a separate Windows PE `intimatr-speed.exe` artifact for Wine; the Linux-native Bottles inventory CLI is a different executable.
