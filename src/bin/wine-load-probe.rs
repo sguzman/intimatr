@@ -439,10 +439,7 @@ mod windows_probe {
     /// A read-only RPC status query must not restart a temporary rate.
     /// The IAT clock itself must expire the lease when callbacks are read.
     fn exercise_rpc_hold_expiry(directory: &Path) -> Result<(), String> {
-        fn call(
-            client: &Path,
-            request: &[&str],
-        ) -> Result<serde_json::Value, String> {
+        fn call(client: &Path, request: &[&str]) -> Result<serde_json::Value, String> {
             let output = std::process::Command::new(client)
                 .args(request)
                 .output()
@@ -467,7 +464,9 @@ mod windows_probe {
         }
         let read_only = call(&client, &["--tcp", "127.0.0.1:31379", "status"])?;
         if read_only["preview_multiplier"] != 2.0 {
-            return Err(format!("status unexpectedly canceled active hold: {read_only}"));
+            return Err(format!(
+                "status unexpectedly canceled active hold: {read_only}"
+            ));
         }
         measure_current_rate(2.0)?;
         thread::sleep(Duration::from_millis(1900));
@@ -489,7 +488,9 @@ mod windows_probe {
             return Err(format!("explicit hold release not applied: {released}"));
         }
         measure_current_rate(1.0)?;
-        println!("Wine fixture timed hold expired without RPC polling and explicit release restored 1x");
+        println!(
+            "Wine fixture timed hold expired without RPC polling and explicit release restored 1x"
+        );
         Ok(())
     }
 

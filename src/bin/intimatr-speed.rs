@@ -31,14 +31,25 @@ mod windows_client {
     fn parse(args: &[String]) -> Result<(Endpoint, SpeedRequest), String> {
         let (transport, address, action, first, second) = match args {
             [transport, address, action] => (
-                transport.as_str(), address.as_str(), action.as_str(), None, None,
+                transport.as_str(),
+                address.as_str(),
+                action.as_str(),
+                None,
+                None,
             ),
             [transport, address, action, first] => (
-                transport.as_str(), address.as_str(), action.as_str(), Some(first.as_str()), None,
+                transport.as_str(),
+                address.as_str(),
+                action.as_str(),
+                Some(first.as_str()),
+                None,
             ),
             [transport, address, action, first, second] => (
-                transport.as_str(), address.as_str(), action.as_str(),
-                Some(first.as_str()), Some(second.as_str()),
+                transport.as_str(),
+                address.as_str(),
+                action.as_str(),
+                Some(first.as_str()),
+                Some(second.as_str()),
             ),
             _ => return Err(USAGE.to_owned()),
         };
@@ -161,7 +172,13 @@ mod windows_client {
             ));
             assert!(matches!(
                 parse(&args(&["--pipe", "intimatr-Game", "hold", "2", "200"])),
-                Ok((Endpoint::Pipe(_), SpeedRequest::HoldStart { multiplier: 2.0, duration_ms: 200 }))
+                Ok((
+                    Endpoint::Pipe(_),
+                    SpeedRequest::HoldStart {
+                        multiplier: 2.0,
+                        duration_ms: 200
+                    }
+                ))
             ));
             assert!(matches!(
                 parse(&args(&["--pipe", "intimatr-Game", "release"])),
