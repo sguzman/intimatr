@@ -7,7 +7,10 @@
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::speed_policy::{BottleSpeedRule, GameSpeedRule, validate_overrides};
+use crate::{
+    speed_hotkeys::SpeedHotkeyConfig,
+    speed_policy::{BottleSpeedRule, GameSpeedRule, validate_overrides},
+};
 
 pub const CURRENT_SPEED_PROFILE_VERSION: u32 = 1;
 
@@ -17,6 +20,8 @@ pub struct SharedSpeedConfig {
     pub version: u32,
     #[serde(default)]
     pub speed: SpeedSettings,
+    #[serde(default)]
+    pub hotkeys: SpeedHotkeyConfig,
     #[serde(default)]
     pub bottles: Vec<BottleSpeedRule>,
     #[serde(default)]
@@ -39,6 +44,9 @@ impl SharedSpeedConfig {
             ));
         }
         self.speed.validate()?;
+        self.hotkeys
+            .compile(&self.speed)
+            .map_err(SpeedProfileError::Invalid)?;
         validate_overrides(self)
     }
 }
@@ -134,6 +142,7 @@ pub enum SpeedProfileError {
 #[cfg(test)]
 mod tests {
     use super::{CURRENT_SPEED_PROFILE_VERSION, SharedSpeedConfig, SpeedSettings};
+    use crate::speed_hotkeys::SpeedHotkeyConfig;
 
     #[test]
     fn parses_partial_profile_with_safe_defaults() {
@@ -199,6 +208,27 @@ mod tests {
     }
 
     #[test]
+    fn parses_opt_in_hotkeys_and_rejects_reserved_or_duplicated_keys() {
+        let valid = SharedSpeedConfig::parse(
+            "version = 1\n[hotkeys]\nincrease = 'Ctrl+F7'\nreset = 'Ctrl+F8'\n[hotkeys.hold]\nchord = 'Alt+H'\nmultiplier = 2.0\nduration_ms = 500\n",
+        )
+        .unwrap();
+        assert_eq!(valid.hotkeys.increase.as_deref(), Some("Ctrl+F7"));
+        for invalid in [
+            "[hotkeys]\nincrease = 'Insert'",
+            "[hotkeys]\nincrease = 'Ctrl+F8'\nreset = 'F8+Ctrl'",
+            "[hotkeys]\nincrease = 'Ctrl+F8'\nreset = 'Control+F8'",
+            "[hotkeys.hold]\nchord = 'Shift+F7'\nmultiplier = 1.25\nduration_ms = 500",
+            "[hotkeys.hold]\nchord = 'Alt+H'\nmultiplier = 2.0\nduration_ms = 0",
+        ] {
+            assert!(
+                SharedSpeedConfig::parse(&format!("version = 1\n{invalid}\n")).is_err(),
+                "expected rejection: {invalid}"
+            );
+        }
+    }
+
+    #[test]
     fn config_round_trip_preserves_selection() {
         let original = SharedSpeedConfig {
             version: CURRENT_SPEED_PROFILE_VERSION,
@@ -207,6 +237,7 @@ mod tests {
                 initial_multiplier: 1.5,
                 ..SpeedSettings::default()
             },
+            hotkeys: SpeedHotkeyConfig::default(),
             bottles: Vec::new(),
             games: Vec::new(),
         };

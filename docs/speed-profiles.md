@@ -93,3 +93,22 @@ cargo run --locked --bin intimatr-bottles -- profile-check --config config/speed
 ```
 
 It prints `operation = read_only_profile_resolution` with the matched bottle/game flags, exclusion status and effective speed settings. The flags `dll_loaded = false` and `attachment_attempted = false` are deliberate: this command only resolves TOML, and cannot claim the target process exists. This CLI is a profile-preview tool and not a substitute for actual Bottles identity and Wine path compatibility testing.
+
+## Focused-window speed hotkeys (portable configuration stage)
+
+Speed bindings are optional and disabled by omission. They are parsed and validated in the shared v1 TOML profile, but **not yet delivered from an actual game window**, so they do not currently control a game. This example describes a proposed focused-window binding set, not a Wayland-global grab:
+
+```toml
+[hotkeys]
+increase = "Ctrl+F7"
+decrease = "Ctrl+F6"
+toggle = "Alt+F7"
+reset = "Alt+F6"
+
+[hotkeys.hold]
+chord = "Ctrl+H"
+multiplier = 2.0
+duration_ms = 500
+```
+
+Valid modifiers are Ctrl/Control, Alt and Shift, in any order. Keys include letters A–Z, digits 0–9, F1–F24, navigation keys, Tab, Space, Enter, Backspace and Escape. The parser rejects duplicate modifiers, Win/Super shortcuts, ambiguous chords, duplicate action bindings, and all chords using **F10 or Insert** because the existing Intimatr UI polls those two keys independently of modifiers. A hold multiplier must be one of the final resolved profile's configured speed steps, including per-bottle and per-game overrides. Duration must be 1–60,000 ms. Keydown repeat is suppressed, and hold release works even if the user released a modifier first. Focus-loss events reset the session to 1×; real-game event integration remains a separate milestone acceptance gate.

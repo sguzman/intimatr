@@ -136,6 +136,7 @@ pub fn validate_overrides(profile: &SharedSpeedConfig) -> Result<(), SpeedProfil
         let mut effective = profile.speed.clone();
         rule.speed.apply_to(&mut effective);
         effective.validate()?;
+        profile.hotkeys.compile(&effective).map_err(SpeedProfileError::Invalid)?;
     }
 
     let mut games = HashSet::new();
@@ -155,6 +156,7 @@ pub fn validate_overrides(profile: &SharedSpeedConfig) -> Result<(), SpeedProfil
         }
         rule.speed.apply_to(&mut effective);
         effective.validate()?;
+        profile.hotkeys.compile(&effective).map_err(SpeedProfileError::Invalid)?;
     }
     Ok(())
 }
@@ -189,6 +191,7 @@ impl SharedSpeedConfig {
             rule.speed.apply_to(&mut settings);
         }
         settings.validate()?;
+        self.hotkeys.compile(&settings).map_err(SpeedProfileError::Invalid)?;
         let excluded = matched_bottle.is_some_and(|rule| rule.exclude)
             || matched_game.is_some_and(|rule| rule.exclude);
         if excluded {
@@ -250,6 +253,24 @@ enabled = true
             .unwrap()
             .resolve_for(bottle, path)
             .unwrap()
+    }
+
+    #[test]
+    fn hotkey_hold_step_is_validated_against_every_override() {
+        let invalid = r#"
+version = 1
+[hotkeys.hold]
+chord = "Alt+F7"
+multiplier = 2.0
+duration_ms = 200
+
+[[games]]
+bottle = "Games"
+path = 'C:\Games\Game.exe'
+[games.speed]
+steps = [0.5, 1.0, 1.5]
+"#;
+        assert!(SharedSpeedConfig::parse(invalid).is_err());
     }
 
     #[test]
