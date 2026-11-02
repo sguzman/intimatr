@@ -122,7 +122,7 @@ Work is ordered by dependency: later phases should build on the shared core inst
 ## 12. Shared configuration and profiles ⚙️
 **Status:** active (3/12 points verified). **Weight:** 12/100 expansion points.
 - [x] INT-1201 🗂️ Global versioned speed profile (validated TOML, Linux CI 41357980641).
-- [ ] INT-1202 🧩 Per-bottle/per-game matching.
+- [ ] INT-1202 🧩 Per-bottle/per-game matching (active; deterministic TOML override parser, case/path identity tests and read-only Linux preview implemented; native Bottles validation missing).
 - [ ] INT-1203 🔗 Wine-visible shared configuration path.
 - [ ] INT-1204 🔄 Reload, validation, persistence.
 
@@ -141,7 +141,7 @@ Work is ordered by dependency: later phases should build on the shared core inst
 - [ ] INT-1404 🔌 Verified normal-launch DLL loading.
 - [ ] INT-1405 🛟 Idempotence, backups and rollback (including process attach).
 - [ ] INT-1406 🧱 32-/64-bit, Linux GNU build and runner compatibility reporting.
-- [ ] INT-1407 🧷 Explicit attach to already-running Wine processes via native Linux manager.
+- [ ] INT-1407 🧷 Explicit attach to already-running Wine processes via native Linux manager (active; same-PID competing helpers serialized in isolated Wine CI, actual Bottles game compatibility and cleanup outstanding).
 
 ## 15. Unified UI/RPC 🖥️
 **Status:** pending. **Weight:** 7/100 expansion points.
@@ -179,3 +179,5 @@ Work is ordered by dependency: later phases should build on the shared core inst
 **Linux-native running-process speed control proof (2026-11-02):** [CI 41373127184](https://github.com/sguzman/intimatr/actions/runs/41373127184) succeeded with the native `intimatr-bottles probe-attach` CLI loading a Windows DLL into an already-running Wine test process, then the target measuring all four timers at 0.5×/2×/1× and restoring its imports. **Real-game/Bottles validation and production-safe attachment are not verified; 16% expansion, previous 16%, delta +0 percentage points.**
 
 **Sequential Wine duplicate-attach prevention checkpoint (2026-11-02):** [CI 41373871724](https://github.com/sguzman/intimatr/actions/runs/41373871724) confirmed that an already-running Wine fixture received one Intimatr DLL load, then rejected a second attachment while loaded. The helper independently checks the target module list before and after the load, and the target verified timing and clean shutdown. Cross-helper races and real Bottles game attachment remain open. **16% verified; previous 16%; delta +0 percentage points.**
+
+**2026-11-02 checkpoint:** [concurrent attach CI 41376199401](https://github.com/sguzman/intimatr/actions/runs/41376199401) passed, verifying one winning and one rejected competing attach under Wine. [Speed policy CI 41376902970](https://github.com/sguzman/intimatr/actions/runs/41376902970) passed for per-bottle/per-executable override matching; later read-only CLI preview QA also passed in [run 41377364276](https://github.com/sguzman/intimatr/actions/runs/41377364276) (other jobs still active at the checkpoint). Real native Bottles field QA, full game attachment and lifecycle remain undone. **Verified expansion 16% (previous 16%, delta +0 pp).**
