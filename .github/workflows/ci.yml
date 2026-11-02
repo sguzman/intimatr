@@ -103,8 +103,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y gcc-mingw-w64-x86-64 wine64 wine xvfb
 
-      - name: Cross-build DLL and Windows probe on Linux
-        run: cargo build --locked --release --target x86_64-pc-windows-gnu --lib --bin wine-load-probe
+      - name: Cross-build DLL and Windows probes on Linux
+        run: cargo build --locked --release --target x86_64-pc-windows-gnu --lib --bin wine-load-probe --bin wine-attach-helper --bin wine-attach-target
 
       - name: Run isolated Wine DLL load and shutdown smoke
         shell: bash
@@ -118,6 +118,33 @@ jobs:
           export WINEARCH=win64
           export WINEDEBUG=-all
           xvfb-run -a wine target/wine-smoke/wine-load-probe.exe
+
+      - name: Run isolated already-running Wine process attach smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p target/wine-attach/config
+          cp target/x86_64-pc-windows-gnu/release/intimatr.dll target/wine-attach/
+          cp target/x86_64-pc-windows-gnu/release/wine-attach-target.exe target/wine-attach/
+          cp target/x86_64-pc-windows-gnu/release/wine-attach-helper.exe target/wine-attach/
+          cp config/wine-attach-target.exe.toml target/wine-attach/config/
+          export WINEPREFIX="$RUNNER_TEMP/intimatr-wine-attach"
+          export WINEARCH=win64
+          export WINEDEBUG=-all
+          xvfb-run -a wine target/wine-attach/wine-attach-target.exe &
+          launcher_pid=$!
+          trap 'kill "$launcher_pid" 2>/dev/null || true' EXIT
+          for i in $(seq 1 100); do
+            if test -s target/wine-attach/attach-target.pid; then
+              break
+            fi
+            sleep 0.1
+          done
+          test -s target/wine-attach/attach-target.pid
+          windows_pid="$(cat target/wine-attach/attach-target.pid)"
+          xvfb-run -a wine target/wine-attach/wine-attach-helper.exe "$windows_pid"
+          wait "$launcher_pid"
+          trap - EXIT
 
   # Build a Windows PE DLL on a Linux host. This is the artifact Wine will
   # eventually load into an opted-in game process; it is not a Linux .so.
