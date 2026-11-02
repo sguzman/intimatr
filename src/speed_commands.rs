@@ -211,7 +211,7 @@ impl SpeedPreviewExecutor {
                 .apply(now, action)
                 .map_err(SpeedPreviewError::from)?;
         } else {
-            session.coordinator.sample(now);
+            let _ = session.coordinator.sample(now);
         }
         Ok(CommandExecution {
             result: CommandResult::Speed {
