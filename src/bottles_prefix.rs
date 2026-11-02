@@ -51,7 +51,10 @@ pub fn verify_bottle_prefix(
         || selected_bottle == ".."
         || selected_bottle.contains('\\')
         || selected_bottle.chars().any(char::is_control)
-        || !matches!(candidate_name.components().next(), Some(Component::Normal(_)))
+        || !matches!(
+            candidate_name.components().next(),
+            Some(Component::Normal(_))
+        )
         || candidate_name.components().count() != 1
     {
         return Err("invalid bottle name: expected one literal directory component".into());
@@ -72,11 +75,11 @@ pub fn verify_bottle_prefix(
     if canonical.parent() != Some(root.as_path())
         || canonical.file_name() != Some(std::ffi::OsStr::new(selected_bottle))
     {
-        return Err("Bottles directory does not resolve to an exact child of configured root".into());
+        return Err(
+            "Bottles directory does not resolve to an exact child of configured root".into(),
+        );
     }
-    if !canonical.join("drive_c").is_dir()
-        || !canonical.join("bottle.yml").is_file()
-    {
+    if !canonical.join("drive_c").is_dir() || !canonical.join("bottle.yml").is_file() {
         return Err("selected bottle is missing its drive_c or bottle.yml marker".into());
     }
     let selected = fs::canonicalize(supplied_prefix)
@@ -106,8 +109,10 @@ mod tests {
     impl Fixture {
         fn new() -> Self {
             let n = NEXT_ID.fetch_add(1, Ordering::Relaxed);
-            let path = std::env::temp_dir()
-                .join(format!("intimatr-bottles-prefix-{}-{n}", std::process::id()));
+            let path = std::env::temp_dir().join(format!(
+                "intimatr-bottles-prefix-{}-{n}",
+                std::process::id()
+            ));
             fs::create_dir_all(&path).unwrap();
             Self(path)
         }
@@ -128,12 +133,9 @@ mod tests {
     fn recognizes_exact_bottle_even_when_root_contains_spaces() {
         let fixture = Fixture::new();
         let prefix = fixture.create_bottle("My Games");
-        let result = verify_bottle_prefix(
-            &format!("{}\n", fixture.0.display()),
-            "My Games",
-            &prefix,
-        )
-        .unwrap();
+        let result =
+            verify_bottle_prefix(&format!("{}\n", fixture.0.display()), "My Games", &prefix)
+                .unwrap();
         assert!(result.bottle_prefix_association_verified);
         assert!(!result.runner_verified);
         assert!(!result.game_process_identity_verified);
@@ -161,9 +163,7 @@ mod tests {
         let fixture = Fixture::new();
         let target = fixture.create_bottle("Real");
         symlink(&target, fixture.0.join("Alias")).unwrap();
-        assert!(
-            verify_bottle_prefix(fixture.0.to_str().unwrap(), "Alias", &target).is_err()
-        );
+        assert!(verify_bottle_prefix(fixture.0.to_str().unwrap(), "Alias", &target).is_err());
     }
 
     #[test]
@@ -171,7 +171,9 @@ mod tests {
         for bad in ["", "relative/path", "  ", "/tmp/one\n/tmp/two", "/tmp/a\0b"] {
             assert!(parse_bottles_root(bad).is_err());
         }
-        assert_eq!(parse_bottles_root("/tmp/bottles with spaces\n").unwrap(),
-            Path::new("/tmp/bottles with spaces"));
+        assert_eq!(
+            parse_bottles_root("/tmp/bottles with spaces\n").unwrap(),
+            Path::new("/tmp/bottles with spaces")
+        );
     }
 }
