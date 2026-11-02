@@ -479,9 +479,11 @@ where
 
         let execution = match command {
             Command::Ping => CommandExecution::immediate(CommandResult::Pong),
-            Command::Speed { .. } => return Err(CommandError::NotImplemented(
-                "speed commands require the explicit preview executor",
-            )),
+            Command::Speed { .. } => {
+                return Err(CommandError::NotImplemented(
+                    "speed commands require the explicit preview executor",
+                ));
+            }
             Command::LifecycleState => CommandExecution::immediate(CommandResult::Lifecycle {
                 state: format!("{:?}", crate::runtime::lifecycle_state()).to_ascii_lowercase(),
                 shutdown_requested: crate::runtime::shutdown_requested(),
