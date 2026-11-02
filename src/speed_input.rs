@@ -32,7 +32,9 @@ pub struct FocusedInputPump {
 impl FocusedInputPump {
     pub fn new(dispatcher: SpeedHotkeyDispatcher) -> Self {
         let mut keys = dispatcher.watched_keys();
-        keys.extend([CONTROL, ALT, SHIFT]);
+        if !keys.is_empty() {
+            keys.extend([CONTROL, ALT, SHIFT]);
+        }
         keys.sort_unstable();
         keys.dedup();
         Self {
@@ -134,6 +136,20 @@ mod tests {
             ..Default::default()
         };
         FocusedInputPump::new(config.compile(&SpeedSettings::default()).unwrap())
+    }
+
+    #[test]
+    fn default_disabled_bindings_do_not_even_request_key_sampling() {
+        let dispatcher = SpeedHotkeyConfig::default()
+            .compile(&SpeedSettings::default())
+            .unwrap();
+        let mut input = FocusedInputPump::new(dispatcher);
+        assert!(input.watched_keys().is_empty());
+        assert!(input.sample(snapshot(true, &[CONTROL, ALT, SHIFT])).is_empty());
+        assert_eq!(
+            input.sample(snapshot(false, &[])),
+            vec![SpeedAction::FocusLost]
+        );
     }
 
     #[test]
