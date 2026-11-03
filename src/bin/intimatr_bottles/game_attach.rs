@@ -435,7 +435,11 @@ mod tests {
         );
         let mut armed = base;
         armed.push("--experimental-four-timers".into());
-        assert!(GameAttachOptions::parse(&armed).unwrap().experimental_four_timers);
+        assert!(
+            GameAttachOptions::parse(&armed)
+                .unwrap()
+                .experimental_four_timers
+        );
         for action in [GameAction::Attach, GameAction::Stop, GameAction::Status] {
             assert!(
                 run_game_action(armed.clone(), action)
