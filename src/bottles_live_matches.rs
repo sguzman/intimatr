@@ -73,6 +73,14 @@ impl WindowsProcessSnapshot {
             if process.image_query_verified != process.full_image_path.is_some() {
                 return Err("Windows process snapshot has inconsistent image verification".into());
             }
+            if let Some(coverage) = process.timer_import_coverage {
+                if coverage.all_four_static_names != coverage.is_complete() {
+                    return Err("Windows process snapshot has inconsistent timer import coverage".into());
+                }
+                if process.pe_image_architecture.as_deref() != Some("x86_64") {
+                    return Err("timer import coverage requires a verified x86-64 PE file".into());
+                }
+            }
             if process.pe_image_verified != process.pe_image_architecture.is_some() {
                 return Err(
                     "Windows process snapshot has inconsistent PE image verification".into(),
@@ -269,6 +277,40 @@ mod tests {
                 })
                 .collect(),
         }
+    }
+
+    #[test]
+    fn rejects_inconsistent_static_timer_import_evidence() {
+        let mut report = serde_json::json!({
+            "operation": "read_only_wine_windows_processes",
+            "attachment_attempted": false,
+            "processes": [{
+                "windows_pid": 42,
+                "reported_executable": "Offline.exe",
+                "full_image_path": "C:\\Games\\Offline.exe",
+                "image_query_verified": true,
+                "pe_image_architecture": "x86_64",
+                "pe_image_verified": true,
+                "timer_import_coverage": {
+                    "query_performance_counter": true,
+                    "get_tick_count64": true,
+                    "get_tick_count": true,
+                    "time_get_time": true,
+                    "all_four_static_names": true
+                },
+                "safe_to_attach": false
+            }]
+        });
+        assert!(WindowsProcessSnapshot::parse(&report.to_string()).is_ok());
+        report["processes"][0]["timer_import_coverage"]["time_get_time"] =
+            serde_json::json!(false);
+        assert!(WindowsProcessSnapshot::parse(&report.to_string()).is_err());
+        report["processes"][0]["timer_import_coverage"]["all_four_static_names"] =
+            serde_json::json!(false);
+        assert!(WindowsProcessSnapshot::parse(&report.to_string()).is_ok());
+        report["processes"][0]["pe_image_architecture"] = serde_json::Value::Null;
+        report["processes"][0]["pe_image_verified"] = serde_json::json!(false);
+        assert!(WindowsProcessSnapshot::parse(&report.to_string()).is_err());
     }
 
     #[test]

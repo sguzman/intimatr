@@ -5,6 +5,7 @@
 use std::{fs, path::Path, process::Command};
 
 use super::live_match::inspect_live_selection;
+use intimatr::pe_timer_imports::TimerImportCoverage;
 
 #[derive(Debug, PartialEq, Eq)]
 struct GameAttachOptions {
@@ -123,6 +124,28 @@ pub(super) fn run_game_rate(args: Vec<String>) -> Result<(), String> {
     run_game_action(args, GameAction::SetRate)
 }
 
+/// A known-incomplete on-disk PE import set is enough to reject an arm
+/// before starting the mutation-capable Windows helper. Unknown static
+/// coverage is never converted to a fabricated zero; the DLL will still
+/// independently check its resolved in-memory imports before installation.
+fn validate_static_timer_imports(
+    action: GameAction,
+    coverage: Option<TimerImportCoverage>,
+) -> Result<(), String> {
+    if action != GameAction::ArmTimers {
+        return Ok(());
+    }
+    if let Some(coverage) = coverage
+        && !coverage.is_complete()
+    {
+        return Err(format!(
+            "refusing timer activation: selected main executable static PE is missing imports: {}; no remote helper launched",
+            coverage.missing_names().join(", ")
+        ));
+    }
+    Ok(())
+}
+
 fn run_game_action(args: Vec<String>, action: GameAction) -> Result<(), String> {
     let options = GameAttachOptions::parse(&args)?;
     let needs_experimental = matches!(action, GameAction::ArmTimers | GameAction::SetRate);
@@ -192,6 +215,8 @@ fn run_game_action(args: Vec<String>, action: GameAction) -> Result<(), String> 
             candidate.status
         ));
     }
+
+    validate_static_timer_imports(action, candidate.timer_import_coverage)?;
 
     // The Windows helper opens a HANDLE to the selected PID and checks the
     // image and live architecture again under its per-target mutex before
@@ -393,6 +418,7 @@ fn run_game_action(args: Vec<String>, action: GameAction) -> Result<(), String> 
             "timer_hooks_installed_verified": state == "running" && hook_state == "installed_four_timers",
             "installed_virtual_clock_multiplier": virtual_rate,
             "main_image_four_timer_imports_present": present,
+            "static_pe_timer_import_coverage": candidate.timer_import_coverage,
             "main_image_timer_imports_observed": known_imports,
             "main_image_timer_imports_missing": missing_imports,
             "gameplay_speed_verified": false,
@@ -556,6 +582,27 @@ mod tests {
             "--offline-single-player",
         ]));
         assert!(GameAttachOptions::parse(&duplicated).is_err());
+    }
+
+    #[test]
+    fn incomplete_static_pe_imports_reject_arming_before_remote_helper_launch() {
+        let mut coverage = TimerImportCoverage::default();
+        assert!(validate_static_timer_imports(GameAction::Attach, Some(coverage)).is_ok());
+        assert!(validate_static_timer_imports(GameAction::Status, Some(coverage)).is_ok());
+        assert!(validate_static_timer_imports(GameAction::SetRate, Some(coverage)).is_ok());
+        assert!(validate_static_timer_imports(GameAction::ArmTimers, None).is_ok());
+        let rejected = validate_static_timer_imports(GameAction::ArmTimers, Some(coverage))
+            .unwrap_err();
+        assert!(rejected.contains("QueryPerformanceCounter"));
+        assert!(rejected.contains("timeGetTime"));
+        assert!(rejected.contains("no remote helper launched"));
+
+        coverage.query_performance_counter = true;
+        coverage.get_tick_count64 = true;
+        coverage.get_tick_count = true;
+        coverage.time_get_time = true;
+        coverage.all_four_static_names = true;
+        assert!(validate_static_timer_imports(GameAction::ArmTimers, Some(coverage)).is_ok());
     }
 
     #[test]

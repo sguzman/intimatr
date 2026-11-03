@@ -28,6 +28,33 @@ pub struct TimerImportCoverage {
 }
 
 impl TimerImportCoverage {
+    /// Derive completeness from the four individual flags, never trust
+    /// a separately supplied aggregate flag without checking consistency.
+    pub fn is_complete(self) -> bool {
+        self.query_performance_counter
+            && self.get_tick_count64
+            && self.get_tick_count
+            && self.time_get_time
+    }
+
+    /// Diagnostic order matches the runtime IAT bitmask and Win32 ABI.
+    pub fn missing_names(self) -> Vec<&'static str> {
+        let mut missing = Vec::new();
+        if !self.query_performance_counter {
+            missing.push("QueryPerformanceCounter");
+        }
+        if !self.get_tick_count64 {
+            missing.push("GetTickCount64");
+        }
+        if !self.get_tick_count {
+            missing.push("GetTickCount");
+        }
+        if !self.time_get_time {
+            missing.push("timeGetTime");
+        }
+        missing
+    }
+
     fn record(&mut self, name: &[u8]) {
         match name {
             b"QueryPerformanceCounter" => self.query_performance_counter = true,
@@ -39,10 +66,7 @@ impl TimerImportCoverage {
     }
 
     fn finish(&mut self) {
-        self.all_four_static_names = self.query_performance_counter
-            && self.get_tick_count64
-            && self.get_tick_count
-            && self.time_get_time;
+        self.all_four_static_names = self.is_complete();
     }
 }
 
@@ -331,6 +355,8 @@ mod tests {
             assert!(coverage.get_tick_count64);
             assert!(coverage.get_tick_count);
             assert!(coverage.time_get_time);
+            assert!(coverage.missing_names().is_empty());
+            assert!(coverage.is_complete());
         });
     }
 
@@ -342,6 +368,8 @@ mod tests {
             let coverage = inspect_pe_timer_imports(path).unwrap();
             assert!(!coverage.all_four_static_names);
             assert!(!coverage.time_get_time);
+            assert_eq!(coverage.missing_names(), ["timeGetTime"]);
+            assert!(!coverage.is_complete());
         });
         let mut invalid = fixture();
         invalid[0x498..0x49c].copy_from_slice(&0xffff_ffff_u32.to_le_bytes());

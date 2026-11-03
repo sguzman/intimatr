@@ -644,6 +644,7 @@ jobs:
             and .main_image_four_timer_imports_present == null
             and .main_image_timer_imports_observed == null
             and .main_image_timer_imports_missing == null
+            and .static_pe_timer_import_coverage.all_four_static_names == true
             and .speed_controls_verified == false' target/wine-attach/game-before.json > /dev/null
           XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles attach-game "${game_args[@]}" --offline-single-player >target/wine-attach/game-attach.json
           jq -e --arg created "$game_created" '.operation == "explicit_offline_single_player_game_attachment"
@@ -661,6 +662,7 @@ jobs:
             and .main_image_four_timer_imports_present == true
             and (.main_image_timer_imports_observed | length) == 4
             and (.main_image_timer_imports_missing | length) == 0
+            and .static_pe_timer_import_coverage.all_four_static_names == true
             and .speed_controls_verified == false' target/wine-attach/game-before-arm.json > /dev/null
           if XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles set-game-speed "${game_args[@]}" --offline-single-player --experimental-four-timers --preset half >target/wine-attach/game-rate-before-arm.stdout 2>target/wine-attach/game-rate-before-arm.stderr; then
             echo "ERROR: game speed changed without timer activation" >&2
