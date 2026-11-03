@@ -242,9 +242,18 @@ mod target {
                                             thread::spawn(move || {
                                                 while live.load(Ordering::Acquire) {
                                                     let mut qpc = 0_i64;
-                                                    assert_ne!(unsafe { QueryPerformanceCounter(&mut qpc) }, 0);
+                                                    assert_ne!(
+                                                        unsafe {
+                                                            QueryPerformanceCounter(&mut qpc)
+                                                        },
+                                                        0
+                                                    );
                                                     let ticks = unsafe {
-                                                        (GetTickCount64(), GetTickCount(), timeGetTime())
+                                                        (
+                                                            GetTickCount64(),
+                                                            GetTickCount(),
+                                                            timeGetTime(),
+                                                        )
                                                     };
                                                     std::hint::black_box((qpc, ticks));
                                                     thread::sleep(Duration::from_millis(1));
@@ -278,9 +287,9 @@ mod target {
                             if let Some((live, threads)) = timer_stress {
                                 live.store(false, Ordering::Release);
                                 for worker in threads {
-                                    worker
-                                        .join()
-                                        .map_err(|_| "timer worker panicked during external stop")?;
+                                    worker.join().map_err(
+                                        |_| "timer worker panicked during external stop",
+                                    )?;
                                 }
                             }
                             println!("Wine attach target verified 0.5x/2x/1x timers, then Stopped");
