@@ -32,7 +32,7 @@ fn run() -> Result<(), String> {
     let action = args.next().unwrap_or_default();
     if action == "--help" || action == "-h" {
         println!(
-            "Usage:\n  intimatr-bottles scan\n  intimatr-bottles plan (--all | --include-bottle GLOB | --include-program GLOB) [--exclude-bottle GLOB] [--exclude-program GLOB]\n  intimatr-bottles probe-attach --pid PID --prefix WINEPREFIX --helper PATH [--runner WINE]\n  intimatr-bottles profile-check --config TOML --bottle NAME --exe WINDOWS_PATH\n  intimatr-bottles processes --prefix INITIALIZED_WINEPREFIX\n  intimatr-bottles win-processes --prefix INITIALIZED_WINEPREFIX --helper WINE_PROCESS_LIST_EXE --runner EXPLICIT_WINE_BINARY\n  intimatr-bottles match-snapshot --bottle NAME --programs BOTTLES_JSON --windows WINE_PROCESS_JSON\n  intimatr-bottles live-match --bottle NAME --helper WINE_PROCESS_LIST_EXE --runner EXPLICIT_WINE_BINARY [--prefix WINEPREFIX] [--bottles-cli BOTTLES_CLI] [--pid WINDOWS_PID --exe EXACT_WINDOWS_PATH]\n  intimatr-bottles speed --prefix INITIALIZED_WINEPREFIX --runner ABSOLUTE_WINE --client ABSOLUTE_INTIMATR_SPEED_EXE (--tcp LOOPBACK:PORT | --pipe NAME) (status | increase | decrease | toggle | reset | preset MULTIPLIER | hold MULTIPLIER DURATION_MS | release)\n\nscan and plan are read-only. probe-attach runs only the strictly allowlisted offline Wine test helper; it cannot attach a real game."
+            "Usage:\n  intimatr-bottles scan\n  intimatr-bottles plan (--all | --include-bottle GLOB | --include-program GLOB) [--exclude-bottle GLOB] [--exclude-program GLOB]\n  intimatr-bottles probe-attach --pid PID --prefix WINEPREFIX --helper PATH --runner EXPLICIT_WINE_BINARY\n  intimatr-bottles profile-check --config TOML --bottle NAME --exe WINDOWS_PATH\n  intimatr-bottles processes --prefix INITIALIZED_WINEPREFIX\n  intimatr-bottles win-processes --prefix INITIALIZED_WINEPREFIX --helper WINE_PROCESS_LIST_EXE --runner EXPLICIT_WINE_BINARY\n  intimatr-bottles match-snapshot --bottle NAME --programs BOTTLES_JSON --windows WINE_PROCESS_JSON\n  intimatr-bottles live-match --bottle NAME --helper WINE_PROCESS_LIST_EXE --runner EXPLICIT_WINE_BINARY [--prefix WINEPREFIX] [--bottles-cli BOTTLES_CLI] [--pid WINDOWS_PID --exe EXACT_WINDOWS_PATH]\n  intimatr-bottles speed --prefix INITIALIZED_WINEPREFIX --runner ABSOLUTE_WINE --client ABSOLUTE_INTIMATR_SPEED_EXE (--tcp LOOPBACK:PORT | --pipe NAME) (status | increase | decrease | toggle | reset | preset MULTIPLIER | hold MULTIPLIER DURATION_MS | release)\n\nscan and plan are read-only. probe-attach runs only the strictly allowlisted offline Wine test helper; it cannot attach a real game."
         );
         return Ok(());
     }
@@ -187,7 +187,7 @@ impl ProbeAttachOptions {
             pid: pid.ok_or("missing --pid")?,
             prefix: prefix.ok_or("missing --prefix")?,
             helper: helper.ok_or("missing --helper")?,
-            runner: runner.unwrap_or_else(|| "wine".to_owned()),
+            runner: runner.ok_or("missing --runner: select explicit Wine binary for this prefix")?,
         })
     }
 }
@@ -265,6 +265,14 @@ mod probe_tests {
     fn requires_explicit_target_prefix_and_known_helper() {
         for invalid in [
             args(&[]),
+            args(&[
+                "--pid",
+                "32",
+                "--prefix",
+                "/tmp/owned prefix",
+                "--helper",
+                "/tmp/wine-attach-helper.exe",
+            ]),
             args(&["--pid", "0", "--prefix", "/tmp", "--helper", "test.exe"]),
             args(&[
                 "--pid", "garbage", "--prefix", "/tmp", "--helper", "test.exe",
@@ -297,11 +305,13 @@ mod probe_tests {
             "/tmp/owned prefix",
             "--helper",
             "/tmp/wine-attach-helper.exe",
+            "--runner",
+            "/opt/patched-runner/bin/wine",
         ]))
         .expect("valid test request");
         assert_eq!(parsed.pid, 32);
         assert_eq!(parsed.prefix, "/tmp/owned prefix");
-        assert_eq!(parsed.runner, "wine");
+        assert_eq!(parsed.runner, "/opt/patched-runner/bin/wine");
     }
 }
 
