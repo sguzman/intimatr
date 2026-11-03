@@ -349,3 +349,7 @@ Refactored `IsWow64Process2` machine decoding into `windows_process_machine` for
 ### 📋 Selected live process attachment-readiness blockers — 2026-11-02
 
 `intimatr-bottles live-match --pid PID --exe EXACT_WINDOWS_PATH` now emits a structured read-only `attachment_readiness` report alongside the selected candidate. The report combines existing prefix, runner, registered program, and architecture evidence, then exposes individual blockers for live process/prefix ownership, fresh apply-time identity, game protection, loader support, and hook lifecycle. Even synthetic all-positive identity evidence cannot set `safe_to_attach`. Unit fixtures plus isolated Wine positive/wrong-PID/wrong-path JSON assertions were added. Real offline game testing is still required for INT-1403/1407; **16/100 verified (previous 16, Δ +0 pp)**.
+
+### 🍷 Two-prefix Wine namespace and explicit snapshot PID/image provenance — 2026-11-02
+
+Read-only candidate assessment and readiness now distinguish `pid_observed_in_selected_wineserver_snapshot` and `image_observed_in_selected_wineserver_snapshot`, including separate missing-PID vs wrong-path blockers. CI now exercises two independently initialized Wine prefixes with identically named but separately located running Windows fixtures, asserting each wineserver's snapshot contains its own full image and excludes the other's. This does not establish durable process identity or runner trust and does not authorize real-game attachment. New Wine regression pending CI verification. **16/100 (previous 16, Δ +0 pp)**.
