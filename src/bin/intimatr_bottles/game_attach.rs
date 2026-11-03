@@ -414,6 +414,44 @@ mod tests {
     }
 
     #[test]
+    fn experimental_timer_activation_requires_independent_consent() {
+        let base = args(&[
+            "--attach-helper",
+            "/tmp/wine-game-attach-helper.exe",
+            "--bottle",
+            "Games",
+            "--pid",
+            "42",
+            "--exe",
+            r"C:\Games\Game.exe",
+            "--created-100ns",
+            "133700000000000001",
+            "--offline-single-player",
+        ]);
+        assert!(
+            run_game_timer_activation(base.clone())
+                .unwrap_err()
+                .contains("requires explicit --experimental-four-timers")
+        );
+        let mut armed = base;
+        armed.push("--experimental-four-timers".into());
+        assert!(GameAttachOptions::parse(&armed).unwrap().experimental_four_timers);
+        for action in [GameAction::Attach, GameAction::Stop, GameAction::Status] {
+            assert!(
+                run_game_action(armed.clone(), action)
+                    .unwrap_err()
+                    .contains("only valid for arm-game-timers")
+            );
+        }
+        armed.push("--experimental-four-timers".into());
+        assert!(
+            GameAttachOptions::parse(&armed)
+                .unwrap_err()
+                .contains("duplicate experimental-four-timers")
+        );
+    }
+
+    #[test]
     fn retains_exact_selected_candidate_flags_without_implicit_selection() {
         let parsed = GameAttachOptions::parse(&args(&[
             "--attach-helper",
