@@ -207,14 +207,16 @@ mod helper {
             .map_err(|error| format!("cannot resolve observed Intimatr DLL path: {error}"))?;
         let expected = fs::canonicalize(expected_dll)
             .map_err(|error| format!("cannot resolve owned Intimatr DLL path: {error}"))?;
-        Ok(if observed
-            .to_string_lossy()
-            .eq_ignore_ascii_case(&expected.to_string_lossy())
-        {
-            IntimatrModulePresence::Expected
-        } else {
-            IntimatrModulePresence::UnexpectedPath
-        })
+        Ok(
+            if observed
+                .to_string_lossy()
+                .eq_ignore_ascii_case(&expected.to_string_lossy())
+            {
+                IntimatrModulePresence::Expected
+            } else {
+                IntimatrModulePresence::UnexpectedPath
+            },
+        )
     }
 
     /// Fail closed when the target module list cannot be inspected.
