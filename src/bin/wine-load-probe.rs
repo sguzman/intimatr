@@ -671,7 +671,9 @@ mod windows_probe {
         if unsafe { module_pinned() } == 0 {
             return Err("timer module pin disappeared after hook deactivation".into());
         }
-        println!("Wine timer hooks restored all original imports; callback DLL remains pinned until process exit");
+        println!(
+            "Wine timer hooks restored all original imports; callback DLL remains pinned until process exit"
+        );
 
         // Reinstall the same fixture-only hooks, then ask the DLL to shut
         // down *without* calling the direct disable export. A safe shutdown
