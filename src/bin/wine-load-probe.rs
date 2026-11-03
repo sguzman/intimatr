@@ -606,6 +606,9 @@ mod windows_probe {
             unsafe { std::mem::transmute(resolve(&module, c"intimatr_timer_probe_disable")?) };
         let hook_count: unsafe extern "system" fn() -> u32 =
             unsafe { std::mem::transmute(resolve(&module, c"intimatr_timer_probe_hook_count")?) };
+        let module_pinned: BoolFn = unsafe {
+            std::mem::transmute(resolve(&module, c"intimatr_timer_probe_module_pinned")?)
+        };
         let set_rate: RateFn =
             unsafe { std::mem::transmute(resolve(&module, c"intimatr_timer_probe_rate")?) };
         let fail_after: unsafe extern "system" fn(u32) -> i32 =
@@ -627,6 +630,9 @@ mod windows_probe {
             return Err("fixture's QueryPerformanceCounter import was not hooked".into());
         }
         let count = unsafe { hook_count() };
+        if unsafe { module_pinned() } == 0 {
+            return Err("hooked DLL was not pinned in memory before IAT activation".into());
+        }
         if unsafe { hook_enable() } == 0 || unsafe { hook_count() } != count {
             return Err("repeat timer hook enable was not idempotent".into());
         }
@@ -662,7 +668,10 @@ mod windows_probe {
         if unsafe { shared_rate(2.0) } != 0 {
             return Err("shared command reactivated restored timer hooks".into());
         }
-        println!("Wine timer hooks restored all original imports");
+        if unsafe { module_pinned() } == 0 {
+            return Err("timer module pin disappeared after hook deactivation".into());
+        }
+        println!("Wine timer hooks restored all original imports; callback DLL remains pinned until process exit");
 
         // Reinstall the same fixture-only hooks, then ask the DLL to shut
         // down *without* calling the direct disable export. A safe shutdown
