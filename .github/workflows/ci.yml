@@ -808,9 +808,12 @@ jobs:
           # LoadLibrary, but timeGetTime is not imported in the main PE IAT.
           # It must be rejected by both independent preflights, without any
           # timer patch or claim of game-speed compatibility.
-          mkdir -p target/wine-attach/incompatible/config
+          mkdir -p target/wine-attach/incompatible
           cp target/x86_64-pc-windows-gnu/release/wine-incompatible-target.exe target/wine-attach/incompatible/
-          cp config/wine-incompatible-target.exe.toml target/wine-attach/incompatible/config/
+          # Existing Intimatr bootstrap loads config from the DLL directory,
+          # not the selected game image directory. Do not silently add a
+          # fixture-only fallback: this must match production path semantics.
+          cp config/wine-incompatible-target.exe.toml target/wine-attach/config/
           xvfb-run -a wine target/wine-attach/incompatible/wine-incompatible-target.exe >target/wine-attach/incompatible/stdout 2>target/wine-attach/incompatible/stderr &
           incompatible_launcher=$!
           trap 'kill "$incompatible_launcher" 2>/dev/null || true' EXIT
