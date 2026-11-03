@@ -53,7 +53,11 @@ struct HookSlot {
     address: usize,
     original: usize,
     replacement: usize,
+    /// Page protection before this fixture modified the import. Retained
+    /// even when the pointer itself has been successfully restored.
+    original_protection: u32,
     active: bool,
+    protection_restored: bool,
 }
 
 struct ProbeHooks {
@@ -272,7 +276,7 @@ fn fully_installed_hook_set(slots: &[HookSlot]) -> bool {
         intercepted_time_get_time as *const () as usize,
     ];
     !slots.is_empty()
-        && slots.iter().all(|slot| slot.active)
+        && slots.iter().all(|slot| slot.active && slot.protection_restored)
         && required
             .into_iter()
             .all(|replacement| slots.iter().any(|slot| slot.replacement == replacement))
@@ -365,12 +369,16 @@ fn timer_import_slots() -> Option<Vec<(usize, usize, usize)>> {
 struct PatchOutcome {
     swapped: bool,
     protection_restored: bool,
+    /// None means the first VirtualProtect did not report a successful
+    /// protection change, so the operation has no page state to repair.
+    original_protection: Option<u32>,
 }
 
 unsafe fn patch_slot(slot: usize, expected: usize, replacement: usize) -> PatchOutcome {
     let fail = PatchOutcome {
         swapped: false,
         protection_restored: false,
+        original_protection: None,
     };
     if !slot.is_multiple_of(std::mem::align_of::<usize>()) {
         return fail;
@@ -389,25 +397,65 @@ unsafe fn patch_slot(slot: usize, expected: usize, replacement: usize) -> PatchO
     PatchOutcome {
         swapped,
         protection_restored,
+        original_protection: Some(previous),
     }
 }
 
-/// A partial failed restoration keeps all remaining active slots owned by the
-/// module so the host can retry instead of unloading live function pointers.
-fn restore_slots(slots: &mut [HookSlot]) -> bool {
+/// Keep pointer restoration and page-protection restoration as separate,
+/// retryable obligations. A successful CAS does not imply that the IAT page
+/// is back at its original protection, even after a later disable call.
+/// Injecting the two operations permits deterministic fault-path tests.
+fn restore_slots_with(
+    slots: &mut [HookSlot],
+    mut restore_pointer: impl FnMut(usize, usize, usize) -> PatchOutcome,
+    mut restore_page: impl FnMut(usize, u32) -> bool,
+) -> bool {
     let mut clean = true;
-    for hook in slots.iter_mut().filter(|hook| hook.active) {
-        let outcome = unsafe { patch_slot(hook.address, hook.replacement, hook.original) };
-        if outcome.swapped {
-            hook.active = false;
-        } else {
-            clean = false;
+    for hook in slots
+        .iter_mut()
+        .filter(|hook| hook.active || !hook.protection_restored)
+    {
+        if hook.active {
+            let outcome = restore_pointer(hook.address, hook.replacement, hook.original);
+            if outcome.swapped {
+                hook.active = false;
+            } else {
+                clean = false;
+            }
         }
-        if !outcome.protection_restored {
+        // Always restore the protection captured BEFORE the first patch.
+        // A failed earlier VirtualProtect could otherwise make a subsequent
+        // patch report PAGE_READWRITE as its "original" protection.
+        hook.protection_restored = restore_page(hook.address, hook.original_protection);
+        if !hook.protection_restored {
             clean = false;
         }
     }
-    clean && slots.iter().all(|hook| !hook.active)
+    clean
+        && slots
+            .iter()
+            .all(|hook| !hook.active && hook.protection_restored)
+}
+
+/// Partial failures keep the hook record until both pointer and original
+/// page protections have been positively restored. Never clear ownership
+/// solely because all patched IAT pointers were replaced.
+fn restore_slots(slots: &mut [HookSlot]) -> bool {
+    restore_slots_with(
+        slots,
+        |address, expected, replacement| unsafe { patch_slot(address, expected, replacement) },
+        |address, original_protection| {
+            let mut ignored = 0;
+            unsafe {
+                VirtualProtect(
+                    address as *mut c_void,
+                    8,
+                    original_protection,
+                    &mut ignored,
+                ) != 0
+            }
+        },
+    )
 }
 
 /// The experimental IAT backend is available only to these disposable,
@@ -503,13 +551,19 @@ fn enable_probe_with_fault(fail_after: Option<usize>) -> bool {
             break;
         }
         let result = unsafe { patch_slot(slot, original, replacement) };
-        if result.swapped {
-            installed.push(HookSlot {
-                address: slot,
-                original,
-                replacement,
-                active: true,
-            });
+        if let Some(original_protection) = result.original_protection {
+            // Also retain an UNSWAPPED slot whose page permissions were not
+            // restored, rather than silently discarding failed cleanup.
+            if result.swapped || !result.protection_restored {
+                installed.push(HookSlot {
+                    address: slot,
+                    original,
+                    replacement,
+                    original_protection,
+                    active: result.swapped,
+                    protection_restored: result.protection_restored,
+                });
+            }
         }
         if !result.swapped || !result.protection_restored {
             complete = false;
@@ -704,6 +758,66 @@ mod tests {
     }
 
     #[test]
+    fn page_restore_failure_survives_pointer_rollback_and_can_be_retried() {
+        let mut slots = [HookSlot {
+            address: 8,
+            original: 100,
+            replacement: 200,
+            original_protection: 0x02,
+            active: true,
+            protection_restored: true,
+        }];
+        let mut swaps = 0;
+        // The IAT pointer was restored, but VirtualProtect failed afterward.
+        assert!(!restore_slots_with(
+            &mut slots,
+            |_, _, _| {
+                swaps += 1;
+                PatchOutcome {
+                    swapped: true,
+                    protection_restored: false,
+                    original_protection: Some(PAGE_READWRITE),
+                }
+            },
+            |_, original| {
+                assert_eq!(original, 0x02);
+                false
+            }
+        ));
+        assert_eq!(swaps, 1);
+        assert!(!slots[0].active);
+        assert!(!slots[0].protection_restored);
+
+        // No second pointer swap is needed: only the stored original page
+        // protection is retried. A false clean-shutdown report is avoided.
+        assert!(restore_slots_with(
+            &mut slots,
+            |_, _, _| panic!("must not touch already-restored IAT pointer"),
+            |_, original| original == 0x02
+        ));
+        assert!(!slots[0].active);
+        assert!(slots[0].protection_restored);
+    }
+
+    #[test]
+    fn failed_install_protection_restore_stays_owned_without_pointer_swap() {
+        let mut slots = [HookSlot {
+            address: 8,
+            original: 100,
+            replacement: 200,
+            original_protection: 0x02,
+            active: false,
+            protection_restored: false,
+        }];
+        assert!(!fully_installed_hook_set(&slots));
+        assert!(restore_slots_with(
+            &mut slots,
+            |_, _, _| panic!("failed install never swapped pointer"),
+            |_, protection| protection == 0x02
+        ));
+    }
+
+    #[test]
     fn partial_hook_rollback_never_looks_like_full_activation() {
         let required = [
             intercepted_qpc as *const () as usize,
@@ -718,7 +832,9 @@ mod tests {
                 address: index + 1,
                 original: index + 11,
                 replacement,
+                original_protection: 0x02,
                 active: true,
+                protection_restored: true,
             })
             .collect();
         assert!(fully_installed_hook_set(&slots));
