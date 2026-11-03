@@ -273,9 +273,9 @@ fn fully_installed_hook_set(slots: &[HookSlot]) -> bool {
     ];
     !slots.is_empty()
         && slots.iter().all(|slot| slot.active)
-        && required.into_iter().all(|replacement| {
-            slots.iter().any(|slot| slot.replacement == replacement)
-        })
+        && required
+            .into_iter()
+            .all(|replacement| slots.iter().any(|slot| slot.replacement == replacement))
 }
 
 fn wide_literal_kernel32() -> &'static [u16] {
@@ -595,7 +595,11 @@ fn probe_hook_set_complete() -> bool {
     hooks()
         .lock()
         .ok()
-        .and_then(|guard| guard.as_ref().map(|active| fully_installed_hook_set(&active.slots)))
+        .and_then(|guard| {
+            guard
+                .as_ref()
+                .map(|active| fully_installed_hook_set(&active.slots))
+        })
         .unwrap_or(false)
 }
 
@@ -692,7 +696,10 @@ mod tests {
         assert!(!has_all_required_timer_imports(&duplicate_qpc, &originals));
 
         let wrong_replacement = [(1, 10, 110), (2, 20, 120), (3, 30, 130), (4, 40, 999)];
-        assert!(!has_all_required_timer_imports(&wrong_replacement, &originals));
+        assert!(!has_all_required_timer_imports(
+            &wrong_replacement,
+            &originals
+        ));
         assert!(!has_all_required_timer_imports(&complete[..3], &originals));
     }
 
