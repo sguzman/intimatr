@@ -21,6 +21,8 @@ pub struct AttachmentReadiness {
     pub candidate_status: &'static str,
     pub snapshot_registered_identity_verified: bool,
     pub snapshot_x64_dll_compatible: Option<bool>,
+    pub selected_pid_observed_in_prefix_wineserver_snapshot: bool,
+    pub selected_image_observed_in_prefix_wineserver_snapshot: bool,
     pub bottle_prefix_verified: bool,
     pub configured_runner_verified: bool,
     pub game_process_prefix_ownership_verified: bool,
@@ -47,6 +49,11 @@ pub fn review_attachment_readiness(
     }
     if !runner.runner_path_verified {
         blockers.push("configured_wine_runner_unverified");
+    }
+    if !candidate.pid_observed_in_selected_wineserver_snapshot {
+        blockers.push("selected_pid_not_observed_in_prefix_wineserver_snapshot");
+    } else if !candidate.image_observed_in_selected_wineserver_snapshot {
+        blockers.push("selected_image_not_observed_in_prefix_wineserver_snapshot");
     }
     if !candidate.registered_identity_verified_at_snapshot
         || candidate.status != "registered_x64_candidate_for_review_only"
@@ -80,6 +87,10 @@ pub fn review_attachment_readiness(
         candidate_status: candidate.status,
         snapshot_registered_identity_verified: candidate.registered_identity_verified_at_snapshot,
         snapshot_x64_dll_compatible: candidate.x64_dll_compatible,
+        selected_pid_observed_in_prefix_wineserver_snapshot: candidate
+            .pid_observed_in_selected_wineserver_snapshot,
+        selected_image_observed_in_prefix_wineserver_snapshot: candidate
+            .image_observed_in_selected_wineserver_snapshot,
         bottle_prefix_verified: prefix.bottle_prefix_association_verified,
         configured_runner_verified: runner.runner_path_verified,
         game_process_prefix_ownership_verified: prefix.game_process_identity_verified,
@@ -109,6 +120,8 @@ mod tests {
             matched_registered_program: Some("Test".into()),
             registration_status: Some("exact_registered_path"),
             x64_dll_compatible: Some(true),
+            pid_observed_in_selected_wineserver_snapshot: true,
+            image_observed_in_selected_wineserver_snapshot: true,
             registered_identity_verified_at_snapshot: true,
             status: "registered_x64_candidate_for_review_only",
             snapshot_only: true,
@@ -143,6 +156,8 @@ mod tests {
         let report = review_attachment_readiness(&candidate, &prefix, &runner);
         assert_eq!(report.status, "snapshot_candidate_for_review_only");
         assert!(report.snapshot_registered_identity_verified);
+        assert!(report.selected_pid_observed_in_prefix_wineserver_snapshot);
+        assert!(report.selected_image_observed_in_prefix_wineserver_snapshot);
         assert!(!report.safe_to_attach);
         assert!(!report.attachment_attempted);
         assert!(
@@ -166,12 +181,20 @@ mod tests {
     fn wrong_pid_or_path_and_unknown_architecture_reveal_blockers() {
         let (mut candidate, prefix, runner) = fixtures();
         candidate.registered_identity_verified_at_snapshot = false;
+        candidate.pid_observed_in_selected_wineserver_snapshot = false;
+        candidate.image_observed_in_selected_wineserver_snapshot = false;
         candidate.status = "selected_pid_not_in_snapshot";
         candidate.x64_dll_compatible = None;
         let report = review_attachment_readiness(&candidate, &prefix, &runner);
         assert_eq!(
             report.status,
             "candidate_identity_or_architecture_unverified"
+        );
+        assert!(!report.selected_pid_observed_in_prefix_wineserver_snapshot);
+        assert!(
+            report
+                .blockers
+                .contains(&"selected_pid_not_observed_in_prefix_wineserver_snapshot")
         );
         assert!(
             report
@@ -207,6 +230,23 @@ mod tests {
                 .blockers
                 .contains(&"production_game_loader_not_implemented")
         );
+    }
+
+    #[test]
+    fn correct_pid_but_wrong_executable_never_verifies_image() {
+        let (mut candidate, prefix, runner) = fixtures();
+        candidate.image_observed_in_selected_wineserver_snapshot = false;
+        candidate.registered_identity_verified_at_snapshot = false;
+        candidate.status = "selected_executable_does_not_match_pid";
+        let report = review_attachment_readiness(&candidate, &prefix, &runner);
+        assert!(report.selected_pid_observed_in_prefix_wineserver_snapshot);
+        assert!(!report.selected_image_observed_in_prefix_wineserver_snapshot);
+        assert!(
+            report
+                .blockers
+                .contains(&"selected_image_not_observed_in_prefix_wineserver_snapshot")
+        );
+        assert!(!report.safe_to_attach);
     }
 
     #[test]

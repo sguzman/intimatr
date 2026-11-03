@@ -17,6 +17,12 @@ pub struct CandidatePreflight {
     pub matched_registered_program: Option<String>,
     pub registration_status: Option<&'static str>,
     pub x64_dll_compatible: Option<bool>,
+    /// A selected Windows PID appeared in the Wine snapshot queried with
+    /// this bottle's verified WINEPREFIX. Snapshot-scoped, not durable.
+    pub pid_observed_in_selected_wineserver_snapshot: bool,
+    /// The selected full path equals the observed image of that PID.
+    /// Neither this nor registered identity grants attachment authority.
+    pub image_observed_in_selected_wineserver_snapshot: bool,
     /// True only when a single registered program matches this exact PID
     /// and drive-qualified path at the time of this read-only snapshot.
     pub registered_identity_verified_at_snapshot: bool,
@@ -88,6 +94,8 @@ pub fn assess_explicit_candidate(
         },
         registration_status: entry.map(|entry| entry.status),
         x64_dll_compatible: architecture,
+        pid_observed_in_selected_wineserver_snapshot: entry.is_some(),
+        image_observed_in_selected_wineserver_snapshot: path_matches,
         registered_identity_verified_at_snapshot: registered,
         status,
         snapshot_only: true,
@@ -159,6 +167,8 @@ mod tests {
         assert_eq!(audit.matched_registered_program.as_deref(), Some("Second"));
         assert_eq!(audit.x64_dll_compatible, Some(true));
         assert!(audit.registered_identity_verified_at_snapshot);
+        assert!(audit.pid_observed_in_selected_wineserver_snapshot);
+        assert!(audit.image_observed_in_selected_wineserver_snapshot);
         assert!(audit.snapshot_only);
         assert!(!audit.safe_to_attach);
         assert!(!audit.attachment_attempted);
@@ -174,8 +184,12 @@ mod tests {
         );
         let missing = assess_explicit_candidate(&plan, 43, r"C:\Games\Game.exe").unwrap();
         assert_eq!(missing.status, "selected_pid_not_in_snapshot");
+        assert!(!missing.pid_observed_in_selected_wineserver_snapshot);
+        assert!(!missing.image_observed_in_selected_wineserver_snapshot);
         let wrong = assess_explicit_candidate(&plan, 42, r"C:\Other\Game.exe").unwrap();
         assert_eq!(wrong.status, "selected_executable_does_not_match_pid");
+        assert!(wrong.pid_observed_in_selected_wineserver_snapshot);
+        assert!(!wrong.image_observed_in_selected_wineserver_snapshot);
         assert!(!wrong.registered_identity_verified_at_snapshot);
         assert!(assess_explicit_candidate(&plan, 0, r"C:\Games\Game.exe").is_err());
         assert!(assess_explicit_candidate(&plan, 42, r"C:Games\Game.exe").is_err());

@@ -293,6 +293,8 @@ jobs:
           jq -e --argjson pid "$windows_pid" '.selected_candidate | select(
             .operation == "read_only_explicit_game_candidate_preflight"
             and .selected_windows_pid == $pid
+            and .pid_observed_in_selected_wineserver_snapshot == true
+            and .image_observed_in_selected_wineserver_snapshot == true
             and .registered_identity_verified_at_snapshot == true
             and (.status == "registered_x64_candidate_for_review_only"
                  or .status == "architecture_unverified")
@@ -305,6 +307,8 @@ jobs:
           jq -e '.attachment_readiness | select(
             .operation == "read_only_live_game_attachment_readiness"
             and .snapshot_registered_identity_verified == true
+            and .selected_pid_observed_in_prefix_wineserver_snapshot == true
+            and .selected_image_observed_in_prefix_wineserver_snapshot == true
             and .bottle_prefix_verified == true
             and .configured_runner_verified == false
             and .safe_to_attach == false
@@ -323,6 +327,8 @@ jobs:
             --pid 4294967295 --exe "$observed_path" > target/wine-attach/missing-pid-preflight.json
           jq -e '.selected_candidate | select(
             .status == "selected_pid_not_in_snapshot"
+            and .pid_observed_in_selected_wineserver_snapshot == false
+            and .image_observed_in_selected_wineserver_snapshot == false
             and .registered_identity_verified_at_snapshot == false
             and .safe_to_attach == false
           )' target/wine-attach/missing-pid-preflight.json > /dev/null
@@ -334,6 +340,8 @@ jobs:
             --pid "$windows_pid" --exe 'C:\\Different\\Wrong.exe' > target/wine-attach/wrong-path-preflight.json
           jq -e '.selected_candidate | select(
             .status == "selected_executable_does_not_match_pid"
+            and .pid_observed_in_selected_wineserver_snapshot == true
+            and .image_observed_in_selected_wineserver_snapshot == false
             and .registered_identity_verified_at_snapshot == false
             and .safe_to_attach == false
           )' target/wine-attach/wrong-path-preflight.json > /dev/null
