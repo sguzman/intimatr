@@ -654,6 +654,13 @@ fn probe_hook_set_complete() -> bool {
         .unwrap_or(false)
 }
 
+/// A zero hook count alone does not prove successful cleanup: page
+/// protections may still need repair, or callbacks may still be draining.
+/// A poisoned lock is conservatively reported as pending.
+pub fn probe_cleanup_pending() -> bool {
+    hooks().lock().map_or(true, |guard| guard.is_some())
+}
+
 pub fn probe_hook_count() -> u32 {
     hooks()
         .lock()
@@ -721,6 +728,11 @@ pub extern "system" fn intimatr_timer_probe_module_pinned() -> i32 {
 #[unsafe(no_mangle)]
 pub extern "system" fn intimatr_timer_probe_hook_count() -> u32 {
     probe_hook_count()
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn intimatr_timer_probe_cleanup_pending() -> i32 {
+    i32::from(probe_cleanup_pending())
 }
 #[unsafe(no_mangle)]
 pub extern "system" fn intimatr_timer_probe_disable() -> i32 {
