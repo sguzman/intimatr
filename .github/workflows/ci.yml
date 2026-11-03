@@ -312,10 +312,16 @@ jobs:
           mkdir -p "$WINEPREFIX/drive_c/Games"
           cp target/wine-attach/wine-attach-target.exe "$WINEPREFIX/drive_c/Games/Full.exe"
           cp target/x86_64-pc-windows-gnu/release/wine-incompatible-target.exe "$WINEPREFIX/drive_c/Games/Partial.exe"
+          # Linux supports case-distinct paths that Windows cannot
+          # unambiguously distinguish; inventory must fail closed.
+          cp "$WINEPREFIX/drive_c/Games/Full.exe" "$WINEPREFIX/drive_c/Games/Overlap.exe"
+          cp "$WINEPREFIX/drive_c/Games/Partial.exe" "$WINEPREFIX/drive_c/Games/OVERLAP.EXE"
           ln -s "$(pwd)/target/wine-attach/wine-attach-target.exe" "$WINEPREFIX/drive_c/Games/Outside.exe"
           cat >target/wine-attach/mocks/compat-programs.json <<'MOCK_COMPAT_PROGRAMS'
           [
             {"name":"Full","executable":"Full.exe","path":"C:\\Games\\Full.exe"},
+            {"name":"Mixed-Case Registration","executable":"Full.exe","path":"c:\\gAmEs\\fULL.eXe"},
+            {"name":"Ambiguous Case","executable":"Overlap.exe","path":"C:\\Games\\overlap.exe"},
             {"name":"Partial","executable":"Partial.exe","path":"C:\\Games\\Partial.exe"},
             {"name":"Unavailable","executable":"Absent.exe","path":"C:\\Games\\Absent.exe"},
             {"name":"Other Drive","executable":"Other.exe","path":"Z:\\other\\Other.exe"},
@@ -334,7 +340,14 @@ jobs:
             and .process_attachment_attempted == false
             and .timer_hook_installation_attempted == false
             and .gameplay_speed_verified == false
-            and (.programs | length) == 5
+            and (.programs | length) == 7
+            and ([.programs[] | select(.registered_name == "Mixed-Case Registration"
+              and .static_pe_compatibility.static_import_status == "static_four_timer_names_present"
+              and (.resolved_linux_file | endswith("/Games/Full.exe")))] | length) == 1
+            and ([.programs[] | select(.registered_name == "Ambiguous Case"
+              and .resolved_linux_file == null
+              and .static_pe_compatibility.static_import_status == "static_import_inventory_unknown"
+              and (.static_pe_compatibility.inspection_error | contains("ambiguous case-insensitive")))] | length) == 1
             and ([.programs[] | select(.registered_name == "Full"
               and .static_pe_compatibility.static_import_status == "static_four_timer_names_present")] | length) == 1
             and ([.programs[] | select(.registered_name == "Partial"
