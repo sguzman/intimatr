@@ -361,6 +361,17 @@ jobs:
           wait "$decoy_launcher" || true
           trap 'kill "$launcher_pid" 2>/dev/null || true' EXIT
           echo "Wine fixture-only loader rejected a distinct same-named process"
+          # Never fall back to the system Wine binary, even in fixture-only
+          # remote-attach mode: a real Bottles prefix may use another runner.
+          if target/release/intimatr-bottles probe-attach \
+            --pid "$windows_pid" \
+            --prefix "$WINEPREFIX" \
+            --helper target/wine-attach/wine-attach-helper.exe > target/wine-attach/missing-attach-runner.stdout 2> target/wine-attach/missing-attach-runner.stderr; then
+            echo "ERROR: fixture remote attach accepted an implicit Wine runner" >&2
+            exit 1
+          fi
+          grep -q 'missing --runner' target/wine-attach/missing-attach-runner.stderr
+          echo "Wine fixture-only loader requires explicit runner selection"
           # Two distinct Linux invocations launch separate Windows helpers
           # against the same already-running fixture. Exactly one may load.
           target/release/intimatr-bottles probe-attach \
