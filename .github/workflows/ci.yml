@@ -124,7 +124,7 @@ jobs:
           sudo apt-get install -y gcc-mingw-w64-x86-64 wine64 wine xvfb
 
       - name: Cross-build DLL and Windows probes on Linux
-        run: cargo build --locked --release --target x86_64-pc-windows-gnu --lib --bin wine-load-probe --bin wine-attach-helper --bin wine-game-attach-helper --bin wine-attach-target --bin wine-process-list --bin intimatr-speed
+        run: cargo build --locked --release --target x86_64-pc-windows-gnu --lib --bin wine-load-probe --bin wine-attach-helper --bin wine-game-attach-helper --bin wine-attach-target --bin wine-incompatible-target --bin wine-process-list --bin intimatr-speed
 
       - name: Build native Linux test orchestration CLI
         run: cargo build --locked --release --bin intimatr-bottles
@@ -804,6 +804,99 @@ jobs:
           trap - EXIT
           unset INTIMATR_MOCK_PROGRAMS_JSON
           echo "Explicit offline-game CLI loaded exact DLL into separately located disposable Wine PE test target"
+          # Deliberately incompatible executable: WinMM is available via
+          # LoadLibrary, but timeGetTime is not imported in the main PE IAT.
+          # It must be rejected by both independent preflights, without any
+          # timer patch or claim of game-speed compatibility.
+          mkdir -p target/wine-attach/incompatible/config
+          cp target/x86_64-pc-windows-gnu/release/wine-incompatible-target.exe target/wine-attach/incompatible/
+          cp config/wine-incompatible-target.exe.toml target/wine-attach/incompatible/config/
+          xvfb-run -a wine target/wine-attach/incompatible/wine-incompatible-target.exe >target/wine-attach/incompatible/stdout 2>target/wine-attach/incompatible/stderr &
+          incompatible_launcher=$!
+          trap 'kill "$incompatible_launcher" 2>/dev/null || true' EXIT
+          for i in $(seq 1 150); do
+            if test -s target/wine-attach/incompatible/incompatible-target.pid; then
+              break
+            fi
+            sleep 0.1
+          done
+          test -s target/wine-attach/incompatible/incompatible-target.pid
+          incompatible_pid="$(cat target/wine-attach/incompatible/incompatible-target.pid)"
+          target/release/intimatr-bottles win-processes \
+            --prefix "$WINEPREFIX" \
+            --helper target/wine-attach/wine-process-list.exe \
+            --runner "$(command -v wine)" >target/wine-attach/incompatible/snapshot.json
+          jq -e --argjson pid "$incompatible_pid" '
+            [.processes[] | select(.windows_pid == $pid)] | length == 1' target/wine-attach/incompatible/snapshot.json > /dev/null
+          jq -e --argjson pid "$incompatible_pid" '
+            [.processes[] | select(.windows_pid == $pid) |
+              .timer_import_coverage |
+              select(.all_four_static_names == false and .time_get_time == false)] |
+            length == 1' target/wine-attach/incompatible/snapshot.json > /dev/null
+          incompatible_image="$(jq -r --argjson pid "$incompatible_pid" '[.processes[] | select(.windows_pid == $pid) | .full_image_path // empty] | first // empty' target/wine-attach/incompatible/snapshot.json)"
+          incompatible_created="$(jq -r --argjson pid "$incompatible_pid" '[.processes[] | select(.windows_pid == $pid) | .process_creation_time_100ns // empty] | first // empty' target/wine-attach/incompatible/snapshot.json)"
+          test -n "$incompatible_image" && test -n "$incompatible_created" && test "$incompatible_created" != 0
+          jq -n --arg path "$incompatible_image" '[{
+            "name":"Incompatible offline timer test fixture",
+            "executable":"wine-incompatible-target.exe",
+            "path":$path
+          }]' >target/wine-attach/mocks/incompatible-programs.json
+          export INTIMATR_MOCK_PROGRAMS_JSON="$(pwd)/target/wine-attach/mocks/incompatible-programs.json"
+          incompatible_args=(
+            --bottle Fixture
+            --helper target/wine-attach/wine-process-list.exe
+            --attach-helper "$(pwd)/target/wine-attach/wine-game-attach-helper.exe"
+            --runner "$(command -v wine)"
+            --bottles-cli target/wine-attach/mocks/bottles-cli
+            --pid "$incompatible_pid" --exe "$incompatible_image"
+            --created-100ns "$incompatible_created"
+          )
+          XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles status-game "${incompatible_args[@]}" --offline-single-player >target/wine-attach/incompatible/before.json
+          jq -e '.intimatr_module_loaded == false
+            and .runtime_state == "absent"
+            and .timer_hook_state == "none"
+            and .main_image_four_timer_imports_present == null
+            and .static_pe_timer_import_coverage.time_get_time == false' target/wine-attach/incompatible/before.json > /dev/null
+          XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles attach-game "${incompatible_args[@]}" --offline-single-player >target/wine-attach/incompatible/attached.json
+          jq -e '.runtime_running_verified == true and .speed_controls_verified == false' target/wine-attach/incompatible/attached.json > /dev/null
+          XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles status-game "${incompatible_args[@]}" --offline-single-player >target/wine-attach/incompatible/unarmed.json
+          jq -e '.runtime_state == "running"
+            and .timer_hook_state == "none"
+            and .installed_virtual_clock_multiplier == null
+            and .main_image_four_timer_imports_present == false
+            and (.main_image_timer_imports_missing | index("timeGetTime") != null)
+            and .static_pe_timer_import_coverage.all_four_static_names == false' target/wine-attach/incompatible/unarmed.json > /dev/null
+          if XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles arm-game-timers "${incompatible_args[@]}" --offline-single-player --experimental-four-timers >target/wine-attach/incompatible/arm.stdout 2>target/wine-attach/incompatible/arm.stderr; then
+            echo "ERROR: static preflight armed incompatible timer IAT" >&2
+            exit 1
+          fi
+          grep -q 'static PE is missing imports:.*timeGetTime' target/wine-attach/incompatible/arm.stderr
+          grep -q 'no remote helper launched' target/wine-attach/incompatible/arm.stderr
+          # Try the dedicated exact-identity helper directly: it cannot
+          # bypass the separate in-memory import preflight either.
+          if wine target/wine-attach/wine-game-attach-helper.exe \
+            --pid "$incompatible_pid" --exe "$incompatible_image" \
+            --created-100ns "$incompatible_created" --offline-single-player \
+            --arm-four-timers-only --experimental-four-timers \
+            >target/wine-attach/incompatible/direct-arm.stdout 2>target/wine-attach/incompatible/direct-arm.stderr; then
+            echo "ERROR: runtime preflight armed incompatible timer IAT" >&2
+            exit 1
+          fi
+          grep -q 'main executable is missing timer imports:.*timeGetTime' target/wine-attach/incompatible/direct-arm.stderr
+          XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles status-game "${incompatible_args[@]}" --offline-single-player >target/wine-attach/incompatible/after-reject.json
+          jq -e '.runtime_state == "running"
+            and .timer_hook_state == "none"
+            and .timer_hooks_installed_verified == false
+            and .installed_virtual_clock_multiplier == null
+            and (.main_image_timer_imports_missing | index("timeGetTime") != null)' target/wine-attach/incompatible/after-reject.json > /dev/null
+          XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles stop-game "${incompatible_args[@]}" --offline-single-player >target/wine-attach/incompatible/stopped.json
+          jq -e '.runtime_stopped_verified == true' target/wine-attach/incompatible/stopped.json > /dev/null
+          touch target/wine-attach/incompatible/incompatible-release.flag
+          wait "$incompatible_launcher"
+          trap - EXIT
+          unset INTIMATR_MOCK_PROGRAMS_JSON
+          echo "Verified static and live timer-import refusal and clean stop for incompatible Wine executable"
+
 
   # Build a Windows PE DLL on a Linux host. This is the artifact Wine will
   # eventually load into an opted-in game process; it is not a Linux .so.
