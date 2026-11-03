@@ -348,6 +348,7 @@ jobs:
           jq -e --argjson pid "$windows_pid" '.selected_candidate | select(
             .operation == "read_only_explicit_game_candidate_preflight"
             and .selected_windows_pid == $pid
+            and (.process_creation_time_100ns | type == "string" and length > 0)
             and .pid_observed_in_selected_wineserver_snapshot == true
             and .image_observed_in_selected_wineserver_snapshot == true
             and .registered_identity_verified_at_snapshot == true
@@ -362,6 +363,7 @@ jobs:
           jq -e '.attachment_readiness | select(
             .operation == "read_only_live_game_attachment_readiness"
             and .snapshot_registered_identity_verified == true
+            and (.selected_process_creation_time_100ns | type == "string" and length > 0)
             and .selected_pid_observed_in_prefix_wineserver_snapshot == true
             and .selected_image_observed_in_prefix_wineserver_snapshot == true
             and .bottle_prefix_verified == true
@@ -370,7 +372,7 @@ jobs:
             and .attachment_attempted == false
             and (.blockers | index("configured_wine_runner_unverified") != null)
             and (.blockers | index("live_process_prefix_ownership_unverified") != null)
-            and (.blockers | index("production_game_loader_not_implemented") != null)
+            and (.blockers | index("production_game_loader_field_verification_missing") != null)
           )' target/wine-attach/selected-preflight.json > /dev/null
           # A native managed runner is stored in XDG_DATA_HOME/bottles/runners,
           # NOT a guessed sibling of the selected bottle's prefix.

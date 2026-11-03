@@ -265,6 +265,34 @@ mod tests {
     }
 
     #[test]
+    fn creation_time_identity_preserves_u64_precision_and_rejects_malformed_values() {
+        let mut report = serde_json::json!({
+            "operation": "read_only_wine_windows_processes",
+            "attachment_attempted": false,
+            "processes": [{
+                "windows_pid": 42,
+                "reported_executable": "Offline.exe",
+                "full_image_path": "C:\\Games\\Offline.exe",
+                "image_query_verified": true,
+                "process_creation_time_100ns": "133700000000000001",
+                "safe_to_attach": false
+            }]
+        });
+        let valid = WindowsProcessSnapshot::parse(&report.to_string()).unwrap();
+        assert_eq!(
+            valid.processes[0].process_creation_time_100ns.as_deref(),
+            Some("133700000000000001")
+        );
+        for invalid in ["0", "-1", "1.5", "18446744073709551616", "0001", ""] {
+            report["processes"][0]["process_creation_time_100ns"] =
+                serde_json::Value::String(invalid.into());
+            assert!(WindowsProcessSnapshot::parse(&report.to_string()).is_err());
+        }
+        report["processes"][0]["process_creation_time_100ns"] = serde_json::json!(133700000000000001_u64);
+        assert!(WindowsProcessSnapshot::parse(&report.to_string()).is_err());
+    }
+
+    #[test]
     fn matches_full_windows_path_without_guessing_duplicate_basenames() {
         let bottle = bottle(&[
             ("First", r"C:\Games\First\Game.exe"),
