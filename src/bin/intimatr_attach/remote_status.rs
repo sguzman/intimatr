@@ -18,7 +18,8 @@ const SNAP_MODULE: u32 = 0x0000_0008;
 const WAIT_OBJECT_0: u32 = 0;
 const ERROR_NO_MORE_FILES: u32 = 18;
 const DONT_RESOLVE_DLL_REFERENCES: u32 = 0x0000_0001;
-const EXPECTED_REMOTE_EXPORT: &std::ffi::CStr = c"intimatr_remote_lifecycle_query";
+const STATUS_EXPORT: &std::ffi::CStr = c"intimatr_remote_lifecycle_query";
+const SHUTDOWN_EXPORT: &std::ffi::CStr = c"intimatr_remote_shutdown";
 
 #[repr(C)]
 #[allow(dead_code)]
@@ -157,7 +158,7 @@ fn local_image_size(base: usize) -> Option<usize> {
 /// Map the *same DLL file* without running DllMain, then take a bounded RVA
 /// for our exact, non-forwarded export; ASLR is handled by the remote module
 /// base. No local bootstrap and no second target-side LoadLibrary is issued.
-fn status_export_rva(dll: &Path) -> Result<usize, String> {
+fn export_rva(dll: &Path, export: &std::ffi::CStr) -> Result<usize, String> {
     let wide: Vec<u16> = dll
         .as_os_str()
         .encode_wide()
@@ -172,14 +173,14 @@ fn status_export_rva(dll: &Path) -> Result<usize, String> {
     let base = module.0 as usize;
     let size = local_image_size(base).ok_or("invalid local Intimatr PE image")?;
     let address =
-        unsafe { GetProcAddress(module.0, EXPECTED_REMOTE_EXPORT.as_ptr().cast()) } as usize;
+        unsafe { GetProcAddress(module.0, export.as_ptr().cast()) } as usize;
     if address < base || address >= base.saturating_add(size) {
         return Err("owned Intimatr lifecycle export is missing or forwarded".into());
     }
     Ok(address - base)
 }
 
-fn query_state(process: Handle, remote: usize) -> Result<u32, String> {
+fn call_export(process: Handle, remote: usize, timeout_ms: u32) -> Result<u32, String> {
     let entry: unsafe extern "system" fn(*mut c_void) -> u32 =
         unsafe { std::mem::transmute(remote) };
     let thread = unsafe {
@@ -197,7 +198,7 @@ fn query_state(process: Handle, remote: usize) -> Result<u32, String> {
         return Err("cannot run Intimatr's read-only lifecycle query in selected process".into());
     }
     let thread = RemoteThread(thread);
-    if unsafe { WaitForSingleObject(thread.0, 2_000) } != WAIT_OBJECT_0 {
+    if unsafe { WaitForSingleObject(thread.0, timeout_ms) } != WAIT_OBJECT_0 {
         return Err(
             "Intimatr remote lifecycle query timed out or failed; module state unknown".into(),
         );
@@ -224,7 +225,7 @@ fn classify(code: u32) -> Result<bool, String> {
 /// never advertise speed functionality or automatic cleanup.
 pub fn wait_until_running(process: Handle, pid: u32, dll: &Path) -> Result<(), String> {
     let (base, remote_image_size) = target_base(pid, dll)?;
-    let rva = status_export_rva(dll)?;
+    let rva = export_rva(dll, STATUS_EXPORT)?;
     if rva >= remote_image_size {
         return Err("target Intimatr module does not contain the lifecycle query export".into());
     }
@@ -232,12 +233,32 @@ pub fn wait_until_running(process: Handle, pid: u32, dll: &Path) -> Result<(), S
         .checked_add(rva)
         .ok_or("remote Intimatr lifecycle entry overflow")?;
     for _ in 0..40 {
-        if classify(query_state(process, entry)?)? {
+        if classify(call_export(process, entry, 2_000)?)? {
             return Ok(());
         }
         thread::sleep(Duration::from_millis(100));
     }
     Err("Intimatr DLL loaded but runtime never reached Running; do not retry attach".into())
+}
+
+/// Explicitly call only the selected Intimatr DLL's own shutdown export.
+/// Leave the DLL mapped and independently require its Stopped state.
+pub fn request_shutdown(process: Handle, pid: u32, dll: &Path) -> Result<(), String> {
+    let (base, image_size) = target_base(pid, dll)?;
+    let shutdown_rva = export_rva(dll, SHUTDOWN_EXPORT)?;
+    let status_rva = export_rva(dll, STATUS_EXPORT)?;
+    if shutdown_rva >= image_size || status_rva >= image_size {
+        return Err("target Intimatr DLL lacks bounded lifecycle exports".into());
+    }
+    let shutdown = base.checked_add(shutdown_rva).ok_or("remote Intimatr shutdown address overflow")?;
+    let status = base.checked_add(status_rva).ok_or("remote Intimatr status address overflow")?;
+    if call_export(process, shutdown, 15_000)? != 1 {
+        return Err("target Intimatr shutdown failed; DLL remains loaded".into());
+    }
+    if call_export(process, status, 2_000)? != 5 {
+        return Err("target Intimatr did not confirm Stopped after shutdown".into());
+    }
+    Ok(())
 }
 
 #[cfg(test)]

@@ -511,18 +511,53 @@ pub mod helper {
         if created_100ns == 0 {
             return Err("game process creation time must be nonzero".into());
         }
-        if args.next().as_deref() != Some("--offline-single-player") || args.next().is_some() {
-            return Err(
-                "game attach requires explicit --offline-single-player acknowledgment".into(),
-            );
+        if args.next().as_deref() != Some("--offline-single-player") {
+            return Err("game action requires explicit --offline-single-player acknowledgment".into());
         }
-        attach(
-            pid,
-            AttachTarget::SelectedOfflineGame {
-                path: PathBuf::from(expected),
-                created_100ns,
-            },
-        )
+        let stop_only = match args.next().as_deref() {
+            None => false,
+            Some("--shutdown-only") if args.next().is_none() => true,
+            _ => return Err("unrecognized game action flags".into()),
+        };
+        let target = AttachTarget::SelectedOfflineGame {
+            path: PathBuf::from(expected),
+            created_100ns,
+        };
+        if stop_only {
+            shutdown_selected(pid, &target)
+        } else {
+            attach(pid, target)
+        }
+    }
+
+    /// Shutdown only the exact owned DLL in the exact selected process.
+    /// Rechecks path, process generation and architecture under its mutex.
+    fn shutdown_selected(pid: u32, target: &AttachTarget) -> Result<(), String> {
+        let executable = std::env::current_exe().map_err(|error| error.to_string())?;
+        let dll = executable
+            .parent()
+            .ok_or("game helper has no directory")?
+            .join("intimatr.dll");
+        let process = own(
+            unsafe { OpenProcess(ACCESS, 0, pid) },
+            "cannot open selected game for Intimatr shutdown",
+        )?;
+        validate_target_image(process.0, &executable, target)?;
+        validate_target_generation(process.0, target)?;
+        let machine = unsafe { running_process_architecture(process.0) }
+            .ok_or("cannot verify game architecture before stopping Intimatr")?;
+        if machine.architecture != "x86_64" {
+            return Err("cannot stop Intimatr in unsupported game architecture".into());
+        }
+        let _guard = acquire_attach_mutex(pid)?;
+        validate_target_image(process.0, &executable, target)?;
+        validate_target_generation(process.0, target)?;
+        if target_intimatr_module(pid, &dll)? != IntimatrModulePresence::Expected {
+            return Err("cannot stop: exact owned Intimatr DLL is not loaded in selected game".into());
+        }
+        super::remote_status::request_shutdown(process.0, pid, &dll)?;
+        println!("INTIMATR_REMOTE_RUNTIME_STOPPED=1");
+        Ok(())
     }
 
     fn attach(pid: u32, target: AttachTarget) -> Result<(), String> {

@@ -105,6 +105,23 @@ pub extern "system" fn intimatr_remote_lifecycle_query(_parameter: *mut c_void) 
     runtime::lifecycle_state().as_u8() as u32
 }
 
+/// ABI-compatible remote shutdown of this DLL's own runtime. It deliberately
+/// does not call FreeLibrary or unload callback code.
+#[unsafe(no_mangle)]
+pub extern "system" fn intimatr_remote_shutdown(_parameter: *mut c_void) -> u32 {
+    match std::panic::catch_unwind(AssertUnwindSafe(runtime::shutdown)) {
+        Ok(Ok(())) => 1,
+        Ok(Err(error)) => {
+            windows::debug_output(&format!("Intimatr remote shutdown failed: {error}\n"));
+            0
+        }
+        Err(_) => {
+            windows::debug_output("Intimatr remote shutdown panicked\n");
+            0
+        }
+    }
+}
+
 #[unsafe(no_mangle)]
 pub extern "system" fn intimatr_request_shutdown() -> BOOL {
     let result = std::panic::catch_unwind(AssertUnwindSafe(runtime::shutdown));
