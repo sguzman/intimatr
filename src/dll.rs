@@ -180,12 +180,10 @@ pub extern "system" fn intimatr_remote_game_step_action(selector: *mut c_void) -
     if !(1..=4).contains(&index) {
         return 0;
     }
-    match std::panic::catch_unwind(AssertUnwindSafe(|| {
+    std::panic::catch_unwind(AssertUnwindSafe(|| {
         runtime::selected_game_step_action(index as u32)
-    })) {
-        Ok(result) => result,
-        Err(_) => 0,
-    }
+    }))
+    .unwrap_or_default()
 }
 
 /// Installed virtual-clock rate, in thousandths; zero means unavailable.
