@@ -10,7 +10,10 @@ fn main() {
 
 #[cfg(windows)]
 mod windows {
-    use intimatr::pe_image::inspect_pe;
+    use intimatr::{
+        pe_image::inspect_pe,
+        windows_process_machine::{ObservedProcessMachine, running_process_architecture},
+    };
     use serde::Serialize;
     use std::{
         ffi::c_void,
@@ -49,55 +52,6 @@ mod windows {
             size: *mut u32,
         ) -> i32;
         fn CloseHandle(handle: Handle) -> i32;
-        fn GetModuleHandleA(name: *const u8) -> Handle;
-        fn GetProcAddress(module: Handle, name: *const u8) -> *const c_void;
-    }
-
-    type Wow64Process2 = unsafe extern "system" fn(Handle, *mut u16, *mut u16) -> i32;
-
-    #[derive(Clone, Copy)]
-    struct ObservedProcessMachine {
-        architecture: &'static str,
-        source: &'static str,
-    }
-
-    fn machine_architecture(machine: u16) -> Option<&'static str> {
-        match machine {
-            0x014c => Some("x86"),
-            0x8664 => Some("x86_64"),
-            0xaa64 => Some("aarch64"),
-            _ => None,
-        }
-    }
-
-    /// Query the *running process*, not the PE file. Wine versions missing
-    /// IsWow64Process2 return None: no legacy API fallback guesses bitness.
-    fn running_process_architecture(handle: Handle) -> Option<ObservedProcessMachine> {
-        let module = unsafe { GetModuleHandleA(c"kernel32.dll".as_ptr().cast()) };
-        if module.is_null() {
-            return None;
-        }
-        let procedure = unsafe { GetProcAddress(module, c"IsWow64Process2".as_ptr().cast()) };
-        if procedure.is_null() {
-            return None;
-        }
-        let call = unsafe { std::mem::transmute::<*const c_void, Wow64Process2>(procedure) };
-        let mut process_machine = 0_u16;
-        let mut native_machine = 0_u16;
-        if unsafe { call(handle, &mut process_machine, &mut native_machine) } == 0 {
-            return None;
-        }
-        // IMAGE_FILE_MACHINE_UNKNOWN (0) means not WOW64: use the
-        // native machine only when it is explicitly recognized.
-        let machine = if process_machine == 0 {
-            native_machine
-        } else {
-            process_machine
-        };
-        machine_architecture(machine).map(|architecture| ObservedProcessMachine {
-            architecture,
-            source: "is_wow64_process2",
-        })
     }
 
     struct OwnedHandle(Handle);

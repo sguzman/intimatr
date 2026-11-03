@@ -50,6 +50,8 @@ pub mod speed_timers;
 pub mod speed_window;
 #[cfg(windows)]
 pub mod speed_window_windows;
+#[cfg(windows)]
+pub mod windows_process_machine;
 
 #[cfg(windows)]
 pub mod debugger_ui;

@@ -13,6 +13,7 @@ fn main() {
 
 #[cfg(windows)]
 mod helper {
+    use intimatr::windows_process_machine::running_process_architecture;
     use std::{
         ffi::c_void,
         fs,
@@ -378,6 +379,17 @@ mod helper {
         )?;
         if !target_is_fixture(process.0, &executable)? {
             return Err("refusing to attach: target is not the helper's owned Wine fixture".into());
+        }
+        // Independent from both its filename and on-disk PE headers: query
+        // the already-running process on the held Windows handle. This x64
+        // loader must never guess at a 32-bit or unknown target architecture.
+        let machine = running_process_architecture(process.0)
+            .ok_or("refusing attach: live process architecture is unavailable")?;
+        if machine.architecture != "x86_64" {
+            return Err(format!(
+                "refusing attach: unsupported live process architecture {}",
+                machine.architecture
+            ));
         }
         let _attachment_guard = acquire_attach_mutex(pid)?;
         if target_intimatr_module(pid, &dll)? != IntimatrModulePresence::Absent {
