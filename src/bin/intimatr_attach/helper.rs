@@ -170,6 +170,8 @@ pub mod helper {
         Ok(PathBuf::from(image))
     }
 
+    // Compiled into two deliberately separate binaries; each uses one mode.
+    #[allow(dead_code)]
     enum AttachTarget {
         OwnedFixture,
         SelectedOfflineGame(PathBuf),
@@ -445,6 +447,8 @@ pub mod helper {
         Err(format!("target has no loaded {module_name}"))
     }
 
+    // This shared module is compiled by the game-only binary as well.
+    #[allow(dead_code)]
     pub fn run_fixture() -> Result<(), String> {
         let mut args = std::env::args().skip(1);
         let pid: u32 = args
@@ -458,6 +462,8 @@ pub mod helper {
         attach(pid, AttachTarget::OwnedFixture)
     }
 
+    // This shared module is compiled by the fixture-only binary as well.
+    #[allow(dead_code)]
     pub fn run_selected_game() -> Result<(), String> {
         let mut args = std::env::args().skip(1);
         if args.next().as_deref() != Some("--pid") {
