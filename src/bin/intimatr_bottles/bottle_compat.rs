@@ -253,7 +253,7 @@ mod tests {
         assert!(selected.starts_with(&f.0));
         assert!(resolve_c_drive_file(&f.0, r"c:/Games/Game.exe").is_ok());
         assert_eq!(
-            resolve_c_drive_file(&f.0, r"c:\\gAmEs\\gAME.ExE").unwrap(),
+            resolve_c_drive_file(&f.0, r"c:\gAmEs\gAME.ExE").unwrap(),
             selected
         );
         for invalid in [
@@ -288,7 +288,7 @@ mod tests {
     fn ambiguous_windows_case_is_unknown_even_with_exact_linux_spelling() {
         let f = Fixture::new();
         fs::write(f.0.join("drive_c/Games/GAME.EXE"), b"different file").unwrap();
-        for path in [r"C:\\Games\\Game.exe", r"c:\\games\\game.exe"] {
+        for path in [r"C:\Games\Game.exe", r"c:\games\game.exe"] {
             assert!(
                 resolve_c_drive_file(&f.0, path)
                     .unwrap_err()
