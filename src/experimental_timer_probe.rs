@@ -248,6 +248,36 @@ fn original_timer_addresses() -> Option<[(usize, usize); 4]> {
     Some(results)
 }
 
+/// A count of four slots is not proof that four distinct timer APIs are
+/// intercepted: one API may have multiple import entries. Verify coverage
+/// before any IAT pointer changes are attempted.
+fn has_all_required_timer_imports(
+    slots: &[(usize, usize, usize)],
+    originals: &[(usize, usize); 4],
+) -> bool {
+    originals.iter().all(|&(original, replacement)| {
+        slots
+            .iter()
+            .any(|&(_, found, hook)| found == original && hook == replacement)
+    })
+}
+
+/// Partial rollback may leave several hooks installed. Such a state must
+/// never be reported as an operational four-API backend.
+fn fully_installed_hook_set(slots: &[HookSlot]) -> bool {
+    let required = [
+        intercepted_qpc as *const () as usize,
+        intercepted_tick_count64 as *const () as usize,
+        intercepted_tick_count as *const () as usize,
+        intercepted_time_get_time as *const () as usize,
+    ];
+    !slots.is_empty()
+        && slots.iter().all(|slot| slot.active)
+        && required.into_iter().all(|replacement| {
+            slots.iter().any(|slot| slot.replacement == replacement)
+        })
+}
+
 fn wide_literal_kernel32() -> &'static [u16] {
     const NAME: &[u16] = &[107, 101, 114, 110, 101, 108, 51, 50, 46, 100, 108, 108, 0];
     NAME
@@ -327,7 +357,7 @@ fn timer_import_slots() -> Option<Vec<(usize, usize, usize)>> {
             }
         }
     }
-    (!slots.is_empty()).then_some(slots)
+    has_all_required_timer_imports(&slots, &originals).then_some(slots)
 }
 
 /// Record the pointer mutation independently of page-protection recovery.
@@ -431,7 +461,7 @@ fn enable_probe_with_fault(fail_after: Option<usize>) -> bool {
         return false;
     };
     if let Some(active) = guard.as_ref() {
-        return active.slots.iter().filter(|slot| slot.active).count() >= 4;
+        return fully_installed_hook_set(&active.slots);
     }
 
     let (Some(real_qpc), Some(slots)) = (native_qpc(), timer_import_slots()) else {
@@ -514,6 +544,9 @@ pub fn set_probe_rate(multiplier: f64) -> bool {
     let Some(active) = guard.as_mut() else {
         return false;
     };
+    if !fully_installed_hook_set(&active.slots) {
+        return false;
+    }
     let Some(real) = native_qpc() else {
         return false;
     };
@@ -542,7 +575,7 @@ pub(crate) fn apply_fixture_command(action: SpeedAction) -> Result<(), &'static 
     let Some(active) = guard.as_mut() else {
         return Ok(());
     };
-    if active.slots.iter().filter(|slot| slot.active).count() < 4 {
+    if !fully_installed_hook_set(&active.slots) {
         return Err("fixture import hook set is incomplete");
     }
     let real = native_qpc().ok_or("fixture QPC unavailable")?;
@@ -556,6 +589,14 @@ pub(crate) fn apply_fixture_command(action: SpeedAction) -> Result<(), &'static 
 
 pub fn probe_module_pinned() -> bool {
     MODULE_PINNED.load(Ordering::Acquire)
+}
+
+fn probe_hook_set_complete() -> bool {
+    hooks()
+        .lock()
+        .ok()
+        .and_then(|guard| guard.as_ref().map(|active| fully_installed_hook_set(&active.slots)))
+        .unwrap_or(false)
 }
 
 pub fn probe_hook_count() -> u32 {
@@ -597,7 +638,7 @@ pub fn disable_probe() -> bool {
 /// Invalid/absent preview profiles or inactive fixture hooks fail closed.
 #[unsafe(no_mangle)]
 pub extern "system" fn intimatr_timer_probe_shared_rate(multiplier: f64) -> i32 {
-    if !is_allowlisted_probe_process() || probe_hook_count() < 4 {
+    if !is_allowlisted_probe_process() || !probe_hook_set_complete() {
         return 0;
     }
     // The shared executor already applies this validated action to the
@@ -634,4 +675,52 @@ pub extern "system" fn intimatr_timer_probe_disable() -> i32 {
 #[unsafe(no_mangle)]
 pub extern "system" fn intimatr_timer_probe_fail_after(steps: u32) -> i32 {
     i32::from(enable_probe_with_fault(Some(steps as usize)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn import_coverage_requires_each_distinct_timer_api() {
+        let originals = [(10, 110), (20, 120), (30, 130), (40, 140)];
+        let complete = [(1, 10, 110), (2, 20, 120), (3, 30, 130), (4, 40, 140)];
+        assert!(has_all_required_timer_imports(&complete, &originals));
+
+        // Four entries can all reference the same API. Mere counting is unsafe.
+        let duplicate_qpc = [(1, 10, 110), (2, 10, 110), (3, 10, 110), (4, 10, 110)];
+        assert!(!has_all_required_timer_imports(&duplicate_qpc, &originals));
+
+        let wrong_replacement = [(1, 10, 110), (2, 20, 120), (3, 30, 130), (4, 40, 999)];
+        assert!(!has_all_required_timer_imports(&wrong_replacement, &originals));
+        assert!(!has_all_required_timer_imports(&complete[..3], &originals));
+    }
+
+    #[test]
+    fn partial_hook_rollback_never_looks_like_full_activation() {
+        let required = [
+            intercepted_qpc as *const () as usize,
+            intercepted_tick_count64 as *const () as usize,
+            intercepted_tick_count as *const () as usize,
+            intercepted_time_get_time as *const () as usize,
+        ];
+        let mut slots: Vec<HookSlot> = required
+            .into_iter()
+            .enumerate()
+            .map(|(index, replacement)| HookSlot {
+                address: index + 1,
+                original: index + 11,
+                replacement,
+                active: true,
+            })
+            .collect();
+        assert!(fully_installed_hook_set(&slots));
+
+        slots[3].active = false;
+        assert!(!fully_installed_hook_set(&slots));
+        slots[3].active = true;
+        slots[3].replacement = slots[0].replacement;
+        assert!(!fully_installed_hook_set(&slots));
+        assert!(!fully_installed_hook_set(&[]));
+    }
 }
