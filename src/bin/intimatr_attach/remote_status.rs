@@ -252,7 +252,11 @@ fn lifecycle_label(code: u32) -> Result<&'static str, String> {
 }
 
 /// Inspect only the exact owned module and its side-effect-free hook status.
-pub fn query_timer_hook_state(process: Handle, pid: u32, dll: &Path) -> Result<&'static str, String> {
+pub fn query_timer_hook_state(
+    process: Handle,
+    pid: u32,
+    dll: &Path,
+) -> Result<&'static str, String> {
     let (base, image_size) = target_base(pid, dll)?;
     let rva = export_rva(dll, HOOK_STATUS_EXPORT)?;
     if rva >= image_size {

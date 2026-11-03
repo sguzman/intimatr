@@ -231,7 +231,10 @@ fn run_game_action(args: Vec<String>, action: GameAction) -> Result<(), String> 
             .next()
             .ok_or("game status helper did not return a target timer-hook state")?;
         if hooks.next().is_some()
-            || !matches!(hook_state, "none" | "installed_four_timers" | "cleanup_pending")
+            || !matches!(
+                hook_state,
+                "none" | "installed_four_timers" | "cleanup_pending"
+            )
             || (state == "absent" && hook_state != "none")
             || (state != "running" && hook_state == "installed_four_timers")
         {
