@@ -129,6 +129,38 @@ jobs:
       - name: Build native Linux test orchestration CLI
         run: cargo build --locked --release --bin intimatr-bottles
 
+      - name: Inspect PE timer compatibility without launching Wine
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p target/wine-pe-compat
+          target/release/intimatr-bottles pe-compat --exe "$(pwd)/target/x86_64-pc-windows-gnu/release/wine-attach-target.exe" >target/wine-pe-compat/full.json
+          jq -e '.operation == "read_only_linux_pe_timer_compatibility"
+            and .static_import_status == "static_four_timer_names_present"
+            and .static_timer_import_coverage.all_four_static_names == true
+            and (.static_timer_imports_missing | length) == 0
+            and .requires_live_wine_import_verification == true
+            and .gameplay_speed_verified == false
+            and .process_attachment_attempted == false
+            and .timer_hook_installation_attempted == false' target/wine-pe-compat/full.json > /dev/null
+          target/release/intimatr-bottles pe-compat --exe "$(pwd)/target/x86_64-pc-windows-gnu/release/wine-incompatible-target.exe" >target/wine-pe-compat/missing.json
+          jq -e '.static_import_status == "static_timer_imports_missing"
+            and .static_timer_import_coverage.time_get_time == false
+            and (.static_timer_imports_missing | index("timeGetTime") != null)
+            and .process_attachment_attempted == false' target/wine-pe-compat/missing.json > /dev/null
+          printf 'not a PE image\n' >target/wine-pe-compat/invalid.exe
+          target/release/intimatr-bottles pe-compat --exe "$(pwd)/target/wine-pe-compat/invalid.exe" >target/wine-pe-compat/unknown.json
+          jq -e '.static_import_status == "static_import_inventory_unknown"
+            and .static_timer_import_coverage == null
+            and .static_timer_imports_missing == null
+            and (.inspection_error | type == "string")
+            and .timer_hook_installation_attempted == false' target/wine-pe-compat/unknown.json > /dev/null
+          if target/release/intimatr-bottles pe-compat --exe wine-attach-target.exe >/dev/null 2>target/wine-pe-compat/relative.stderr; then
+            echo "ERROR: read-only PE compatibility accepted relative path" >&2
+            exit 1
+          fi
+          grep -q 'absolute Linux file path' target/wine-pe-compat/relative.stderr
+
       - name: Run isolated Wine DLL load and shutdown smoke
         shell: bash
         run: |
