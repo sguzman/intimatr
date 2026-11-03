@@ -26,6 +26,20 @@ pub struct CandidatePreflight {
     pub attachment_attempted: bool,
 }
 
+/// Validate a requested candidate before launching Wine, even for a
+/// supposedly read-only probe (Wine itself may update its prefix metadata).
+pub fn validate_explicit_candidate_selection(
+    selected_pid: u32,
+    selected_executable_path: &str,
+) -> Result<(), String> {
+    if selected_pid == 0 {
+        return Err("selected Windows PID must be positive".into());
+    }
+    game_path_key(selected_executable_path)
+        .map(|_| ())
+        .map_err(|error| format!("invalid selected executable path: {error}"))
+}
+
 /// Both selectors must be explicit. No basename or PID-only matching is
 /// accepted, and even a fully matching x64 snapshot stays review-only.
 pub fn assess_explicit_candidate(
