@@ -33,9 +33,7 @@ fn parse_executable_path(args: &[String]) -> Result<PathBuf, String> {
 /// Categorize static *names* only. None is indeterminate, never a false
 /// missing-import verdict. This function deliberately issues no attach claim.
 /// Shared by single-PE and selected-bottle read-only inventory.
-pub(super) fn classify_imports(
-    coverage: Result<TimerImportCoverage, String>,
-) -> serde_json::Value {
+pub(super) fn classify_imports(coverage: Result<TimerImportCoverage, String>) -> serde_json::Value {
     let (state, imports, missing, error) = match coverage {
         Ok(observed) if observed.is_complete() => (
             "static_four_timer_names_present",

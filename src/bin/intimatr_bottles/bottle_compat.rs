@@ -34,7 +34,11 @@ fn parse_options(args: &[String]) -> Result<Options, String> {
         match flag.as_str() {
             "--bottle" if bottle.is_none() => bottle = Some(value.clone()),
             "--bottles-cli" if cli.is_none() => cli = Some(value.clone()),
-            _ => return Err(format!("duplicate or unexpected bottle-compat flag: {flag}")),
+            _ => {
+                return Err(format!(
+                    "duplicate or unexpected bottle-compat flag: {flag}"
+                ));
+            }
         }
     }
     let bottle = bottle.ok_or("bottle-compat requires exactly one --bottle NAME")?;
@@ -191,8 +195,18 @@ mod tests {
         for args in [
             vec![],
             vec!["--bottle".into(), "".into()],
-            vec!["--bottle".into(), "Games".into(), "--bottle".into(), "Games".into()],
-            vec!["--bottle".into(), "Games".into(), "--bottles-cli".into(), "sh".into()],
+            vec![
+                "--bottle".into(),
+                "Games".into(),
+                "--bottle".into(),
+                "Games".into(),
+            ],
+            vec![
+                "--bottle".into(),
+                "Games".into(),
+                "--bottles-cli".into(),
+                "sh".into(),
+            ],
         ] {
             assert!(parse_options(&args).is_err());
         }
