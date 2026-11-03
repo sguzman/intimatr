@@ -122,18 +122,43 @@ impl GameAttachOptions {
     }
 }
 
-/// Parse a human multiplier into the bounded integer remote ABI.
+/// Convert a user-entered multiplier into the bounded integer remote ABI.
+/// Parse the decimal lexeme itself: parsing through f64 first can round away
+/// tiny excess precision and mistakenly accept four or more decimal places.
+/// No exponents, signs, locale punctuation, or trailing decimal separator.
 fn parse_multiplier_milli(raw: &str) -> Result<u32, String> {
-    let multiplier = raw.parse::<f64>().map_err(|_| "invalid speed multiplier")?;
-    if !multiplier.is_finite() || !(0.1..=10.0).contains(&multiplier) {
-        return Err("speed multiplier must be finite and between 0.1 and 10".into());
+    let (whole, fraction) = raw.split_once('.').unwrap_or((raw, ""));
+    if whole.is_empty()
+        || whole.len() > 2
+        || (whole.starts_with('0') && whole.len() > 1)
+        || !whole.bytes().all(|digit| digit.is_ascii_digit())
+        || !fraction.bytes().all(|digit| digit.is_ascii_digit())
+        || (raw.contains('.') && fraction.is_empty())
+    {
+        return Err("speed multiplier must be an unsigned decimal number".into());
     }
-    let scaled = multiplier * 1000.0;
-    let rounded = scaled.round();
-    if (scaled - rounded).abs() > 1e-7 {
+    if fraction.len() > 3 {
         return Err("speed multiplier must have at most three decimal places".into());
     }
-    Ok(rounded as u32)
+    let whole = whole
+        .parse::<u32>()
+        .map_err(|_| "invalid speed multiplier")?;
+    let fraction_milli = if fraction.is_empty() {
+        0
+    } else {
+        fraction
+            .parse::<u32>()
+            .map_err(|_| "invalid speed multiplier")?
+            * 10_u32.pow(3 - fraction.len() as u32)
+    };
+    let milli = whole
+        .checked_mul(1000)
+        .and_then(|part| part.checked_add(fraction_milli))
+        .ok_or("speed multiplier is outside bounded thousandth range")?;
+    if !(100..=10_000).contains(&milli) {
+        return Err("speed multiplier must be finite and between 0.1 and 10".into());
+    }
+    Ok(milli)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -807,18 +832,24 @@ mod tests {
     fn numeric_speed_multiplier_requires_precise_bounded_configured_step() {
         for (raw, expected) in [
             ("0.1", 100),
+            ("0.100", 100),
+            ("0.101", 101),
             ("0.25", 250),
             ("0.75", 750),
             ("1", 1000),
+            ("1.001", 1001),
             ("1.5", 1500),
             ("2.0", 2000),
-            ("10.0", 10_000),
+            ("9.999", 9999),
+            ("10", 10_000),
+            ("10.000", 10_000),
         ] {
             assert_eq!(parse_multiplier_milli(raw).unwrap(), expected);
         }
         for invalid in [
-            "", "0", "-1", "0.099", "10.001", "nan", "NaN", "inf", "1.0005", "1e309", "faster",
-            "1,5",
+            "", "0", "-1", "0.000", "0.099", "10.001", "10.0001", "nan", "NaN", "inf", "1.0005",
+            "1.0000", "1.0000000000000000000001", "1e0", "1e309", "faster", "1,5", "1.", ".5",
+            "+1", "01.0", "1..5", " 1", "1 ", "100", "18446744073709551616",
         ] {
             assert!(parse_multiplier_milli(invalid).is_err(), "{invalid}");
         }

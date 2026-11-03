@@ -7,6 +7,12 @@ on:
 permissions:
   contents: read
 
+# Keep verification for the latest ref while preventing superseded pushes
+# from occupying Windows and Wine runners concurrently.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   rust:
     runs-on: windows-latest
