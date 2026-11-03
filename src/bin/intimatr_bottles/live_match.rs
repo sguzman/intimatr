@@ -197,7 +197,14 @@ mod live_match_tests {
             args(&["--bottle", "Games", "--helper", "wine-process-list.exe"]),
             args(&["--bottle", "Games", "--prefix", "/tmp"]),
             args(&["--helper", "wine-process-list.exe"]),
-            args(&["--bottle", "Games", "--helper", "helper.exe", "--runner", "wine"]),
+            args(&[
+                "--bottle",
+                "Games",
+                "--helper",
+                "helper.exe",
+                "--runner",
+                "wine",
+            ]),
             args(&[
                 "--bottle",
                 "Games",

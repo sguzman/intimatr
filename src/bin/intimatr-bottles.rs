@@ -316,7 +316,9 @@ mod windows_processes_tests {
             args(&["--prefix", "/tmp"]),
             args(&["--helper", "wine-process-list.exe"]),
             args(&["--prefix", "/tmp", "--helper", "wine-process-list.exe"]),
-            args(&["--prefix", "/tmp", "--helper", "test.exe", "--runner", "wine"]),
+            args(&[
+                "--prefix", "/tmp", "--helper", "test.exe", "--runner", "wine",
+            ]),
             args(&[
                 "--prefix",
                 "/tmp",

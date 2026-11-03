@@ -37,7 +37,8 @@ impl ProbeAttachOptions {
                 _ => return Err(format!("duplicate or unsupported option {flag}")),
             }
         }
-        let runner = runner.ok_or("missing --runner: select explicit Wine binary for this prefix")?;
+        let runner =
+            runner.ok_or("missing --runner: select explicit Wine binary for this prefix")?;
         intimatr::bottles_runner::validate_explicit_wine_runner_arg(&runner)?;
         Ok(Self {
             pid: pid.ok_or("missing --pid")?,
@@ -135,7 +136,9 @@ mod probe_tests {
                 "--pid", "garbage", "--prefix", "/tmp", "--helper", "test.exe",
             ]),
             args(&["--pid", "3", "--prefix", "/tmp"]),
-            args(&["--pid", "3", "--prefix", "/tmp", "--helper", "test.exe", "--runner", "wine"]),
+            args(&[
+                "--pid", "3", "--prefix", "/tmp", "--helper", "test.exe", "--runner", "wine",
+            ]),
             args(&[
                 "--pid", "3", "--prefix", "/tmp", "--helper", "test.exe", "--pid", "4",
             ]),

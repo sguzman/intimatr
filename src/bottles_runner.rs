@@ -245,7 +245,10 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn explicit_wine_binary_rejects_path_lookup_and_nonexecutables() {
-        use std::{os::unix::fs::symlink, sync::atomic::{AtomicUsize, Ordering}};
+        use std::{
+            os::unix::fs::symlink,
+            sync::atomic::{AtomicUsize, Ordering},
+        };
         static NEXT: AtomicUsize = AtomicUsize::new(0);
         let root = std::env::temp_dir().join(format!(
             "intimatr-explicit-wine-{}-{}",
