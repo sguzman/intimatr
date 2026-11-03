@@ -427,15 +427,11 @@ mod tests {
             .unwrap();
 
         let mut attempted = Vec::new();
-        let failure = apply_with_fail_safe(
-            &mut coordinator,
-            200,
-            SpeedAction::Increase,
-            |action| {
+        let failure =
+            apply_with_fail_safe(&mut coordinator, 200, SpeedAction::Increase, |action| {
                 attempted.push(action);
                 Err(SpeedPreviewError::FixtureClock("simulated backend failure"))
-            },
-        );
+            });
         assert!(matches!(failure, Err(SpeedPreviewError::FixtureClock(_))));
         assert_eq!(
             attempted,
