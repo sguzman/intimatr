@@ -348,6 +348,7 @@ jobs:
           cargo fmt --all -- --check
           cargo test --locked --lib speed
           cargo test --locked --lib bottles
+          cargo test --locked --test speed_invariants
           cargo test --locked --bin intimatr-bottles
 
       - name: Build native Linux Bottles inventory CLI
