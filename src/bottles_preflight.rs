@@ -5,10 +5,7 @@
 
 use serde::Serialize;
 
-use crate::{
-    bottles_live_matches::ReadOnlyProcessMatchPlan,
-    speed_policy::game_path_key,
-};
+use crate::{bottles_live_matches::ReadOnlyProcessMatchPlan, speed_policy::game_path_key};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct CandidatePreflight {
@@ -41,7 +38,10 @@ pub fn assess_explicit_candidate(
     }
     let expected_path = game_path_key(selected_executable_path)
         .map_err(|error| format!("invalid selected executable path: {error}"))?;
-    let entry = plan.matches.iter().find(|entry| entry.windows_pid == selected_pid);
+    let entry = plan
+        .matches
+        .iter()
+        .find(|entry| entry.windows_pid == selected_pid);
     let observed_path = entry.and_then(|entry| entry.verified_executable_path.clone());
     let path_matches = observed_path
         .as_deref()
@@ -132,7 +132,10 @@ mod tests {
     #[test]
     fn exact_registered_x64_pid_stays_review_only() {
         let plan = plan(
-            &[("First", r"C:\Games\First\Game.exe"), ("Second", r"C:\Games\Second\Game.exe")],
+            &[
+                ("First", r"C:\Games\First\Game.exe"),
+                ("Second", r"C:\Games\Second\Game.exe"),
+            ],
             Some(r"C:\Games\Second\Game.exe"),
             Some("x86_64"),
             Some("x86_64"),
@@ -174,7 +177,12 @@ mod tests {
         assert_eq!(audit.x64_dll_compatible, None);
         assert!(!audit.safe_to_attach);
 
-        let x86 = plan(&registry, Some(r"C:\Games\Game.exe"), Some("x86"), Some("x86"));
+        let x86 = plan(
+            &registry,
+            Some(r"C:\Games\Game.exe"),
+            Some("x86"),
+            Some("x86"),
+        );
         let audit = assess_explicit_candidate(&x86, 42, r"C:\Games\Game.exe").unwrap();
         assert_eq!(audit.status, "unsupported_x64_dll_architecture");
         assert!(!audit.safe_to_attach);
@@ -198,8 +206,7 @@ mod tests {
             Some("x86_64"),
             Some("x86_64"),
         );
-        let audit =
-            assess_explicit_candidate(&unregistered, 42, r"C:\Games\Game.exe").unwrap();
+        let audit = assess_explicit_candidate(&unregistered, 42, r"C:\Games\Game.exe").unwrap();
         assert_eq!(audit.status, "not_registered_in_selected_bottle");
         assert!(!audit.safe_to_attach);
     }
