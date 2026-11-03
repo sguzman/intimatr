@@ -718,6 +718,9 @@ impl LiveMatchOptions {
                 "--pid and --exe are required together for explicit candidate review".into(),
             );
         }
+        if let (Some(pid), Some(path)) = (selected_pid, selected_executable.as_deref()) {
+            intimatr::bottles_preflight::validate_explicit_candidate_selection(pid, path)?;
+        }
         let bottles_cli = bottles_cli.unwrap_or_else(|| "bottles-cli".to_owned());
         if std::path::Path::new(&bottles_cli)
             .file_name()
@@ -951,6 +954,21 @@ mod live_match_tests {
         assert_eq!(
             parsed.selected_executable.as_deref(),
             Some(r"C:\Games\Game.exe")
+        );
+        assert!(
+            LiveMatchOptions::parse(&args(&[
+                "--bottle",
+                "Games",
+                "--helper",
+                "/tmp/wine-process-list.exe",
+                "--runner",
+                "/usr/bin/wine",
+                "--pid",
+                "42",
+                "--exe",
+                r"C:Relative\Game.exe",
+            ]))
+            .is_err()
         );
         assert!(
             LiveMatchOptions::parse(&args(&[
