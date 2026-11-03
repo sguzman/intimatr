@@ -187,11 +187,7 @@ pub fn audit_native_managed_runner(
     if !data_home.is_absolute() {
         return Ok(());
     }
-    audit_managed_runner_at_root(
-        audit,
-        supplied_runner,
-        &data_home.join("bottles/runners"),
-    )
+    audit_managed_runner_at_root(audit, supplied_runner, &data_home.join("bottles/runners"))
 }
 
 fn audit_managed_runner_at_root(
@@ -214,7 +210,10 @@ fn audit_managed_runner_at_root(
         || name == ".."
         || name.contains(['/', '\\'])
         || name.chars().any(char::is_control)
-        || !matches!(component.components().next(), Some(std::path::Component::Normal(_)))
+        || !matches!(
+            component.components().next(),
+            Some(std::path::Component::Normal(_))
+        )
         || component.components().count() != 1
     {
         return Err("unsafe configured Bottles runner name".into());
@@ -222,13 +221,21 @@ fn audit_managed_runner_at_root(
     let root = match fs::canonicalize(managed_root) {
         Ok(path) => path,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-        Err(error) => return Err(format!("cannot inspect managed Bottles runner root: {error}")),
+        Err(error) => {
+            return Err(format!(
+                "cannot inspect managed Bottles runner root: {error}"
+            ));
+        }
     };
     let directory = root.join(name);
     let metadata = match fs::symlink_metadata(&directory) {
         Ok(metadata) => metadata,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-        Err(error) => return Err(format!("cannot inspect managed Bottles runner directory: {error}")),
+        Err(error) => {
+            return Err(format!(
+                "cannot inspect managed Bottles runner directory: {error}"
+            ));
+        }
     };
     if !metadata.is_dir() || metadata.file_type().is_symlink() {
         return Err("managed Bottles runner directory is not an ordinary directory".into());
@@ -241,12 +248,18 @@ fn audit_managed_runner_at_root(
     let expected = match fs::canonicalize(directory.join("bin/wine")) {
         Ok(path) => path,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-        Err(error) => return Err(format!("cannot resolve managed Bottles runner executable: {error}")),
+        Err(error) => {
+            return Err(format!(
+                "cannot resolve managed Bottles runner executable: {error}"
+            ));
+        }
     };
     let supplied = fs::canonicalize(supplied_runner)
         .map_err(|error| format!("cannot resolve requested Wine runner: {error}"))?;
     if expected != supplied {
-        return Err("supplied Wine runner differs from the configured managed Bottles runner".into());
+        return Err(
+            "supplied Wine runner differs from the configured managed Bottles runner".into(),
+        );
     }
     let metadata = fs::metadata(&expected)
         .map_err(|error| format!("cannot inspect managed Wine executable: {error}"))?;
@@ -409,21 +422,15 @@ mod tests {
 
         let wrong = root.join("wrong-wine");
         fs::write(&wrong, "wrong").unwrap();
-        assert!(audit_managed_runner_at_root(
-            &mut audit_runner_metadata(
-                r#"{"Games":{"Runner":"wine-11.13-patched-amd64"}}"#,
-                "Games",
-            )
-            .unwrap(),
-            &wrong,
-            &runners,
-        )
-        .is_err());
-        let mut missing = audit_runner_metadata(
-            r#"{"Games":{"Runner":"another-managed-runner"}}"#,
+        let mut wrong_audit = audit_runner_metadata(
+            r#"{"Games":{"Runner":"wine-11.13-patched-amd64"}}"#,
             "Games",
         )
         .unwrap();
+        assert!(audit_managed_runner_at_root(&mut wrong_audit, &wrong, &runners).is_err());
+        let mut missing =
+            audit_runner_metadata(r#"{"Games":{"Runner":"another-managed-runner"}}"#, "Games")
+                .unwrap();
         audit_managed_runner_at_root(&mut missing, &binary, &runners).unwrap();
         assert!(!missing.runner_path_verified);
 
