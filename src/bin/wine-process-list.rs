@@ -94,9 +94,7 @@ mod windows {
         String::from_utf16_lossy(&values[..length])
     }
 
-    fn inspect_process(
-        pid: u32,
-    ) -> (Option<String>, Option<ObservedProcessMachine>, Option<u64>) {
+    fn inspect_process(pid: u32) -> (Option<String>, Option<ObservedProcessMachine>, Option<u64>) {
         let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
         if handle.is_null() {
             return (None, None, None);

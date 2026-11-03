@@ -1,8 +1,7 @@
 #[cfg(windows)]
 pub mod helper {
     use intimatr::{
-        speed_policy::game_path_key,
-        windows_process_identity::process_creation_time_100ns,
+        speed_policy::game_path_key, windows_process_identity::process_creation_time_100ns,
         windows_process_machine::running_process_architecture,
     };
     use std::{
@@ -496,7 +495,9 @@ pub mod helper {
         game_path_key(&expected)
             .map_err(|error| format!("invalid selected Windows game path: {error}"))?;
         if args.next().as_deref() != Some("--created-100ns") {
-            return Err("game attach requires --created-100ns from a fresh process snapshot".into());
+            return Err(
+                "game attach requires --created-100ns from a fresh process snapshot".into(),
+            );
         }
         let created_100ns = args
             .next()

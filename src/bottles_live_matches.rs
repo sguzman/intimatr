@@ -57,7 +57,10 @@ impl WindowsProcessSnapshot {
                 .process_creation_time_100ns
                 .as_deref()
                 .is_some_and(|value| {
-                    value.parse::<u64>().ok().filter(|number| *number > 0)
+                    value
+                        .parse::<u64>()
+                        .ok()
+                        .filter(|number| *number > 0)
                         .is_none_or(|number| number.to_string() != value)
                 })
             {

@@ -45,9 +45,7 @@ pub unsafe fn process_creation_time_100ns(process: *mut c_void) -> Option<u64> {
     let mut exit = FileTime::default();
     let mut kernel = FileTime::default();
     let mut user = FileTime::default();
-    let ok = unsafe {
-        GetProcessTimes(process, &mut creation, &mut exit, &mut kernel, &mut user)
-    };
+    let ok = unsafe { GetProcessTimes(process, &mut creation, &mut exit, &mut kernel, &mut user) };
     (ok != 0 && creation.ticks() != 0).then(|| creation.ticks())
 }
 
@@ -57,6 +55,13 @@ mod tests {
 
     #[test]
     fn combines_filetime_halves_without_precision_loss() {
-        assert_eq!(FileTime { high: 0x1234_5678, low: 0x9abc_def0 }.ticks(), 0x1234_5678_9abc_def0);
+        assert_eq!(
+            FileTime {
+                high: 0x1234_5678,
+                low: 0x9abc_def0
+            }
+            .ticks(),
+            0x1234_5678_9abc_def0
+        );
     }
 }

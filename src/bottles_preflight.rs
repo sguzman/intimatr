@@ -96,7 +96,8 @@ pub fn assess_explicit_candidate(
         },
         registration_status: entry.map(|entry| entry.status),
         x64_dll_compatible: architecture,
-        process_creation_time_100ns: entry.and_then(|entry| entry.process_creation_time_100ns.clone()),
+        process_creation_time_100ns: entry
+            .and_then(|entry| entry.process_creation_time_100ns.clone()),
         pid_observed_in_selected_wineserver_snapshot: entry.is_some(),
         image_observed_in_selected_wineserver_snapshot: path_matches,
         registered_identity_verified_at_snapshot: registered,
