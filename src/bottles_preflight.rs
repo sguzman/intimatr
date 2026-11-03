@@ -5,7 +5,11 @@
 
 use serde::Serialize;
 
-use crate::{bottles_live_matches::ReadOnlyProcessMatchPlan, speed_policy::game_path_key};
+use crate::{
+    bottles_live_matches::ReadOnlyProcessMatchPlan,
+    pe_timer_imports::TimerImportCoverage,
+    speed_policy::game_path_key,
+};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct CandidatePreflight {
@@ -17,6 +21,7 @@ pub struct CandidatePreflight {
     pub matched_registered_program: Option<String>,
     pub registration_status: Option<&'static str>,
     pub x64_dll_compatible: Option<bool>,
+    pub timer_import_coverage: Option<TimerImportCoverage>,
     /// Snapshot-time Windows GetProcessTimes generation; not a durable handle.
     pub process_creation_time_100ns: Option<String>,
     /// A selected Windows PID appeared in the Wine snapshot queried with
@@ -96,6 +101,7 @@ pub fn assess_explicit_candidate(
         },
         registration_status: entry.map(|entry| entry.status),
         x64_dll_compatible: architecture,
+        timer_import_coverage: entry.and_then(|entry| entry.timer_import_coverage),
         process_creation_time_100ns: entry
             .and_then(|entry| entry.process_creation_time_100ns.clone()),
         pid_observed_in_selected_wineserver_snapshot: entry.is_some(),
@@ -146,6 +152,7 @@ mod tests {
                 image_query_verified: path.is_some(),
                 pe_image_architecture: file_arch.map(str::to_owned),
                 pe_image_verified: file_arch.is_some(),
+                timer_import_coverage: None,
                 process_architecture: process_arch.map(str::to_owned),
                 process_architecture_verified: process_arch.is_some(),
                 process_architecture_source: process_arch.map(|_| "is_wow64_process2".into()),

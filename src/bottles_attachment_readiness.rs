@@ -8,8 +8,10 @@
 use serde::Serialize;
 
 use crate::{
-    bottles_prefix::BottlePrefixIdentity, bottles_preflight::CandidatePreflight,
+    bottles_prefix::BottlePrefixIdentity,
+    bottles_preflight::CandidatePreflight,
     bottles_runner::RunnerAudit,
+    pe_timer_imports::TimerImportCoverage,
 };
 
 #[derive(Debug, Clone, Serialize)]
@@ -21,6 +23,8 @@ pub struct AttachmentReadiness {
     pub candidate_status: &'static str,
     pub snapshot_registered_identity_verified: bool,
     pub snapshot_x64_dll_compatible: Option<bool>,
+    /// Static main EXE names, not actual Wine-resolved hook eligibility.
+    pub timer_import_coverage: Option<TimerImportCoverage>,
     pub selected_process_creation_time_100ns: Option<String>,
     pub selected_pid_observed_in_prefix_wineserver_snapshot: bool,
     pub selected_image_observed_in_prefix_wineserver_snapshot: bool,
@@ -72,6 +76,12 @@ pub fn review_attachment_readiness(
     if !prefix.game_process_identity_verified {
         blockers.push("live_process_prefix_ownership_unverified");
     }
+    if !candidate
+        .timer_import_coverage
+        .is_some_and(|coverage| coverage.all_four_static_names)
+    {
+        blockers.push("experimental_four_timer_static_imports_unverified");
+    }
 
     // These checks require a separate, opt-in, non-fixture loader design
     // and fresh process identity / game compatibility verification.
@@ -91,6 +101,7 @@ pub fn review_attachment_readiness(
         candidate_status: candidate.status,
         snapshot_registered_identity_verified: candidate.registered_identity_verified_at_snapshot,
         snapshot_x64_dll_compatible: candidate.x64_dll_compatible,
+        timer_import_coverage: candidate.timer_import_coverage,
         selected_process_creation_time_100ns: candidate.process_creation_time_100ns.clone(),
         selected_pid_observed_in_prefix_wineserver_snapshot: candidate
             .pid_observed_in_selected_wineserver_snapshot,
@@ -125,6 +136,7 @@ mod tests {
             matched_registered_program: Some("Test".into()),
             registration_status: Some("exact_registered_path"),
             x64_dll_compatible: Some(true),
+            timer_import_coverage: None,
             process_creation_time_100ns: Some("133700000000000000".into()),
             pid_observed_in_selected_wineserver_snapshot: true,
             image_observed_in_selected_wineserver_snapshot: true,
@@ -253,6 +265,26 @@ mod tests {
                 .contains(&"selected_image_not_observed_in_prefix_wineserver_snapshot")
         );
         assert!(!report.safe_to_attach);
+    }
+
+    #[test]
+    fn complete_static_timer_name_evidence_does_not_claim_hook_or_attachment() {
+        let (mut candidate, prefix, runner) = fixtures();
+        candidate.timer_import_coverage = Some(TimerImportCoverage {
+            query_performance_counter: true,
+            get_tick_count64: true,
+            get_tick_count: true,
+            time_get_time: true,
+            all_four_static_names: true,
+        });
+        let report = review_attachment_readiness(&candidate, &prefix, &runner);
+        assert_eq!(
+            report.timer_import_coverage.map(|value| value.all_four_static_names),
+            Some(true)
+        );
+        assert!(!report.blockers.contains(&"experimental_four_timer_static_imports_unverified"));
+        assert!(!report.safe_to_attach);
+        assert!(!report.attachment_attempted);
     }
 
     #[test]

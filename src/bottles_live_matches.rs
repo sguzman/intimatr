@@ -5,7 +5,10 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{bottles::BottleInventory, speed_policy::game_path_key};
+use crate::{
+    bottles::BottleInventory, pe_timer_imports::TimerImportCoverage,
+    speed_policy::game_path_key,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -18,6 +21,8 @@ pub struct WindowsProcessRecord {
     pub pe_image_architecture: Option<String>,
     #[serde(default)]
     pub pe_image_verified: bool,
+    #[serde(default)]
+    pub timer_import_coverage: Option<TimerImportCoverage>,
     #[serde(default)]
     pub process_architecture: Option<String>,
     #[serde(default)]
@@ -123,6 +128,7 @@ pub struct ProcessProgramMatch {
     pub verified_executable_path: Option<String>,
     pub pe_image_architecture: Option<String>,
     pub pe_image_verified: bool,
+    pub timer_import_coverage: Option<TimerImportCoverage>,
     pub process_architecture: Option<String>,
     pub process_architecture_verified: bool,
     pub process_architecture_source: Option<String>,
@@ -201,6 +207,7 @@ pub fn match_registered_programs(
             verified_executable_path: process.full_image_path.clone(),
             pe_image_architecture: process.pe_image_architecture.clone(),
             pe_image_verified: process.pe_image_verified,
+            timer_import_coverage: process.timer_import_coverage,
             process_architecture: process.process_architecture.clone(),
             process_architecture_verified: process.process_architecture_verified,
             process_architecture_source: process.process_architecture_source.clone(),
@@ -254,6 +261,7 @@ mod tests {
                     image_query_verified: path.is_some(),
                     pe_image_architecture: None,
                     pe_image_verified: false,
+                    timer_import_coverage: None,
                     process_architecture: None,
                     process_architecture_verified: false,
                     process_architecture_source: None,

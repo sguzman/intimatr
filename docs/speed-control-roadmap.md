@@ -377,3 +377,7 @@ Windows process enumeration records a full-precision decimal `GetProcessTimes` c
 ### 🔏 Require operator-selected process generation — 2026-11-03
 
 `attach-game` now additionally requires `--created-100ns` copied from the prior `live-match` candidate; the controller compares that exact full-precision decimal FILETIME against a fresh Wine snapshot before running the Windows helper. This complements the already implemented second check on a held Windows process HANDLE, closing a stale operator selection where the same PID/image was replaced before a refreshed snapshot. CI includes negative tests for stale selection and direct Windows helper mismatch, plus malformed/repeated/missing timestamp rejection. No gameplay speed or teardown field verification yet; **16/100 (previous 16, Δ +0 pp)**.
+
+### 🕵️ Four-clock static PE import capability evidence — 2026-11-03
+
+Added a bounded read-only x64 PE import descriptor/thunk parser and integrated its four individual Windows timing API name flags with Wine process inventory, registered executable matching and selected-game readiness. The isolated fixture CI requires all four static names in its PE; malformed or unreadable imports produce unknown coverage, not false certainty. The static-name check is **informational only**: dynamic imports, other modules and Wine runtime pointer resolution are beyond its scope, and real game hooks remain disabled. **Expansion 16/100 (previous 16, Δ +0 pp)**.

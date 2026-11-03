@@ -237,6 +237,14 @@ jobs:
             and .process_architecture == "x86_64"
             and .process_architecture_source == "is_wow64_process2"
           )' target/wine-attach/windows-pids.json > /dev/null
+          jq -e --argjson pid "$windows_pid" '.processes[] | select(
+            .windows_pid == $pid
+            and .timer_import_coverage.all_four_static_names == true
+            and .timer_import_coverage.query_performance_counter == true
+            and .timer_import_coverage.get_tick_count64 == true
+            and .timer_import_coverage.get_tick_count == true
+            and .timer_import_coverage.time_get_time == true
+          )' target/wine-attach/windows-pids.json > /dev/null
           echo "Wine live-process machine query: $(jq -r --argjson pid "$windows_pid" '.processes[] | select(.windows_pid == $pid) | (.process_architecture // "unavailable")' target/wine-attach/windows-pids.json)"
           grep -q '"attachment_attempted": false' target/wine-attach/windows-pids.json
           echo "Wine process inventory independently confirmed target Windows PID"
@@ -348,6 +356,7 @@ jobs:
           jq -e --argjson pid "$windows_pid" '.selected_candidate | select(
             .operation == "read_only_explicit_game_candidate_preflight"
             and .selected_windows_pid == $pid
+            and .timer_import_coverage.all_four_static_names == true
             and (.process_creation_time_100ns | type == "string" and length > 0)
             and .pid_observed_in_selected_wineserver_snapshot == true
             and .image_observed_in_selected_wineserver_snapshot == true
@@ -363,6 +372,7 @@ jobs:
           jq -e '.attachment_readiness | select(
             .operation == "read_only_live_game_attachment_readiness"
             and .snapshot_registered_identity_verified == true
+            and .timer_import_coverage.all_four_static_names == true
             and (.selected_process_creation_time_100ns | type == "string" and length > 0)
             and .selected_pid_observed_in_prefix_wineserver_snapshot == true
             and .selected_image_observed_in_prefix_wineserver_snapshot == true

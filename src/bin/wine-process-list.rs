@@ -12,6 +12,7 @@ fn main() {
 mod windows {
     use intimatr::{
         pe_image::inspect_pe,
+        pe_timer_imports::{TimerImportCoverage, inspect_pe_timer_imports},
         windows_process_identity::process_creation_time_100ns,
         windows_process_machine::{ObservedProcessMachine, running_process_architecture},
     };
@@ -71,6 +72,7 @@ mod windows {
         image_query_verified: bool,
         pe_image_architecture: Option<&'static str>,
         pe_image_verified: bool,
+        timer_import_coverage: Option<TimerImportCoverage>,
         process_architecture: Option<&'static str>,
         process_architecture_verified: bool,
         process_architecture_source: Option<&'static str>,
@@ -147,6 +149,10 @@ mod windows {
                     .as_deref()
                     .and_then(|path| inspect_pe(std::path::Path::new(path)).ok())
                     .map(|identity| identity.architecture);
+                let timer_import_coverage = path
+                    .as_deref()
+                    .filter(|_| architecture == Some("x86_64"))
+                    .and_then(|name| inspect_pe_timer_imports(std::path::Path::new(name)).ok());
                 processes.push(WindowsProcess {
                     windows_pid: pid,
                     reported_executable: utf16_z(&entry.exe_file),
@@ -154,6 +160,7 @@ mod windows {
                     full_image_path: path,
                     pe_image_architecture: architecture,
                     pe_image_verified: architecture.is_some(),
+                    timer_import_coverage,
                     process_architecture: process_machine.map(|value| value.architecture),
                     process_architecture_verified: process_machine.is_some(),
                     process_architecture_source: process_machine.map(|value| value.source),

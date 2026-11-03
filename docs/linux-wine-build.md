@@ -407,3 +407,9 @@ Example additional flag for the previously documented `attach-game` command:
 ```
 
 The previous two-selector example is now intentionally rejected by `attach-game`. This does not alter the read-only `live-match` command or the fixture-only loader. Real-game speed and shutdown proof remain unfinished. **Verified expansion 16/100 (previous 16, Δ +0 pp).**
+
+## 2026-11-03 — Experimental four-clock PE static import preflight
+
+The native Bottles live-process inventory now reports `timer_import_coverage` based on a **bounded, read-only inspection of the selected running executable's on-disk x64 PE import tables**. Separate booleans identify statically imported `QueryPerformanceCounter`, `GetTickCount64`, `GetTickCount`, and `timeGetTime`, and `all_four_static_names` is true only when all four imported symbol names were observed in recognized Windows system DLL import descriptors. PE section/RVA bounds, descriptor/thunk limits, invalid headers and missing terminators fail closed to `null` (unknown) rather than fabricating an unsupported verdict. A readable image without a static import table has known-empty coverage. This is **not** an active hook capability test: Wine may resolve imports differently, the application may use dynamically resolved APIs, and timing may be performed in DLLs or the rendering engine rather than the main executable.
+
+The evidence propagates through `win-processes`, `live-match` candidate selection, and `attachment_readiness`; missing or incomplete coverage adds the informative `experimental_four_timer_static_imports_unverified` blocker, but does not itself authorize or install hooks. Deterministic PE table tests cover all-four, missing, invalid and empty imports. The Wine fixture regression requires all four static import names from the running disposable test target. Production timer interception remains fixture-only, so real-game speed is **not** yet enabled. Expansion remains **16/100 (previous 16, Δ +0 pp)**.
