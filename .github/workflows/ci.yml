@@ -392,7 +392,7 @@ jobs:
           if XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles live-match \
             --bottle Fixture \
             --helper target/wine-attach/wine-process-list.exe \
-            --runner "$(command -v false)" \
+            --runner /usr/bin/false \
             --bottles-cli target/wine-attach/mocks/bottles-cli \
             --pid "$windows_pid" --exe "$observed_path" 2> target/wine-attach/wrong-managed-runner.stderr; then
             echo "ERROR: unrelated managed Wine runner binary was accepted" >&2
