@@ -189,6 +189,14 @@ mod target {
                 (2.0, "double"),
                 (1.0, "normal"),
             ] {
+                // The 1.75x step exists only in the explicit selected-game
+                // profile. The ordinary attach fixture intentionally uses
+                // the built-in step list and must keep rejecting that rate.
+                if label == "custom"
+                    && std::env::var_os("INTIMATR_TEST_EXTERNAL_RATE_COMMANDS").is_none()
+                {
+                    continue;
+                }
                 if std::env::var_os("INTIMATR_TEST_EXTERNAL_RATE_COMMANDS").is_some() {
                     let ready = directory.join(format!("attach-rate-{label}-ready.flag"));
                     let done = directory.join(format!("attach-rate-{label}-done.flag"));
