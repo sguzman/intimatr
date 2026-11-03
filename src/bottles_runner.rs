@@ -10,7 +10,7 @@
 use serde::Serialize;
 use serde_json::Value;
 use std::{
-    fs,
+    env, fs,
     os::unix::fs::PermissionsExt,
     path::{Path, PathBuf},
 };
@@ -161,6 +161,103 @@ pub fn audit_recorded_runner(
     Ok(())
 }
 
+/// Audit an ordinary managed native Bottles runner using the data root that
+/// Bottles itself uses for Paths.runners, never a sibling of bottles-path.
+/// An installed managed runner directory takes precedence over an external
+/// compatibility-tool runner of the same name in upstream Bottles.
+///
+/// This establishes *configured executable location*, not which Wine binary
+/// an already-running game was launched with. Steam and sys-* are excluded.
+pub fn audit_native_managed_runner(
+    audit: &mut RunnerAudit,
+    supplied_runner: &Path,
+) -> Result<(), String> {
+    if audit.runner_path_verified || env::var_os("FLATPAK_ID").is_some() {
+        return Ok(());
+    }
+    let data_home = match env::var_os("XDG_DATA_HOME").filter(|value| !value.is_empty()) {
+        Some(value) => PathBuf::from(value),
+        None => {
+            let Some(home) = env::var_os("HOME") else {
+                return Ok(());
+            };
+            PathBuf::from(home).join(".local/share")
+        }
+    };
+    if !data_home.is_absolute() {
+        return Ok(());
+    }
+    audit_managed_runner_at_root(
+        audit,
+        supplied_runner,
+        &data_home.join("bottles/runners"),
+    )
+}
+
+fn audit_managed_runner_at_root(
+    audit: &mut RunnerAudit,
+    supplied_runner: &Path,
+    managed_root: &Path,
+) -> Result<(), String> {
+    let Some(name) = audit.configured_runner_name.as_deref() else {
+        return Ok(());
+    };
+    if audit.runner_path_verified
+        || audit.configured_environment.as_deref() == Some("Steam")
+        || audit.configured_runner_path.is_some()
+        || name.starts_with("sys-")
+    {
+        return Ok(());
+    }
+    let component = Path::new(name);
+    if name == "."
+        || name == ".."
+        || name.contains(['/', '\\'])
+        || name.chars().any(char::is_control)
+        || !matches!(component.components().next(), Some(std::path::Component::Normal(_)))
+        || component.components().count() != 1
+    {
+        return Err("unsafe configured Bottles runner name".into());
+    }
+    let root = match fs::canonicalize(managed_root) {
+        Ok(path) => path,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(format!("cannot inspect managed Bottles runner root: {error}")),
+    };
+    let directory = root.join(name);
+    let metadata = match fs::symlink_metadata(&directory) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(format!("cannot inspect managed Bottles runner directory: {error}")),
+    };
+    if !metadata.is_dir() || metadata.file_type().is_symlink() {
+        return Err("managed Bottles runner directory is not an ordinary directory".into());
+    }
+    let directory = fs::canonicalize(&directory)
+        .map_err(|error| format!("cannot resolve managed Bottles runner directory: {error}"))?;
+    if directory.parent() != Some(root.as_path()) {
+        return Err("managed Bottles runner is not a direct child of its runners root".into());
+    }
+    let expected = match fs::canonicalize(directory.join("bin/wine")) {
+        Ok(path) => path,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(format!("cannot resolve managed Bottles runner executable: {error}")),
+    };
+    let supplied = fs::canonicalize(supplied_runner)
+        .map_err(|error| format!("cannot resolve requested Wine runner: {error}"))?;
+    if expected != supplied {
+        return Err("supplied Wine runner differs from the configured managed Bottles runner".into());
+    }
+    let metadata = fs::metadata(&expected)
+        .map_err(|error| format!("cannot inspect managed Wine executable: {error}"))?;
+    if !metadata.is_file() || metadata.permissions().mode() & 0o111 == 0 {
+        return Err("managed Wine runner is not an executable regular file".into());
+    }
+    audit.runner_path_verified = true;
+    audit.reason = "native_managed_runner_binary_matched";
+    Ok(())
+}
+
 /// Runner identity might be informative while target executable/bitness and
 /// Wine process ownership are not proven. Never make it attach authority.
 pub fn report_expected_runner(audit: &RunnerAudit) -> Option<PathBuf> {
@@ -274,6 +371,77 @@ mod tests {
         );
         assert!(resolve_explicit_wine_binary(root.to_str().unwrap()).is_err());
         assert!(resolve_explicit_wine_binary(root.join("missing").to_str().unwrap()).is_err());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn native_managed_runner_requires_exact_named_executable() {
+        use std::{
+            os::unix::fs::symlink,
+            sync::atomic::{AtomicUsize, Ordering},
+        };
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
+        let root = std::env::temp_dir().join(format!(
+            "intimatr-managed-runner-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        let runners = root.join("bottles/runners");
+        let bin = runners.join("wine-11.13-patched-amd64/bin");
+        fs::create_dir_all(&bin).unwrap();
+        let binary = bin.join("wine");
+        fs::write(&binary, "synthetic managed runner").unwrap();
+        let mut perms = fs::metadata(&binary).unwrap().permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&binary, perms).unwrap();
+        let mut audit = audit_runner_metadata(
+            r#"{"Games":{"Runner":"wine-11.13-patched-amd64","Arch":"win64","Environment":"Gaming"}}"#,
+            "Games",
+        )
+        .unwrap();
+        let alias = root.join("wine-alias");
+        symlink(&binary, &alias).unwrap();
+        audit_managed_runner_at_root(&mut audit, &alias, &runners).unwrap();
+        assert!(audit.runner_path_verified);
+        assert_eq!(audit.reason, "native_managed_runner_binary_matched");
+        assert!(!audit.safe_to_attach);
+
+        let wrong = root.join("wrong-wine");
+        fs::write(&wrong, "wrong").unwrap();
+        assert!(audit_managed_runner_at_root(
+            &mut audit_runner_metadata(
+                r#"{"Games":{"Runner":"wine-11.13-patched-amd64"}}"#,
+                "Games",
+            )
+            .unwrap(),
+            &wrong,
+            &runners,
+        )
+        .is_err());
+        let mut missing = audit_runner_metadata(
+            r#"{"Games":{"Runner":"another-managed-runner"}}"#,
+            "Games",
+        )
+        .unwrap();
+        audit_managed_runner_at_root(&mut missing, &binary, &runners).unwrap();
+        assert!(!missing.runner_path_verified);
+
+        let mut escaped = audit_runner_metadata(
+            r#"{"Games":{"Runner":"../wine-11.13-patched-amd64"}}"#,
+            "Games",
+        )
+        .unwrap();
+        assert!(audit_managed_runner_at_root(&mut escaped, &binary, &runners).is_err());
+
+        let steam = audit_runner_metadata(
+            r#"{"Games":{"Runner":"steam-proton","Environment":"Steam"}}"#,
+            "Games",
+        )
+        .unwrap();
+        let mut steam = steam;
+        audit_managed_runner_at_root(&mut steam, &binary, &runners).unwrap();
+        assert!(!steam.runner_path_verified);
         fs::remove_dir_all(root).unwrap();
     }
 

@@ -361,3 +361,7 @@ Moved fixture-only attach, read-only profile-check, snapshot-match and live-matc
 ### 🔐 Explicit absolute runner for Wine probes and fixture-only loading — 2026-11-03
 
 The Linux Wine PID probe, read-only Bottles live matcher, and disposable-fixture attach now refuse `--runner wine` / other relative commands. They require an existing executable absolute path and resolve symlinks before launch, without conflating file presence with Bottles runner ownership. Added unit coverage for relative/nonexistent/directory/nonexecutable runner and symlink alias, plus Wine CI relative-runner refusal. Full native Bottles runner QA remains open; **16/100 (previous 16, Δ +0 pp)**.
+
+### 🍾 Native managed Bottles runner root audit — 2026-11-03
+
+`live-match` now validates a selected managed `Runner` against the native Bottles runner storage root determined from `XDG_DATA_HOME` or the normal user data directory, **not** the bottle prefix's directory. Exact executable identity and executability can be verified for ordinary managed runners; Steam, host system and missing/ambiguous paths remain conservative. Unit tests cover correct, wrong, missing and unsafe runner directories; isolated Wine CI checks the managed-root positive and wrong-executable refusal. The audit grants no process/game authorization; native installation QA and full INT-1406/1407 remain pending. **16/100 (previous 16, Δ +0 pp).**

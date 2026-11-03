@@ -95,7 +95,8 @@ pub(super) fn run_live_match(args: Vec<String>) -> Result<(), String> {
         bottles_prefix::verify_bottle_prefix,
         bottles_preflight::assess_explicit_candidate,
         bottles_runner::{
-            audit_recorded_runner, audit_runner_metadata, resolve_explicit_wine_binary,
+            audit_native_managed_runner, audit_recorded_runner, audit_runner_metadata,
+            resolve_explicit_wine_binary,
         },
     };
 
@@ -131,6 +132,7 @@ pub(super) fn run_live_match(args: Vec<String>) -> Result<(), String> {
     let verified_runner = resolve_explicit_wine_binary(&options.runner)?;
     let mut runner_audit = audit_runner_metadata(&bottle_list_json, &options.bottle)?;
     audit_recorded_runner(&mut runner_audit, &verified_runner)?;
+    audit_native_managed_runner(&mut runner_audit, &verified_runner)?;
     let programs = parse_registered_programs(&bottles_json_with_command(
         &options.bottles_cli,
         &["programs", "-b", &options.bottle],

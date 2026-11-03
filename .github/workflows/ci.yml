@@ -371,6 +371,34 @@ jobs:
             and (.blockers | index("live_process_prefix_ownership_unverified") != null)
             and (.blockers | index("production_game_loader_not_implemented") != null)
           )' target/wine-attach/selected-preflight.json > /dev/null
+          # A native managed runner is stored in XDG_DATA_HOME/bottles/runners,
+          # NOT a guessed sibling of the selected bottle's prefix.
+          managed_home="$RUNNER_TEMP/intimatr-managed-xdg"
+          mkdir -p "$managed_home/bottles/runners/test-wine/bin"
+          ln -s "$(command -v wine)" "$managed_home/bottles/runners/test-wine/bin/wine"
+          XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles live-match \
+            --bottle Fixture \
+            --helper target/wine-attach/wine-process-list.exe \
+            --runner "$(command -v wine)" \
+            --bottles-cli target/wine-attach/mocks/bottles-cli \
+            --pid "$windows_pid" --exe "$observed_path" > target/wine-attach/managed-runner.json
+          jq -e '.runner_verified == true
+              and .runner_binary_verified == true
+              and .runner_audit.reason == "native_managed_runner_binary_matched"
+              and .attachment_readiness.configured_runner_verified == true
+              and .safe_to_attach == false
+              and .attachment_attempted == false' target/wine-attach/managed-runner.json > /dev/null
+          # A different existing executable is rejected before Wine is run.
+          if XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles live-match \
+            --bottle Fixture \
+            --helper target/wine-attach/wine-process-list.exe \
+            --runner "$(command -v false)" \
+            --bottles-cli target/wine-attach/mocks/bottles-cli \
+            --pid "$windows_pid" --exe "$observed_path" 2> target/wine-attach/wrong-managed-runner.stderr; then
+            echo "ERROR: unrelated managed Wine runner binary was accepted" >&2
+            exit 1
+          fi
+          grep -q 'differs from the configured managed Bottles runner' target/wine-attach/wrong-managed-runner.stderr
           # Neither a recycled/missing PID nor a different full executable
           # path may be promoted to an identity match.
           target/release/intimatr-bottles live-match \
