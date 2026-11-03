@@ -516,15 +516,25 @@ pub mod helper {
                 "game action requires explicit --offline-single-player acknowledgment".into(),
             );
         }
-        let action = match args.next().as_deref() {
-            None => "attach",
-            Some("--shutdown-only") if args.next().is_none() => "stop",
-            Some("--status-only") if args.next().is_none() => "status",
+        let (action, preset) = match args.next().as_deref() {
+            None => ("attach", None),
+            Some("--shutdown-only") if args.next().is_none() => ("stop", None),
+            Some("--status-only") if args.next().is_none() => ("status", None),
             Some("--arm-four-timers-only")
                 if args.next().as_deref() == Some("--experimental-four-timers")
                     && args.next().is_none() =>
             {
-                "arm"
+                ("arm", None)
+            }
+            Some("--set-game-preset-only") => {
+                let preset = args.next().ok_or("missing selected-game speed preset")?;
+                if !matches!(preset.as_str(), "half" | "normal" | "double")
+                    || args.next().as_deref() != Some("--experimental-four-timers")
+                    || args.next().is_some()
+                {
+                    return Err("invalid or unacknowledged selected-game speed preset".into());
+                }
+                ("preset", Some(preset))
             }
             _ => return Err("unrecognized game action flags".into()),
         };
@@ -536,6 +546,7 @@ pub mod helper {
             "stop" => shutdown_selected(pid, &target),
             "status" => status_selected(pid, &target),
             "arm" => arm_selected(pid, &target),
+            "preset" => preset_selected(pid, &target, preset.as_deref().unwrap_or_default()),
             _ => attach(pid, target),
         }
     }
@@ -570,6 +581,38 @@ pub mod helper {
         }
         super::remote_status::arm_four_timers(process.0, pid, &dll)?;
         println!("INTIMATR_REMOTE_FOUR_TIMERS_INSTALLED=1");
+        Ok(())
+    }
+
+    /// Set one bounded preset only in an actively armed selected game.
+    /// Revalidate architecture, image, generation, loaded DLL and known
+    /// protection modules under the same per-target mutex.
+    fn preset_selected(pid: u32, target: &AttachTarget, preset: &str) -> Result<(), String> {
+        let executable = std::env::current_exe().map_err(|error| error.to_string())?;
+        let dll = executable
+            .parent()
+            .ok_or("game helper has no directory")?
+            .join("intimatr.dll");
+        let process = own(
+            unsafe { OpenProcess(ACCESS, 0, pid) },
+            "cannot open selected game for speed preset",
+        )?;
+        validate_target_image(process.0, &executable, target)?;
+        validate_target_generation(process.0, target)?;
+        let machine = unsafe { running_process_architecture(process.0) }
+            .ok_or("cannot verify selected game architecture before speed preset")?;
+        if machine.architecture != "x86_64" {
+            return Err("cannot set speed in unsupported game architecture".into());
+        }
+        let _guard = acquire_attach_mutex(pid)?;
+        validate_target_image(process.0, &executable, target)?;
+        validate_target_generation(process.0, target)?;
+        reject_observed_protection_modules(pid)?;
+        if target_intimatr_module(pid, &dll)? != IntimatrModulePresence::Expected {
+            return Err("cannot set speed: exact owned Intimatr DLL is not loaded".into());
+        }
+        let applied = super::remote_status::select_game_preset(process.0, pid, &dll, preset)?;
+        println!("INTIMATR_REMOTE_GAME_RATE_MILLI={applied}");
         Ok(())
     }
 
@@ -627,18 +670,24 @@ pub mod helper {
         let _guard = acquire_attach_mutex(pid)?;
         validate_target_image(process.0, &executable, target)?;
         validate_target_generation(process.0, target)?;
-        let (state, hook_state) = match target_intimatr_module(pid, &dll)? {
-            IntimatrModulePresence::Absent => ("absent", "none"),
-            IntimatrModulePresence::Expected => (
-                super::remote_status::query_lifecycle_state(process.0, pid, &dll)?,
-                super::remote_status::query_timer_hook_state(process.0, pid, &dll)?,
-            ),
+        let (state, hook_state, rate_milli) = match target_intimatr_module(pid, &dll)? {
+            IntimatrModulePresence::Absent => ("absent", "none", 0),
+            IntimatrModulePresence::Expected => {
+                let state = super::remote_status::query_lifecycle_state(process.0, pid, &dll)?;
+                let hooks = super::remote_status::query_timer_hook_state(process.0, pid, &dll)?;
+                let rate = super::remote_status::query_rate_milli(process.0, pid, &dll)?;
+                if (hooks == "installed_four_timers") != (rate != 0) {
+                    return Err("target timer hook state and clock rate disagree".into());
+                }
+                (state, hooks, rate)
+            }
             IntimatrModulePresence::UnexpectedPath => {
                 return Err("cannot query status of a different Intimatr DLL".into());
             }
         };
         println!("INTIMATR_REMOTE_RUNTIME_STATE={state}");
         println!("INTIMATR_REMOTE_TIMER_HOOK_STATE={hook_state}");
+        println!("INTIMATR_REMOTE_GAME_RATE_MILLI={rate_milli}");
         Ok(())
     }
 

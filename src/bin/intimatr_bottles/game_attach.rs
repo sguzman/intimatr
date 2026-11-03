@@ -12,6 +12,7 @@ struct GameAttachOptions {
     attach_helper: String,
     expected_creation_time_100ns: String,
     experimental_four_timers: bool,
+    rate_preset: Option<String>,
 }
 
 impl GameAttachOptions {
@@ -21,6 +22,7 @@ impl GameAttachOptions {
         let mut expected_creation_time_100ns = None;
         let mut consent = false;
         let mut experimental_four_timers = false;
+        let mut rate_preset = None;
         let mut iter = args.iter();
         while let Some(arg) = iter.next() {
             match arg.as_str() {
@@ -28,6 +30,14 @@ impl GameAttachOptions {
                 "--offline-single-player" => {
                     return Err("duplicate offline-single-player acknowledgment".into());
                 }
+                "--preset" if rate_preset.is_none() => {
+                    let value = iter.next().ok_or("missing --preset value")?;
+                    if !matches!(value.as_str(), "half" | "normal" | "double") {
+                        return Err("speed preset must be half, normal or double".into());
+                    }
+                    rate_preset = Some(value.clone());
+                }
+                "--preset" => return Err("duplicate --preset".into()),
                 "--experimental-four-timers" if !experimental_four_timers => {
                     experimental_four_timers = true;
                 }
@@ -79,6 +89,7 @@ impl GameAttachOptions {
             attach_helper,
             expected_creation_time_100ns,
             experimental_four_timers,
+            rate_preset,
         })
     }
 }
@@ -89,6 +100,7 @@ enum GameAction {
     Stop,
     Status,
     ArmTimers,
+    SetRate,
 }
 
 pub(super) fn run_game_attach(args: Vec<String>) -> Result<(), String> {
@@ -107,13 +119,24 @@ pub(super) fn run_game_timer_activation(args: Vec<String>) -> Result<(), String>
     run_game_action(args, GameAction::ArmTimers)
 }
 
+pub(super) fn run_game_rate(args: Vec<String>) -> Result<(), String> {
+    run_game_action(args, GameAction::SetRate)
+}
+
 fn run_game_action(args: Vec<String>, action: GameAction) -> Result<(), String> {
     let options = GameAttachOptions::parse(&args)?;
-    if action == GameAction::ArmTimers && !options.experimental_four_timers {
-        return Err("arm-game-timers requires explicit --experimental-four-timers opt-in".into());
+    let needs_experimental = matches!(action, GameAction::ArmTimers | GameAction::SetRate);
+    if needs_experimental && !options.experimental_four_timers {
+        return Err("game timer controls require explicit --experimental-four-timers opt-in".into());
     }
-    if action != GameAction::ArmTimers && options.experimental_four_timers {
-        return Err("--experimental-four-timers is only valid for arm-game-timers".into());
+    if !needs_experimental && options.experimental_four_timers {
+        return Err("--experimental-four-timers is only valid for game timer controls".into());
+    }
+    if action == GameAction::SetRate && options.rate_preset.is_none() {
+        return Err("set-game-speed requires --preset half|normal|double".into());
+    }
+    if action != GameAction::SetRate && options.rate_preset.is_some() {
+        return Err("--preset is only valid for set-game-speed".into());
     }
     let attach_helper = fs::canonicalize(&options.attach_helper)
         .map_err(|error| format!("cannot find game attach helper: {error}"))?;
@@ -193,6 +216,12 @@ fn run_game_action(args: Vec<String>, action: GameAction) -> Result<(), String> 
                 .arg("--arm-four-timers-only")
                 .arg("--experimental-four-timers");
         }
+        GameAction::SetRate => {
+            command
+                .arg("--set-game-preset-only")
+                .arg(options.rate_preset.as_deref().ok_or("missing speed preset")?)
+                .arg("--experimental-four-timers");
+        }
     }
     let output = command
         .output()
@@ -238,10 +267,17 @@ fn run_game_action(args: Vec<String>, action: GameAction) -> Result<(), String> 
         let expected_marker = match action {
             GameAction::Stop => "INTIMATR_REMOTE_RUNTIME_STOPPED=1",
             GameAction::ArmTimers => "INTIMATR_REMOTE_FOUR_TIMERS_INSTALLED=1",
+            GameAction::SetRate => "INTIMATR_REMOTE_GAME_RATE_MILLI=",
             GameAction::Attach => "INTIMATR_REMOTE_RUNTIME_RUNNING=1",
             GameAction::Status => return Err("status response unexpectedly missing".into()),
         };
-        if !stdout.lines().any(|line| line == expected_marker) {
+        if !stdout.lines().any(|line| {
+            if action == GameAction::SetRate {
+                line.starts_with(expected_marker)
+            } else {
+                line == expected_marker
+            }
+        }) {
             return Err(
                 "game helper returned without independent target runtime state proof".into(),
             );
@@ -266,6 +302,21 @@ fn run_game_action(args: Vec<String>, action: GameAction) -> Result<(), String> 
         {
             return Err("inconsistent or duplicate target timer-hook state".into());
         }
+        let mut rates = stdout
+            .lines()
+            .filter_map(|line| line.strip_prefix("INTIMATR_REMOTE_GAME_RATE_MILLI="));
+        let rate_milli = rates
+            .next()
+            .ok_or("game status helper did not return authoritative hook clock rate")?
+            .parse::<u32>()
+            .map_err(|_| "invalid game hook clock rate")?;
+        if rates.next().is_some()
+            || (hook_state == "installed_four_timers") != (rate_milli != 0)
+            || (rate_milli != 0 && !(100..=10_000).contains(&rate_milli))
+        {
+            return Err("target hook rate conflicts with timer installation status".into());
+        }
+        let virtual_rate = (rate_milli != 0).then_some(f64::from(rate_milli) / 1000.0);
         serde_json::json!({
             "operation": "explicit_offline_single_player_game_status",
             "selected_bottle": candidate.selected_bottle,
@@ -280,7 +331,37 @@ fn run_game_action(args: Vec<String>, action: GameAction) -> Result<(), String> 
             "runtime_stopped_verified": state == "stopped",
             "timer_hook_state": hook_state,
             "timer_hooks_installed_verified": state == "running" && hook_state == "installed_four_timers",
+            "installed_virtual_clock_multiplier": virtual_rate,
+            "gameplay_speed_verified": false,
             "speed_controls_verified": false,
+            "offline_single_player_acknowledged": true
+        })
+    } else if action == GameAction::SetRate {
+        let expected = match options.rate_preset.as_deref() {
+            Some("half") => 500_u32,
+            Some("normal") => 1000,
+            Some("double") => 2000,
+            _ => return Err("unsupported selected-game speed preset".into()),
+        };
+        let marker = format!("INTIMATR_REMOTE_GAME_RATE_MILLI={expected}");
+        if !stdout.lines().any(|line| line == marker) {
+            return Err("game helper did not independently confirm the expected clock rate".into());
+        }
+        serde_json::json!({
+            "operation": "explicit_offline_single_player_game_speed_preset",
+            "selected_bottle": candidate.selected_bottle,
+            "selected_windows_pid": candidate.selected_windows_pid,
+            "selected_executable_path": candidate.selected_executable_path,
+            "verified_process_creation_time_100ns": creation,
+            "verified_wine_prefix": selected.prefix,
+            "verified_wine_runner": selected.runner,
+            "intimatr_module_loaded": true,
+            "runtime_running_verified": true,
+            "timer_hooks_installed_verified": true,
+            "installed_virtual_clock_multiplier": f64::from(expected) / 1000.0,
+            "gameplay_speed_verified": false,
+            "speed_controls_verified": false,
+            "experimental_four_timers_acknowledged": true,
             "offline_single_player_acknowledged": true
         })
     } else if action == GameAction::ArmTimers {
@@ -296,6 +377,7 @@ fn run_game_action(args: Vec<String>, action: GameAction) -> Result<(), String> 
             "runtime_running_verified": true,
             "timer_hooks_installed_verified": true,
             "timer_hook_state": "installed_four_timers",
+            "installed_virtual_clock_multiplier": 1.0,
             "gameplay_speed_verified": false,
             "speed_controls_verified": false,
             "activation_attempted": true,

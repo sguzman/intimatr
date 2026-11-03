@@ -22,6 +22,8 @@ const STATUS_EXPORT: &std::ffi::CStr = c"intimatr_remote_lifecycle_query";
 const SHUTDOWN_EXPORT: &std::ffi::CStr = c"intimatr_remote_shutdown";
 const HOOK_STATUS_EXPORT: &std::ffi::CStr = c"intimatr_remote_timer_hook_state";
 const ARM_TIMER_EXPORT: &std::ffi::CStr = c"intimatr_remote_arm_four_timers";
+const SET_PRESET_EXPORT: &std::ffi::CStr = c"intimatr_remote_game_preset";
+const READ_RATE_EXPORT: &std::ffi::CStr = c"intimatr_remote_game_rate_milli";
 
 #[repr(C)]
 #[allow(dead_code)]
@@ -182,6 +184,15 @@ fn export_rva(dll: &Path, export: &std::ffi::CStr) -> Result<usize, String> {
 }
 
 fn call_export(process: Handle, remote: usize, timeout_ms: u32) -> Result<u32, String> {
+    call_export_with_selector(process, remote, 0, timeout_ms)
+}
+
+fn call_export_with_selector(
+    process: Handle,
+    remote: usize,
+    selector: usize,
+    timeout_ms: u32,
+) -> Result<u32, String> {
     let entry: unsafe extern "system" fn(*mut c_void) -> u32 =
         unsafe { std::mem::transmute(remote) };
     let thread = unsafe {
@@ -190,7 +201,7 @@ fn call_export(process: Handle, remote: usize, timeout_ms: u32) -> Result<u32, S
             ptr::null(),
             0,
             Some(entry),
-            ptr::null_mut(),
+            selector as *mut c_void,
             0,
             ptr::null_mut(),
         )
@@ -307,6 +318,58 @@ pub fn arm_four_timers(process: Handle, pid: u32, dll: &Path) -> Result<(), Stri
         return Err("timer activation did not remain installed in a Running target".into());
     }
     Ok(())
+}
+
+/// Installed IAT clock's own rate, not a measured gameplay multiplier.
+pub fn query_rate_milli(process: Handle, pid: u32, dll: &Path) -> Result<u32, String> {
+    let (base, image_size) = target_base(pid, dll)?;
+    let rva = export_rva(dll, READ_RATE_EXPORT)?;
+    if rva >= image_size {
+        return Err("target Intimatr DLL lacks bounded clock-rate query export".into());
+    }
+    let entry = base
+        .checked_add(rva)
+        .ok_or("remote Intimatr rate-query address overflow")?;
+    let result = call_export(process, entry, 2_000)?;
+    if result != 0 && !(100..=10_000).contains(&result) {
+        return Err("target returned an invalid clock-rate value".into());
+    }
+    Ok(result)
+}
+
+pub fn select_game_preset(
+    process: Handle,
+    pid: u32,
+    dll: &Path,
+    preset: &str,
+) -> Result<u32, String> {
+    let (selector, expected) = match preset {
+        "half" => (1, 500),
+        "normal" => (2, 1000),
+        "double" => (3, 2000),
+        _ => return Err("unsupported selected-game speed preset".into()),
+    };
+    if query_lifecycle_state(process, pid, dll)? != "running"
+        || query_timer_hook_state(process, pid, dll)? != "installed_four_timers"
+    {
+        return Err("cannot set game speed: exact target has no active four-timer IAT hooks".into());
+    }
+    let (base, image_size) = target_base(pid, dll)?;
+    let rva = export_rva(dll, SET_PRESET_EXPORT)?;
+    if rva >= image_size {
+        return Err("target Intimatr DLL lacks bounded speed-preset export".into());
+    }
+    let entry = base
+        .checked_add(rva)
+        .ok_or("remote Intimatr speed-preset address overflow")?;
+    if call_export_with_selector(process, entry, selector, 5_000)? != 1 {
+        return Err("selected-game speed preset was rejected by shared command executor".into());
+    }
+    let observed = query_rate_milli(process, pid, dll)?;
+    if observed != expected {
+        return Err("selected-game virtual clock did not confirm the requested multiplier".into());
+    }
+    Ok(observed)
 }
 
 /// Return only after the selected DLL reports Running from the actual target.

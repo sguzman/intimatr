@@ -49,6 +49,7 @@ fn run() -> Result<(), String> {
     if action == "--help" || action == "-h" {
         println!(
             "Usage:\n  intimatr-bottles scan\n  intimatr-bottles plan (--all | --include-bottle GLOB | --include-program GLOB) [--exclude-bottle GLOB] [--exclude-program GLOB]\n  intimatr-bottles probe-attach --pid PID --prefix WINEPREFIX --helper PATH --runner ABSOLUTE_WINE_BINARY\n  intimatr-bottles profile-check --config TOML --bottle NAME --exe WINDOWS_PATH\n  intimatr-bottles processes --prefix INITIALIZED_WINEPREFIX\n  intimatr-bottles win-processes --prefix INITIALIZED_WINEPREFIX --helper WINE_PROCESS_LIST_EXE --runner ABSOLUTE_WINE_BINARY\n  intimatr-bottles match-snapshot --bottle NAME --programs BOTTLES_JSON --windows WINE_PROCESS_JSON\n  intimatr-bottles live-match --bottle NAME --helper WINE_PROCESS_LIST_EXE --runner ABSOLUTE_WINE_BINARY [--prefix WINEPREFIX] [--bottles-cli BOTTLES_CLI] [--pid WINDOWS_PID --exe EXACT_WINDOWS_PATH]\n  intimatr-bottles attach-game --bottle NAME --helper WINE_PROCESS_LIST_EXE --attach-helper ABSOLUTE_GAME_ATTACH_HELPER --runner ABSOLUTE_WINE_BINARY --pid WINDOWS_PID --exe EXACT_WINDOWS_PATH --created-100ns WIN_FILETIME --offline-single-player\n  intimatr-bottles arm-game-timers --bottle NAME --helper WINE_PROCESS_LIST_EXE --attach-helper ABSOLUTE_GAME_ATTACH_HELPER --runner ABSOLUTE_WINE_BINARY --pid WINDOWS_PID --exe EXACT_WINDOWS_PATH --created-100ns WIN_FILETIME --offline-single-player --experimental-four-timers
+  intimatr-bottles set-game-speed --bottle NAME --helper WINE_PROCESS_LIST_EXE --attach-helper ABSOLUTE_GAME_ATTACH_HELPER --runner ABSOLUTE_WINE_BINARY --pid WINDOWS_PID --exe EXACT_WINDOWS_PATH --created-100ns WIN_FILETIME --offline-single-player --experimental-four-timers --preset (half|normal|double)
   intimatr-bottles stop-game --bottle NAME --helper WINE_PROCESS_LIST_EXE --attach-helper ABSOLUTE_GAME_ATTACH_HELPER --runner ABSOLUTE_WINE_BINARY --pid WINDOWS_PID --exe EXACT_WINDOWS_PATH --created-100ns WIN_FILETIME --offline-single-player [--prefix WINEPREFIX] [--bottles-cli BOTTLES_CLI]\n  intimatr-bottles status-game --bottle NAME --helper WINE_PROCESS_LIST_EXE --attach-helper ABSOLUTE_GAME_ATTACH_HELPER --runner ABSOLUTE_WINE_BINARY --pid WINDOWS_PID --exe EXACT_WINDOWS_PATH --created-100ns WIN_FILETIME --offline-single-player\n  intimatr-bottles speed --prefix INITIALIZED_WINEPREFIX --runner ABSOLUTE_WINE --client ABSOLUTE_INTIMATR_SPEED_EXE (--tcp LOOPBACK:PORT | --pipe NAME) (status | increase | decrease | toggle | reset | preset MULTIPLIER | hold MULTIPLIER DURATION_MS | release)\n\nscan/plan/live-match are read-only. probe-attach is fixture-only. attach-game requires exact game registration, verified managed runner and explicit offline-single-player acknowledgment; do not use with online or protected games."
         );
         return Ok(());
@@ -80,6 +81,9 @@ fn run() -> Result<(), String> {
     if action == "arm-game-timers" {
         return game_attach::run_game_timer_activation(args.collect());
     }
+    if action == "set-game-speed" {
+        return game_attach::run_game_rate(args.collect());
+    }
     if action == "status-game" {
         return game_attach::run_game_status(args.collect());
     }
@@ -88,7 +92,7 @@ fn run() -> Result<(), String> {
     }
     if action != "scan" && action != "plan" {
         return Err(
-            "unknown command; use --help for scan, plan, live-match, attach-game, arm-game-timers, stop-game, status-game and other commands".to_owned(),
+            "unknown command; use --help for scan, plan, live-match, attach-game, arm-game-timers, set-game-speed, stop-game, status-game and other commands".to_owned(),
         );
     }
 
