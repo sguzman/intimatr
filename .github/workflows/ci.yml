@@ -652,6 +652,19 @@ jobs:
             exit 1
           fi
           grep -q 'refusing duplicate attach' target/wine-attach/game-duplicate.stderr
+          # Stop the exact selected process and keep callback code mapped.
+          XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles stop-game "${game_args[@]}" --offline-single-player > target/wine-attach/game-stop.json
+          jq -e --arg created "$game_created" '
+              .operation == "explicit_offline_single_player_game_shutdown"
+              and .runtime_stopped_verified == true
+              and .intimatr_module_loaded == true
+              and .intimatr_module_unloaded == false
+              and .verified_process_creation_time_100ns == $created
+              and .shutdown_attempted == true
+              and .speed_controls_verified == false' target/wine-attach/game-stop.json > /dev/null
+          # Repeated stop is idempotent; never free a still-referenced DLL.
+          XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles stop-game "${game_args[@]}" --offline-single-player > target/wine-attach/game-stopped-again.json
+          jq -e '.runtime_stopped_verified == true and .intimatr_module_unloaded == false' target/wine-attach/game-stopped-again.json > /dev/null
           touch target/wine-attach/game-fixture/attach-release.flag
           wait "$game_launcher"
           trap - EXIT

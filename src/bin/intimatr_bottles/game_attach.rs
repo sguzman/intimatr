@@ -75,6 +75,14 @@ impl GameAttachOptions {
 }
 
 pub(super) fn run_game_attach(args: Vec<String>) -> Result<(), String> {
+    run_game_action(args, false)
+}
+
+pub(super) fn run_game_stop(args: Vec<String>) -> Result<(), String> {
+    run_game_action(args, true)
+}
+
+fn run_game_action(args: Vec<String>, stop_only: bool) -> Result<(), String> {
     let options = GameAttachOptions::parse(&args)?;
     let attach_helper = fs::canonicalize(&options.attach_helper)
         .map_err(|error| format!("cannot find game attach helper: {error}"))?;
@@ -129,8 +137,8 @@ pub(super) fn run_game_attach(args: Vec<String>) -> Result<(), String> {
     // The Windows helper opens a HANDLE to the selected PID and checks the
     // image and live architecture again under its per-target mutex before
     // writing a DLL path; the snapshot alone is never attachment authority.
-    let output = Command::new(&selected.runner)
-        .arg(&attach_helper)
+    let mut command = Command::new(&selected.runner);
+    command.arg(&attach_helper)
         .arg("--pid")
         .arg(candidate.selected_windows_pid.to_string())
         .arg("--exe")
@@ -139,7 +147,11 @@ pub(super) fn run_game_attach(args: Vec<String>) -> Result<(), String> {
         .arg(creation)
         .arg("--offline-single-player")
         .env("WINEPREFIX", &selected.prefix)
-        .env("WINEDEBUG", "-all")
+        .env("WINEDEBUG", "-all");
+    if stop_only {
+        command.arg("--shutdown-only");
+    }
+    let output = command
         .output()
         .map_err(|error| format!("cannot launch selected Wine game helper: {error}"))?;
     if !output.status.success() {
@@ -152,15 +164,36 @@ pub(super) fn run_game_attach(args: Vec<String>) -> Result<(), String> {
                 .collect::<String>()
         ));
     }
-    // The game helper must independently query the injected DLL's Running
-    // lifecycle state. A module-list match alone cannot imply runtime success.
+    // A module-list match alone cannot prove a Running or Stopped state.
+    let expected_marker = if stop_only {
+        "INTIMATR_REMOTE_RUNTIME_STOPPED=1"
+    } else {
+        "INTIMATR_REMOTE_RUNTIME_RUNNING=1"
+    };
     if !String::from_utf8_lossy(&output.stdout)
         .lines()
-        .any(|line| line == "INTIMATR_REMOTE_RUNTIME_RUNNING=1")
+        .any(|line| line == expected_marker)
     {
-        return Err("game helper returned without independent target runtime Running proof".into());
+        return Err("game helper returned without independent target runtime state proof".into());
     }
-    let result = serde_json::json!({
+    let result = if stop_only {
+        serde_json::json!({
+            "operation": "explicit_offline_single_player_game_shutdown",
+            "selected_bottle": candidate.selected_bottle,
+            "selected_windows_pid": candidate.selected_windows_pid,
+            "selected_executable_path": candidate.selected_executable_path,
+            "verified_process_creation_time_100ns": creation,
+            "verified_wine_prefix": selected.prefix,
+            "verified_wine_runner": selected.runner,
+            "intimatr_module_loaded": true,
+            "intimatr_module_unloaded": false,
+            "runtime_stopped_verified": true,
+            "speed_controls_verified": false,
+            "shutdown_attempted": true,
+            "offline_single_player_acknowledged": true
+        })
+    } else {
+        serde_json::json!({
         "operation": "explicit_offline_single_player_game_attachment",
         "selected_bottle": candidate.selected_bottle,
         "selected_windows_pid": candidate.selected_windows_pid,
@@ -173,7 +206,8 @@ pub(super) fn run_game_attach(args: Vec<String>) -> Result<(), String> {
         "speed_controls_verified": false,
         "attachment_attempted": true,
         "offline_single_player_acknowledged": true
-    });
+        })
+    };
     println!(
         "{}",
         serde_json::to_string_pretty(&result)
