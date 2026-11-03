@@ -793,6 +793,11 @@ jobs:
             exit 1
           fi
           grep -q 'no active four-timer IAT hooks' target/wine-attach/game-rate-before-arm.stderr
+          if XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles step-game-speed "${game_args[@]}" --offline-single-player --experimental-four-timers --action increase >target/wine-attach/game-step-before-arm.stdout 2>target/wine-attach/game-step-before-arm.stderr; then
+            echo "ERROR: speed action succeeded without timer activation" >&2
+            exit 1
+          fi
+          grep -q 'no active four-timer IAT hooks' target/wine-attach/game-step-before-arm.stderr
           # The experimental marker must be separate from offline consent.
           if XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles arm-game-timers "${game_args[@]}" --offline-single-player >target/wine-attach/game-arm-no-consent.stdout 2>target/wine-attach/game-arm-no-consent.stderr; then
             echo "ERROR: game timer activation accepted without experimental opt-in" >&2
@@ -904,6 +909,32 @@ jobs:
             exit 1
           fi
           grep -q 'refusing duplicate attach' target/wine-attach/game-duplicate.stderr
+          # Shared configured step/toggle/reset actions use the same exact
+          # running process identity and the installed four-timer clock.
+          # Start at 1x after the prior named/numeric rate loop.
+          for spec in 'increase:1.5' 'increase:2.0' 'decrease:1.5' 'toggle:1.0' 'toggle:1.5' 'reset:1.0'; do
+            step_action="${spec%%:*}"
+            step_rate="${spec##*:}"
+            XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles step-game-speed "${game_args[@]}" --offline-single-player --experimental-four-timers --action "$step_action" >"target/wine-attach/game-step-$step_action-$step_rate.json"
+            jq -e --arg action "$step_action" --argjson rate "$step_rate" '
+              .operation == "explicit_offline_single_player_game_speed_action"
+              and .speed_action == $action
+              and .installed_virtual_clock_multiplier == $rate
+              and .runtime_running_verified == true
+              and .timer_hooks_installed_verified == true
+              and .gameplay_speed_verified == false' "target/wine-attach/game-step-$step_action-$step_rate.json" > /dev/null
+            XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles status-game "${game_args[@]}" --offline-single-player >target/wine-attach/game-step-status.json
+            jq -e --argjson rate "$step_rate" '
+              .installed_virtual_clock_multiplier == $rate
+              and .timer_hook_state == "installed_four_timers"' target/wine-attach/game-step-status.json > /dev/null
+          done
+          # Stop must restore imports even if externally selected virtual
+          # clock was left at a non-unity speed during active timer reads.
+          XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles set-game-speed "${game_args[@]}" --offline-single-player --experimental-four-timers --multiplier 1.5 >target/wine-attach/game-before-nonunity-stop.json
+          jq -e '.installed_virtual_clock_multiplier == 1.5' target/wine-attach/game-before-nonunity-stop.json > /dev/null
+          XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles status-game "${game_args[@]}" --offline-single-player >target/wine-attach/game-nonunity-before-stop.json
+          jq -e '.installed_virtual_clock_multiplier == 1.5
+            and .timer_hook_state == "installed_four_timers"' target/wine-attach/game-nonunity-before-stop.json > /dev/null
           # The disposable target has *not* disabled its hooks. External
           # stop-game must restore the four installed timer imports itself.
           # The DLL remains mapped because callback code may still be held.
@@ -939,6 +970,11 @@ jobs:
             exit 1
           fi
           grep -q 'no active four-timer IAT hooks' target/wine-attach/game-rate-after-stop.stderr
+          if XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles step-game-speed "${game_args[@]}" --offline-single-player --experimental-four-timers --action increase >target/wine-attach/game-step-after-stop.stdout 2>target/wine-attach/game-step-after-stop.stderr; then
+            echo "ERROR: speed-state action succeeded after shutdown" >&2
+            exit 1
+          fi
+          grep -q 'no active four-timer IAT hooks' target/wine-attach/game-step-after-stop.stderr
           # Repeated stop is idempotent; never free a still-referenced DLL.
           XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles stop-game "${game_args[@]}" --offline-single-player > target/wine-attach/game-stopped-again.json
           jq -e '.runtime_stopped_verified == true and .intimatr_module_unloaded == false' target/wine-attach/game-stopped-again.json > /dev/null

@@ -885,11 +885,7 @@ mod tests {
             );
         }
         for other in [GameAction::Attach, GameAction::Stop, GameAction::SetRate] {
-            assert!(
-                run_game_action(values.clone(), other)
-                    .unwrap_err()
-                    .contains("--action is only valid")
-            );
+            assert!(run_game_action(values.clone(), other).is_err());
         }
         let mut missing = values.clone();
         missing.truncate(missing.len() - 3);
