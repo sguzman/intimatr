@@ -276,7 +276,9 @@ fn fully_installed_hook_set(slots: &[HookSlot]) -> bool {
         intercepted_time_get_time as *const () as usize,
     ];
     !slots.is_empty()
-        && slots.iter().all(|slot| slot.active && slot.protection_restored)
+        && slots
+            .iter()
+            .all(|slot| slot.active && slot.protection_restored)
         && required
             .into_iter()
             .all(|replacement| slots.iter().any(|slot| slot.replacement == replacement))
@@ -447,12 +449,7 @@ fn restore_slots(slots: &mut [HookSlot]) -> bool {
         |address, original_protection| {
             let mut ignored = 0;
             unsafe {
-                VirtualProtect(
-                    address as *mut c_void,
-                    8,
-                    original_protection,
-                    &mut ignored,
-                ) != 0
+                VirtualProtect(address as *mut c_void, 8, original_protection, &mut ignored) != 0
             }
         },
     )
