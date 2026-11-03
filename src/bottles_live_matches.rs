@@ -288,7 +288,8 @@ mod tests {
                 serde_json::Value::String(invalid.into());
             assert!(WindowsProcessSnapshot::parse(&report.to_string()).is_err());
         }
-        report["processes"][0]["process_creation_time_100ns"] = serde_json::json!(133700000000000001_u64);
+        report["processes"][0]["process_creation_time_100ns"] =
+            serde_json::json!(133700000000000001_u64);
         assert!(WindowsProcessSnapshot::parse(&report.to_string()).is_err());
     }
 
