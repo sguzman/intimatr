@@ -75,7 +75,9 @@ impl WindowsProcessSnapshot {
             }
             if let Some(coverage) = process.timer_import_coverage {
                 if coverage.all_four_static_names != coverage.is_complete() {
-                    return Err("Windows process snapshot has inconsistent timer import coverage".into());
+                    return Err(
+                        "Windows process snapshot has inconsistent timer import coverage".into(),
+                    );
                 }
                 if process.pe_image_architecture.as_deref() != Some("x86_64") {
                     return Err("timer import coverage requires a verified x86-64 PE file".into());
@@ -302,8 +304,7 @@ mod tests {
             }]
         });
         assert!(WindowsProcessSnapshot::parse(&report.to_string()).is_ok());
-        report["processes"][0]["timer_import_coverage"]["time_get_time"] =
-            serde_json::json!(false);
+        report["processes"][0]["timer_import_coverage"]["time_get_time"] = serde_json::json!(false);
         assert!(WindowsProcessSnapshot::parse(&report.to_string()).is_err());
         report["processes"][0]["timer_import_coverage"]["all_four_static_names"] =
             serde_json::json!(false);

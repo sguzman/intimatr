@@ -591,8 +591,8 @@ mod tests {
         assert!(validate_static_timer_imports(GameAction::Status, Some(coverage)).is_ok());
         assert!(validate_static_timer_imports(GameAction::SetRate, Some(coverage)).is_ok());
         assert!(validate_static_timer_imports(GameAction::ArmTimers, None).is_ok());
-        let rejected = validate_static_timer_imports(GameAction::ArmTimers, Some(coverage))
-            .unwrap_err();
+        let rejected =
+            validate_static_timer_imports(GameAction::ArmTimers, Some(coverage)).unwrap_err();
         assert!(rejected.contains("QueryPerformanceCounter"));
         assert!(rejected.contains("timeGetTime"));
         assert!(rejected.contains("no remote helper launched"));
