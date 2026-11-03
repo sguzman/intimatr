@@ -15,6 +15,7 @@ struct GameAttachOptions {
     experimental_four_timers: bool,
     rate_preset: Option<String>,
     rate_milli: Option<u32>,
+    step_action: Option<String>,
 }
 
 impl GameAttachOptions {
@@ -26,6 +27,7 @@ impl GameAttachOptions {
         let mut experimental_four_timers = false;
         let mut rate_preset = None;
         let mut rate_milli = None;
+        let mut step_action = None;
         let mut iter = args.iter();
         while let Some(arg) = iter.next() {
             match arg.as_str() {
@@ -46,6 +48,14 @@ impl GameAttachOptions {
                     rate_milli = Some(parse_multiplier_milli(value)?);
                 }
                 "--multiplier" => return Err("duplicate --multiplier".into()),
+                "--action" if step_action.is_none() => {
+                    let value = iter.next().ok_or("missing --action value")?;
+                    if !matches!(value.as_str(), "increase" | "decrease" | "toggle" | "reset") {
+                        return Err("speed action must be increase, decrease, toggle or reset".into());
+                    }
+                    step_action = Some(value.clone());
+                }
+                "--action" => return Err("duplicate --action".into()),
                 "--experimental-four-timers" if !experimental_four_timers => {
                     experimental_four_timers = true;
                 }
@@ -82,6 +92,9 @@ impl GameAttachOptions {
         if rate_preset.is_some() && rate_milli.is_some() {
             return Err("choose exactly one --preset or --multiplier".into());
         }
+        if step_action.is_some() && (rate_preset.is_some() || rate_milli.is_some()) {
+            return Err("choose only --action for step-game-speed".into());
+        }
         if !consent {
             return Err("explicit --offline-single-player acknowledgment is required".into());
         }
@@ -102,6 +115,7 @@ impl GameAttachOptions {
             experimental_four_timers,
             rate_preset,
             rate_milli,
+            step_action,
         })
     }
 }
@@ -127,6 +141,7 @@ enum GameAction {
     Status,
     ArmTimers,
     SetRate,
+    Step,
 }
 
 pub(super) fn run_game_attach(args: Vec<String>) -> Result<(), String> {
@@ -147,6 +162,10 @@ pub(super) fn run_game_timer_activation(args: Vec<String>) -> Result<(), String>
 
 pub(super) fn run_game_rate(args: Vec<String>) -> Result<(), String> {
     run_game_action(args, GameAction::SetRate)
+}
+
+pub(super) fn run_game_step(args: Vec<String>) -> Result<(), String> {
+    run_game_action(args, GameAction::Step)
 }
 
 /// A known-incomplete on-disk PE import set is enough to reject an arm
@@ -173,16 +192,22 @@ fn validate_static_timer_imports(
 
 fn run_game_action(args: Vec<String>, action: GameAction) -> Result<(), String> {
     let options = GameAttachOptions::parse(&args)?;
-    let needs_experimental = matches!(action, GameAction::ArmTimers | GameAction::SetRate);
+    let needs_experimental = matches!(
+        action,
+        GameAction::ArmTimers | GameAction::SetRate | GameAction::Step
+    );
     if action == GameAction::ArmTimers && !options.experimental_four_timers {
         return Err("arm-game-timers requires explicit --experimental-four-timers opt-in".into());
     }
     if action == GameAction::SetRate && !options.experimental_four_timers {
         return Err("set-game-speed requires explicit --experimental-four-timers opt-in".into());
     }
+    if action == GameAction::Step && !options.experimental_four_timers {
+        return Err("step-game-speed requires explicit --experimental-four-timers opt-in".into());
+    }
     if !needs_experimental && options.experimental_four_timers {
         return Err(
-            "--experimental-four-timers is only valid for arm-game-timers or set-game-speed".into(),
+            "--experimental-four-timers is only valid for arm-game-timers, set-game-speed or step-game-speed".into(),
         );
     }
     if action == GameAction::SetRate
@@ -197,6 +222,12 @@ fn run_game_action(args: Vec<String>, action: GameAction) -> Result<(), String> 
         && (options.rate_preset.is_some() || options.rate_milli.is_some())
     {
         return Err("--preset and --multiplier are only valid for set-game-speed".into());
+    }
+    if action == GameAction::Step && options.step_action.is_none() {
+        return Err("step-game-speed requires --action increase|decrease|toggle|reset".into());
+    }
+    if action != GameAction::Step && options.step_action.is_some() {
+        return Err("--action is only valid for step-game-speed".into());
     }
     let attach_helper = fs::canonicalize(&options.attach_helper)
         .map_err(|error| format!("cannot find game attach helper: {error}"))?;
@@ -290,6 +321,12 @@ fn run_game_action(args: Vec<String>, action: GameAction) -> Result<(), String> 
                 );
             }
             command.arg("--experimental-four-timers");
+        }
+        GameAction::Step => {
+            command
+                .arg("--step-game-speed-only")
+                .arg(options.step_action.as_deref().ok_or("missing speed action")?)
+                .arg("--experimental-four-timers");
         }
     }
     let output = command
@@ -486,6 +523,36 @@ fn run_game_action(args: Vec<String>, action: GameAction) -> Result<(), String> 
             "runtime_running_verified": true,
             "timer_hooks_installed_verified": true,
             "installed_virtual_clock_multiplier": f64::from(expected) / 1000.0,
+            "gameplay_speed_verified": false,
+            "speed_controls_verified": false,
+            "experimental_four_timers_acknowledged": true,
+            "offline_single_player_acknowledged": true
+        })
+    } else if action == GameAction::Step {
+        let mut rates = stdout
+            .lines()
+            .filter_map(|line| line.strip_prefix("INTIMATR_REMOTE_GAME_RATE_MILLI="));
+        let observed = rates
+            .next()
+            .ok_or("game helper did not confirm changed virtual clock rate")?
+            .parse::<u32>()
+            .map_err(|_| "game helper returned invalid changed clock rate")?;
+        if rates.next().is_some() || !(100..=10_000).contains(&observed) {
+            return Err("game helper returned duplicate or out-of-range changed clock rate".into());
+        }
+        serde_json::json!({
+            "operation": "explicit_offline_single_player_game_speed_action",
+            "selected_bottle": candidate.selected_bottle,
+            "selected_windows_pid": candidate.selected_windows_pid,
+            "selected_executable_path": candidate.selected_executable_path,
+            "verified_process_creation_time_100ns": creation,
+            "verified_wine_prefix": selected.prefix,
+            "verified_wine_runner": selected.runner,
+            "speed_action": options.step_action,
+            "intimatr_module_loaded": true,
+            "runtime_running_verified": true,
+            "timer_hooks_installed_verified": true,
+            "installed_virtual_clock_multiplier": f64::from(observed) / 1000.0,
             "gameplay_speed_verified": false,
             "speed_controls_verified": false,
             "experimental_four_timers_acknowledged": true,
