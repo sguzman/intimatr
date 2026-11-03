@@ -537,7 +537,9 @@ pub mod helper {
                 ("preset", Some(preset), None)
             }
             Some("--set-game-rate-milli-only") => {
-                let raw = args.next().ok_or("missing selected-game rate in thousandths")?;
+                let raw = args
+                    .next()
+                    .ok_or("missing selected-game rate in thousandths")?;
                 let rate = raw
                     .parse::<u32>()
                     .map_err(|_| "invalid selected-game rate in thousandths")?;
@@ -546,7 +548,9 @@ pub mod helper {
                     || args.next().as_deref() != Some("--experimental-four-timers")
                     || args.next().is_some()
                 {
-                    return Err("invalid or unacknowledged selected-game rate in thousandths".into());
+                    return Err(
+                        "invalid or unacknowledged selected-game rate in thousandths".into(),
+                    );
                 }
                 ("rate", None, Some(rate))
             }

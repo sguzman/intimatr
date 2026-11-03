@@ -460,7 +460,9 @@ pub fn select_game_rate_milli(
         .checked_add(rva)
         .ok_or("remote Intimatr thousandth-rate address overflow")?;
     if call_export_with_selector(process, entry, milli as usize, 5_000)? != 1 {
-        return Err("selected-game rate is not an allowed profile step or target is unavailable".into());
+        return Err(
+            "selected-game rate is not an allowed profile step or target is unavailable".into(),
+        );
     }
     let observed = query_rate_milli(process, pid, dll)?;
     if observed != milli {

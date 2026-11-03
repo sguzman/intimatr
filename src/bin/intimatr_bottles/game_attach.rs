@@ -108,9 +108,7 @@ impl GameAttachOptions {
 
 /// Parse a human multiplier into the bounded integer remote ABI.
 fn parse_multiplier_milli(raw: &str) -> Result<u32, String> {
-    let multiplier = raw
-        .parse::<f64>()
-        .map_err(|_| "invalid speed multiplier")?;
+    let multiplier = raw.parse::<f64>().map_err(|_| "invalid speed multiplier")?;
     if !multiplier.is_finite() || !(0.1..=10.0).contains(&multiplier) {
         return Err("speed multiplier must be finite and between 0.1 and 10".into());
     }
@@ -191,7 +189,9 @@ fn run_game_action(args: Vec<String>, action: GameAction) -> Result<(), String> 
         && options.rate_preset.is_none()
         && options.rate_milli.is_none()
     {
-        return Err("set-game-speed requires --preset half|normal|double or --multiplier VALUE".into());
+        return Err(
+            "set-game-speed requires --preset half|normal|double or --multiplier VALUE".into(),
+        );
     }
     if action != GameAction::SetRate
         && (options.rate_preset.is_some() || options.rate_milli.is_some())
@@ -282,9 +282,12 @@ fn run_game_action(args: Vec<String>, action: GameAction) -> Result<(), String> 
             if let Some(preset) = options.rate_preset.as_deref() {
                 command.arg("--set-game-preset-only").arg(preset);
             } else {
-                command
-                    .arg("--set-game-rate-milli-only")
-                    .arg(options.rate_milli.ok_or("missing requested speed multiplier")?.to_string());
+                command.arg("--set-game-rate-milli-only").arg(
+                    options
+                        .rate_milli
+                        .ok_or("missing requested speed multiplier")?
+                        .to_string(),
+                );
             }
             command.arg("--experimental-four-timers");
         }
@@ -740,23 +743,34 @@ mod tests {
             assert_eq!(parse_multiplier_milli(raw).unwrap(), expected);
         }
         for invalid in [
-            "", "0", "-1", "0.099", "10.001", "nan", "NaN", "inf",
-            "1.0005", "1e309", "faster", "1,5",
+            "", "0", "-1", "0.099", "10.001", "nan", "NaN", "inf", "1.0005", "1e309", "faster",
+            "1,5",
         ] {
             assert!(parse_multiplier_milli(invalid).is_err(), "{invalid}");
         }
         let mut values = args(&[
-            "--attach-helper", "/tmp/wine-game-attach-helper.exe",
-            "--pid", "42", "--exe", r"C:\Games\Game.exe",
-            "--created-100ns", "133700000000000001",
-            "--offline-single-player", "--experimental-four-timers",
-            "--multiplier", "1.5",
+            "--attach-helper",
+            "/tmp/wine-game-attach-helper.exe",
+            "--pid",
+            "42",
+            "--exe",
+            r"C:\Games\Game.exe",
+            "--created-100ns",
+            "133700000000000001",
+            "--offline-single-player",
+            "--experimental-four-timers",
+            "--multiplier",
+            "1.5",
         ]);
         let parsed = GameAttachOptions::parse(&values).unwrap();
         assert_eq!(parsed.rate_milli, Some(1500));
         assert_eq!(parsed.rate_preset, None);
         values.extend(args(&["--preset", "double"]));
-        assert!(GameAttachOptions::parse(&values).unwrap_err().contains("exactly one"));
+        assert!(
+            GameAttachOptions::parse(&values)
+                .unwrap_err()
+                .contains("exactly one")
+        );
         values.truncate(values.len() - 2);
         values.extend(args(&["--multiplier", "2"]));
         assert!(GameAttachOptions::parse(&values).is_err());
