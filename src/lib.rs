@@ -7,9 +7,9 @@ pub mod analysis;
 pub mod backpressure;
 pub mod bottles;
 pub mod bottles_live_matches;
-pub mod bottles_preflight;
 #[cfg(target_os = "linux")]
 pub mod bottles_prefix;
+pub mod bottles_preflight;
 #[cfg(target_os = "linux")]
 pub mod bottles_processes;
 #[cfg(target_os = "linux")]
