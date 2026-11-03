@@ -32,7 +32,10 @@ fn parse_executable_path(args: &[String]) -> Result<PathBuf, String> {
 
 /// Categorize static *names* only. None is indeterminate, never a false
 /// missing-import verdict. This function deliberately issues no attach claim.
-fn report(path: &Path, coverage: Result<TimerImportCoverage, String>) -> serde_json::Value {
+/// Shared by single-PE and selected-bottle read-only inventory.
+pub(super) fn classify_imports(
+    coverage: Result<TimerImportCoverage, String>,
+) -> serde_json::Value {
     let (state, imports, missing, error) = match coverage {
         Ok(observed) if observed.is_complete() => (
             "static_four_timer_names_present",
@@ -54,8 +57,6 @@ fn report(path: &Path, coverage: Result<TimerImportCoverage, String>) -> serde_j
         ),
     };
     serde_json::json!({
-        "operation": "read_only_linux_pe_timer_compatibility",
-        "selected_file": path,
         "static_import_status": state,
         "static_timer_import_coverage": imports,
         "static_timer_imports_missing": if imports.is_some() {
@@ -69,6 +70,18 @@ fn report(path: &Path, coverage: Result<TimerImportCoverage, String>) -> serde_j
         "process_attachment_attempted": false,
         "timer_hook_installation_attempted": false,
     })
+}
+
+fn report(path: &Path, coverage: Result<TimerImportCoverage, String>) -> serde_json::Value {
+    let mut result = classify_imports(coverage);
+    if let Some(object) = result.as_object_mut() {
+        object.insert(
+            "operation".into(),
+            serde_json::json!("read_only_linux_pe_timer_compatibility"),
+        );
+        object.insert("selected_file".into(), serde_json::json!(path));
+    }
+    result
 }
 
 pub(super) fn run_pe_compat(args: Vec<String>) -> Result<(), String> {
