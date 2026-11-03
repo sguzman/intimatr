@@ -88,6 +88,10 @@ pub(super) fn run_game_attach(args: Vec<String>) -> Result<(), String> {
     if !selected.runner_verified {
         return Err("cannot verify native Bottles configured Wine runner for this game".into());
     }
+    let creation = candidate
+        .process_creation_time_100ns
+        .as_deref()
+        .ok_or("cannot verify selected game process creation time in Wine snapshot")?;
     if !candidate.registered_identity_verified_at_snapshot
         || !candidate.pid_observed_in_selected_wineserver_snapshot
         || !candidate.image_observed_in_selected_wineserver_snapshot
@@ -109,6 +113,8 @@ pub(super) fn run_game_attach(args: Vec<String>) -> Result<(), String> {
         .arg(candidate.selected_windows_pid.to_string())
         .arg("--exe")
         .arg(&candidate.selected_executable_path)
+        .arg("--created-100ns")
+        .arg(creation)
         .arg("--offline-single-player")
         .env("WINEPREFIX", &selected.prefix)
         .env("WINEDEBUG", "-all")
@@ -129,6 +135,7 @@ pub(super) fn run_game_attach(args: Vec<String>) -> Result<(), String> {
         "selected_bottle": candidate.selected_bottle,
         "selected_windows_pid": candidate.selected_windows_pid,
         "selected_executable_path": candidate.selected_executable_path,
+        "verified_process_creation_time_100ns": creation,
         "verified_wine_prefix": selected.prefix,
         "verified_wine_runner": selected.runner,
         "intimatr_module_loaded": true,

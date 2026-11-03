@@ -556,6 +556,8 @@ jobs:
             --runner "$(command -v wine)" > target/wine-attach/game-before.json
           game_image="$(jq -r --argjson pid "$game_pid" '[.processes[] | select(.windows_pid == $pid) | .full_image_path // empty] | first // empty' target/wine-attach/game-before.json)"
           test -n "$game_image"
+          game_created="$(jq -r --argjson pid "$game_pid" '[.processes[] | select(.windows_pid == $pid) | .process_creation_time_100ns // empty] | first // empty' target/wine-attach/game-before.json)"
+          test -n "$game_created" && test "$game_created" != "0"
           jq -n --arg path "$game_image" '[{
             "name":"Selected standalone offline test fixture",
             "executable":"wine-attach-target.exe",
@@ -589,9 +591,21 @@ jobs:
             exit 1
           fi
           grep -q 'candidate PID/image/architecture was not verified' target/wine-attach/game-wrong-path.stderr
+          # The same PID and identical image with a wrong process generation
+          # must be refused by the Windows helper before remote DLL loading.
+          bad_created="$((game_created + 1))"
+          if wine target/wine-attach/wine-game-attach-helper.exe \
+            --pid "$game_pid" --exe "$game_image" \
+            --created-100ns "$bad_created" --offline-single-player \
+            >target/wine-attach/game-bad-generation.stdout 2>target/wine-attach/game-bad-generation.stderr; then
+            echo "ERROR: game helper accepted an incorrect process creation time" >&2
+            exit 1
+          fi
+          grep -q 'creation-time identity mismatch' target/wine-attach/game-bad-generation.stderr
           XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles attach-game "${game_args[@]}" --offline-single-player >target/wine-attach/game-attach.json
-          jq -e '.operation == "explicit_offline_single_player_game_attachment"
+          jq -e --arg created "$game_created" '.operation == "explicit_offline_single_player_game_attachment"
             and .intimatr_module_loaded == true
+            and .verified_process_creation_time_100ns == $created
             and .speed_controls_verified == false
             and .attachment_attempted == true
             and .offline_single_player_acknowledged == true' target/wine-attach/game-attach.json > /dev/null

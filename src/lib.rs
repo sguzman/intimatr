@@ -53,6 +53,8 @@ pub mod speed_window;
 #[cfg(windows)]
 pub mod speed_window_windows;
 #[cfg(windows)]
+pub mod windows_process_identity;
+#[cfg(windows)]
 pub mod windows_process_machine;
 
 #[cfg(windows)]

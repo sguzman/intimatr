@@ -1,7 +1,9 @@
 #[cfg(windows)]
 pub mod helper {
     use intimatr::{
-        speed_policy::game_path_key, windows_process_machine::running_process_architecture,
+        speed_policy::game_path_key,
+        windows_process_identity::process_creation_time_100ns,
+        windows_process_machine::running_process_architecture,
     };
     use std::{
         ffi::c_void,
@@ -174,7 +176,7 @@ pub mod helper {
     #[allow(dead_code)]
     enum AttachTarget {
         OwnedFixture,
-        SelectedOfflineGame(PathBuf),
+        SelectedOfflineGame { path: PathBuf, created_100ns: u64 },
     }
 
     fn validate_target_image(
@@ -191,7 +193,7 @@ pub mod helper {
                     );
                 }
             }
-            AttachTarget::SelectedOfflineGame(expected) => {
+            AttachTarget::SelectedOfflineGame { path: expected, .. } => {
                 game_path_key(&expected.to_string_lossy())
                     .map_err(|error| format!("invalid offline game executable path: {error}"))?;
                 let observed = fs::canonicalize(&observed)
@@ -222,6 +224,19 @@ pub mod helper {
                 ) {
                     return Err("refusing attach: selected Windows program is not a game".into());
                 }
+            }
+        }
+        Ok(())
+    }
+
+    /// Verify the exact Windows process generation on the held HANDLE.
+    /// Matching PID/path by itself cannot rule out a replaced process.
+    fn validate_target_generation(handle: Handle, target: &AttachTarget) -> Result<(), String> {
+        if let AttachTarget::SelectedOfflineGame { created_100ns, .. } = target {
+            let observed = unsafe { process_creation_time_100ns(handle) }
+                .ok_or("refusing attach: cannot verify game process creation time")?;
+            if observed != *created_100ns {
+                return Err("refusing attach: game process creation-time identity mismatch".into());
             }
         }
         Ok(())
@@ -480,6 +495,17 @@ pub mod helper {
         let expected = args.next().ok_or("missing selected game executable path")?;
         game_path_key(&expected)
             .map_err(|error| format!("invalid selected Windows game path: {error}"))?;
+        if args.next().as_deref() != Some("--created-100ns") {
+            return Err("game attach requires --created-100ns from a fresh process snapshot".into());
+        }
+        let created_100ns = args
+            .next()
+            .ok_or("missing game process creation time")?
+            .parse::<u64>()
+            .map_err(|_| "invalid game process creation time")?;
+        if created_100ns == 0 {
+            return Err("game process creation time must be nonzero".into());
+        }
         if args.next().as_deref() != Some("--offline-single-player") || args.next().is_some() {
             return Err(
                 "game attach requires explicit --offline-single-player acknowledgment".into(),
@@ -487,7 +513,10 @@ pub mod helper {
         }
         attach(
             pid,
-            AttachTarget::SelectedOfflineGame(PathBuf::from(expected)),
+            AttachTarget::SelectedOfflineGame {
+                path: PathBuf::from(expected),
+                created_100ns,
+            },
         )
     }
 
@@ -505,6 +534,7 @@ pub mod helper {
             "cannot open test target",
         )?;
         validate_target_image(process.0, &executable, &target)?;
+        validate_target_generation(process.0, &target)?;
         // Independent from both its filename and on-disk PE headers: query
         // the already-running process on the held Windows handle. This x64
         // loader must never guess at a 32-bit or unknown target architecture.
@@ -520,7 +550,8 @@ pub mod helper {
         // Identity is rechecked under the same lock immediately before
         // any allocation or target memory writes.
         validate_target_image(process.0, &executable, &target)?;
-        if matches!(target, AttachTarget::SelectedOfflineGame(_)) {
+        validate_target_generation(process.0, &target)?;
+        if matches!(target, AttachTarget::SelectedOfflineGame { .. }) {
             reject_observed_protection_modules(pid)?;
         }
         if target_intimatr_module(pid, &dll)? != IntimatrModulePresence::Absent {

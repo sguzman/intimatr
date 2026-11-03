@@ -386,3 +386,11 @@ The mixed Linux/Wine artifact now includes `bin/intimatr-bottles`, `wine/wine-pr
 ```
 
 Choose the Windows PID and full image path from the live-match report, **not** a Linux PID or guessed basename. The positive `intimatr_module_loaded` result is deliberately not a claim that game timer interception, gameplay speed control, or production teardown work; `speed_controls_verified` remains false. The helper loads no DLL into personal games in CI: integration uses separate disposable PE test targets. Actual native Bottles QA, measured speed changes in a real game, protection compatibility and safe lifecycle recovery remain outstanding. **Expansion: 16/100 (previous 16, Δ +0 pp).**
+
+## 2026-11-03 — Windows process-generation identity for opted-in game attachment
+
+The read-only `wine-process-list.exe` now captures the Windows `GetProcessTimes` creation FILETIME for each process on the **same HANDLE** used for its running-image and architecture inspection. It serializes `process_creation_time_100ns` as a decimal **string**, not a JSON number, to preserve all 64 bits without JavaScript/jq floating-point rounding. The value propagates through registered full-image matching and the explicit `live-match` candidate report.
+
+`attach-game` refuses a game when this creation identity is missing. It forwards the exact snapshot creation time to the dedicated Windows game helper as `--created-100ns`, which opens the chosen PID and rechecks creation time on the held process HANDLE both before and after acquiring the existing attach mutex. Thus a recycled PID with the same executable path cannot silently pass. The fixture-only loader remains unchanged and does not require this game-only argument. A Linux/Wine regression supplies a deliberately incorrect generation for the still-running disposable target and requires refusal before the positive attachment.
+
+This addresses a distinct PID reuse hazard but **does not** demonstrate gameplay speed control, completeness of protection checks, or safe production hook shutdown. The read-only readiness report continues to set `safe_to_attach=false`. Native Bottles real-game QA remains outstanding; expansion **16/100 (previous 16, Δ +0 pp)** until full roadmap acceptance.

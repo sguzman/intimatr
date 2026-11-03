@@ -21,6 +21,7 @@ pub struct AttachmentReadiness {
     pub candidate_status: &'static str,
     pub snapshot_registered_identity_verified: bool,
     pub snapshot_x64_dll_compatible: Option<bool>,
+    pub selected_process_creation_time_100ns: Option<String>,
     pub selected_pid_observed_in_prefix_wineserver_snapshot: bool,
     pub selected_image_observed_in_prefix_wineserver_snapshot: bool,
     pub bottle_prefix_verified: bool,
@@ -50,6 +51,9 @@ pub fn review_attachment_readiness(
     if !runner.runner_path_verified {
         blockers.push("configured_wine_runner_unverified");
     }
+    if candidate.process_creation_time_100ns.is_none() {
+        blockers.push("selected_process_creation_time_unverified");
+    }
     if !candidate.pid_observed_in_selected_wineserver_snapshot {
         blockers.push("selected_pid_not_observed_in_prefix_wineserver_snapshot");
     } else if !candidate.image_observed_in_selected_wineserver_snapshot {
@@ -73,7 +77,7 @@ pub fn review_attachment_readiness(
     // and fresh process identity / game compatibility verification.
     blockers.push("fresh_process_identity_at_apply_not_proven");
     blockers.push("game_protection_status_unverified");
-    blockers.push("production_game_loader_not_implemented");
+    blockers.push("production_game_loader_field_verification_missing");
     blockers.push("production_hook_lifecycle_not_verified");
 
     let snapshot_reviewable = candidate.registered_identity_verified_at_snapshot
@@ -87,6 +91,7 @@ pub fn review_attachment_readiness(
         candidate_status: candidate.status,
         snapshot_registered_identity_verified: candidate.registered_identity_verified_at_snapshot,
         snapshot_x64_dll_compatible: candidate.x64_dll_compatible,
+        selected_process_creation_time_100ns: candidate.process_creation_time_100ns.clone(),
         selected_pid_observed_in_prefix_wineserver_snapshot: candidate
             .pid_observed_in_selected_wineserver_snapshot,
         selected_image_observed_in_prefix_wineserver_snapshot: candidate
@@ -120,6 +125,7 @@ mod tests {
             matched_registered_program: Some("Test".into()),
             registration_status: Some("exact_registered_path"),
             x64_dll_compatible: Some(true),
+            process_creation_time_100ns: Some("133700000000000000".into()),
             pid_observed_in_selected_wineserver_snapshot: true,
             image_observed_in_selected_wineserver_snapshot: true,
             registered_identity_verified_at_snapshot: true,
@@ -173,7 +179,7 @@ mod tests {
         assert!(
             report
                 .blockers
-                .contains(&"production_game_loader_not_implemented")
+                .contains(&"production_game_loader_field_verification_missing")
         );
     }
 
@@ -228,7 +234,7 @@ mod tests {
         assert!(
             report
                 .blockers
-                .contains(&"production_game_loader_not_implemented")
+                .contains(&"production_game_loader_field_verification_missing")
         );
     }
 

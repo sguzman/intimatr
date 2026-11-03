@@ -12,6 +12,7 @@ fn main() {
 mod windows {
     use intimatr::{
         pe_image::inspect_pe,
+        windows_process_identity::process_creation_time_100ns,
         windows_process_machine::{ObservedProcessMachine, running_process_architecture},
     };
     use serde::Serialize;
@@ -73,6 +74,8 @@ mod windows {
         process_architecture: Option<&'static str>,
         process_architecture_verified: bool,
         process_architecture_source: Option<&'static str>,
+        /// Decimal string: JSON numbers may lose 64-bit FILETIME precision.
+        process_creation_time_100ns: Option<String>,
         safe_to_attach: bool,
     }
 
@@ -91,13 +94,16 @@ mod windows {
         String::from_utf16_lossy(&values[..length])
     }
 
-    fn inspect_process(pid: u32) -> (Option<String>, Option<ObservedProcessMachine>) {
+    fn inspect_process(
+        pid: u32,
+    ) -> (Option<String>, Option<ObservedProcessMachine>, Option<u64>) {
         let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
         if handle.is_null() {
-            return (None, None);
+            return (None, None, None);
         }
         let owned = OwnedHandle(handle);
         let process_machine = unsafe { running_process_architecture(owned.0) };
+        let creation = unsafe { process_creation_time_100ns(owned.0) };
         let mut buffer = [0_u16; 2048];
         let mut length = buffer.len() as u32;
         let image =
@@ -108,7 +114,7 @@ mod windows {
             } else {
                 Some(String::from_utf16_lossy(&buffer[..length as usize]))
             };
-        (image, process_machine)
+        (image, process_machine, creation)
     }
 
     fn run() -> Result<(), String> {
@@ -135,7 +141,7 @@ mod windows {
         loop {
             let pid = entry.process_id;
             if pid > 0 {
-                let (path, process_machine) = inspect_process(pid);
+                let (path, process_machine, creation) = inspect_process(pid);
                 // Parsing PE headers from this reported file path is
                 // read-only evidence of FILE machine, not proof of process
                 // machine, image ownership, or safe injection.
@@ -153,6 +159,7 @@ mod windows {
                     process_architecture: process_machine.map(|value| value.architecture),
                     process_architecture_verified: process_machine.is_some(),
                     process_architecture_source: process_machine.map(|value| value.source),
+                    process_creation_time_100ns: creation.map(|value| value.to_string()),
                     safe_to_attach: false,
                 });
             }

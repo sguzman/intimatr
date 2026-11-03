@@ -24,6 +24,9 @@ pub struct WindowsProcessRecord {
     pub process_architecture_verified: bool,
     #[serde(default)]
     pub process_architecture_source: Option<String>,
+    /// Decimal FILETIME text avoids JSON floating-point precision loss.
+    #[serde(default)]
+    pub process_creation_time_100ns: Option<String>,
     pub safe_to_attach: bool,
 }
 
@@ -49,6 +52,16 @@ impl WindowsProcessSnapshot {
             }
             if process.safe_to_attach {
                 return Err("Windows process snapshot unexpectedly claims attach authority".into());
+            }
+            if process
+                .process_creation_time_100ns
+                .as_deref()
+                .is_some_and(|value| {
+                    value.parse::<u64>().ok().filter(|number| *number > 0)
+                        .is_none_or(|number| number.to_string() != value)
+                })
+            {
+                return Err("Windows process snapshot has invalid creation-time identity".into());
             }
             if process.image_query_verified != process.full_image_path.is_some() {
                 return Err("Windows process snapshot has inconsistent image verification".into());
@@ -110,6 +123,7 @@ pub struct ProcessProgramMatch {
     pub process_architecture: Option<String>,
     pub process_architecture_verified: bool,
     pub process_architecture_source: Option<String>,
+    pub process_creation_time_100ns: Option<String>,
     pub architecture_consistent: Option<bool>,
     /// True only when BOTH the live process and file are confirmed x86-64.
     /// False means both were observed but this x86-64 DLL cannot fit.
@@ -187,6 +201,7 @@ pub fn match_registered_programs(
             process_architecture: process.process_architecture.clone(),
             process_architecture_verified: process.process_architecture_verified,
             process_architecture_source: process.process_architecture_source.clone(),
+            process_creation_time_100ns: process.process_creation_time_100ns.clone(),
             architecture_consistent,
             x64_dll_compatible,
             registered_program_name: found,
@@ -239,6 +254,7 @@ mod tests {
                     process_architecture: None,
                     process_architecture_verified: false,
                     process_architecture_source: None,
+                    process_creation_time_100ns: None,
                     safe_to_attach: false,
                 })
                 .collect(),
