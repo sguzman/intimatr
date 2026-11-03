@@ -714,7 +714,9 @@ impl LiveMatchOptions {
             return Err("bottle name must not be empty".into());
         }
         if selected_pid.is_some() != selected_executable.is_some() {
-            return Err("--pid and --exe are required together for explicit candidate review".into());
+            return Err(
+                "--pid and --exe are required together for explicit candidate review".into(),
+            );
         }
         let bottles_cli = bottles_cli.unwrap_or_else(|| "bottles-cli".to_owned());
         if std::path::Path::new(&bottles_cli)
@@ -741,8 +743,8 @@ fn run_live_match(args: Vec<String>) -> Result<(), String> {
     use intimatr::{
         bottles::{BottleInventory, parse_bottle_names, parse_registered_programs},
         bottles_live_matches::match_registered_programs,
-        bottles_preflight::assess_explicit_candidate,
         bottles_prefix::verify_bottle_prefix,
+        bottles_preflight::assess_explicit_candidate,
         bottles_runner::{audit_recorded_runner, audit_runner_metadata},
     };
 
@@ -858,16 +860,36 @@ mod live_match_tests {
                 "Another",
             ]),
             args(&[
-                "--bottle", "Games", "--helper", "helper.exe",
-                "--runner", "/usr/bin/wine", "--pid", "42",
+                "--bottle",
+                "Games",
+                "--helper",
+                "helper.exe",
+                "--runner",
+                "/usr/bin/wine",
+                "--pid",
+                "42",
             ]),
             args(&[
-                "--bottle", "Games", "--helper", "helper.exe",
-                "--runner", "/usr/bin/wine", "--exe", r"C:\Games\Game.exe",
+                "--bottle",
+                "Games",
+                "--helper",
+                "helper.exe",
+                "--runner",
+                "/usr/bin/wine",
+                "--exe",
+                r"C:\Games\Game.exe",
             ]),
             args(&[
-                "--bottle", "Games", "--helper", "helper.exe",
-                "--runner", "/usr/bin/wine", "--pid", "0", "--exe", r"C:\Games\Game.exe",
+                "--bottle",
+                "Games",
+                "--helper",
+                "helper.exe",
+                "--runner",
+                "/usr/bin/wine",
+                "--pid",
+                "0",
+                "--exe",
+                r"C:\Games\Game.exe",
             ]),
         ] {
             assert!(LiveMatchOptions::parse(&invalid).is_err());
@@ -913,11 +935,16 @@ mod live_match_tests {
     #[test]
     fn explicit_preflight_requires_pid_and_full_windows_executable() {
         let parsed = LiveMatchOptions::parse(&args(&[
-            "--bottle", "Games",
-            "--helper", "/tmp/wine-process-list.exe",
-            "--runner", "/usr/bin/wine",
-            "--pid", "42",
-            "--exe", r"C:\Games\Game.exe",
+            "--bottle",
+            "Games",
+            "--helper",
+            "/tmp/wine-process-list.exe",
+            "--runner",
+            "/usr/bin/wine",
+            "--pid",
+            "42",
+            "--exe",
+            r"C:\Games\Game.exe",
         ]))
         .unwrap();
         assert_eq!(parsed.selected_pid, Some(42));
@@ -925,14 +952,22 @@ mod live_match_tests {
             parsed.selected_executable.as_deref(),
             Some(r"C:\Games\Game.exe")
         );
-        assert!(LiveMatchOptions::parse(&args(&[
-            "--bottle", "Games",
-            "--helper", "/tmp/wine-process-list.exe",
-            "--runner", "/usr/bin/wine",
-            "--pid", "42",
-            "--pid", "43",
-            "--exe", r"C:\Games\Game.exe",
-        ]))
-        .is_err());
+        assert!(
+            LiveMatchOptions::parse(&args(&[
+                "--bottle",
+                "Games",
+                "--helper",
+                "/tmp/wine-process-list.exe",
+                "--runner",
+                "/usr/bin/wine",
+                "--pid",
+                "42",
+                "--pid",
+                "43",
+                "--exe",
+                r"C:\Games\Game.exe",
+            ]))
+            .is_err()
+        );
     }
 }
