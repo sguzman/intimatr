@@ -185,6 +185,7 @@ mod target {
             for (speed, label) in [
                 (0.5, "half"),
                 (1.5, "onehalf"),
+                (1.75, "custom"),
                 (2.0, "double"),
                 (1.0, "normal"),
             ] {
