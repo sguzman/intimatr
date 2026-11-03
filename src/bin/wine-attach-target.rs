@@ -139,7 +139,22 @@ mod target {
             unsafe { std::mem::transmute(resolve(module, c"intimatr_timer_probe_hook_count")?) };
         let change: RateFn =
             unsafe { std::mem::transmute(resolve(module, c"intimatr_timer_probe_rate")?) };
-        if unsafe { enable() } == 0 {
+        if std::env::var_os("INTIMATR_TEST_EXTERNAL_TIMER_ARM").is_some() {
+            let ready = directory.join("attach-await-arm.flag");
+            let released = directory.join("attach-external-armed.flag");
+            std::fs::write(&ready, b"awaiting_explicit_remote_arm")
+                .map_err(|error| format!("cannot publish external arm gate: {error}"))?;
+            if !(0..400).any(|_| {
+                if released.is_file() {
+                    true
+                } else {
+                    thread::sleep(Duration::from_millis(25));
+                    false
+                }
+            }) {
+                return Err("test coordinator did not explicitly arm timers".into());
+            }
+        } else if unsafe { enable() } == 0 {
             return Err("remote-attached target could not activate four timer hooks".into());
         }
         let measured = (|| {

@@ -1,11 +1,8 @@
-//! Experimental IAT clock hook, restricted to Intimatr's own offline Wine
-//! test executable. NOT enabled during ordinary DLL bootstrap.
-//!
-//! The first iteration patches *only* the executable's import for QPC, not
-//! arbitrary game modules or detours. It proves true Windows timing API
-//! interception and fully restores its import before unloading the DLL.
-//! Do not extend the allowlist until real-process lifecycle and concurrency
-//! tests cover the new target type.
+//! Experimental four-timer IAT clock hook. Never enabled at DLL bootstrap.
+//! Ordinary games require a separate exact-identity, explicit offline-game
+//! activation request after attachment, and unsupported import layouts fail
+//! closed. Hook callback code remains pinned until process exit.
+//! This is not a detour backend or universal game compatibility claim.
 
 use std::{
     ffi::c_void,
@@ -15,6 +12,12 @@ use std::{
         atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering},
     },
     time::Duration,
+};
+
+use windows_sys::Win32::System::Memory::{
+    MEM_COMMIT, MEMORY_BASIC_INFORMATION, PAGE_EXECUTE_READ, PAGE_EXECUTE_READWRITE,
+    PAGE_EXECUTE_WRITECOPY, PAGE_GUARD, PAGE_NOACCESS, PAGE_READONLY, PAGE_READWRITE,
+    PAGE_WRITECOPY, VirtualQuery,
 };
 
 use crate::{
@@ -290,19 +293,52 @@ fn wide_literal_kernel32() -> &'static [u16] {
     NAME
 }
 
-/// Read a primitive at a checked relative offset in a mapped PE image.
-/// Bounds do not protect against a maliciously remapped executable; the
-/// prototype is intentionally confined to our own built test fixture.
+/// Import parsing is confined to readable, committed PE pages; the image
+/// SizeOfImage bound alone is not proof that every subrange remains mapped.
+/// A concurrently unmapped executable can still race this check, so this
+/// backend is experimental and fails closed on incompatible import layouts.
+fn readable_mapped_range(address: *const u8, length: usize) -> bool {
+    let mut region: MEMORY_BASIC_INFORMATION = unsafe { std::mem::zeroed() };
+    if unsafe {
+        VirtualQuery(
+            address.cast(),
+            &mut region,
+            std::mem::size_of::<MEMORY_BASIC_INFORMATION>(),
+        )
+    } == 0
+    {
+        return false;
+    }
+    let allowed = matches!(
+        region.Protect & 0xff,
+        PAGE_READONLY
+            | PAGE_READWRITE
+            | PAGE_WRITECOPY
+            | PAGE_EXECUTE_READ
+            | PAGE_EXECUTE_READWRITE
+            | PAGE_EXECUTE_WRITECOPY
+    );
+    let start = region.BaseAddress as usize;
+    let at = address as usize;
+    region.State == MEM_COMMIT
+        && allowed
+        && region.Protect & (PAGE_GUARD | PAGE_NOACCESS) == 0
+        && start <= at
+        && at
+            .checked_add(length)
+            .is_some_and(|end| start.checked_add(region.RegionSize).is_some_and(|limit| end <= limit))
+}
+
 unsafe fn read_u16(image: *const u8, size: usize, offset: usize) -> Option<u16> {
-    (offset <= size.checked_sub(2)?)
+    (offset <= size.checked_sub(2)? && readable_mapped_range(unsafe { image.add(offset) }, 2))
         .then(|| unsafe { ptr::read_unaligned(image.add(offset).cast::<u16>()) })
 }
 unsafe fn read_u32(image: *const u8, size: usize, offset: usize) -> Option<u32> {
-    (offset <= size.checked_sub(4)?)
+    (offset <= size.checked_sub(4)? && readable_mapped_range(unsafe { image.add(offset) }, 4))
         .then(|| unsafe { ptr::read_unaligned(image.add(offset).cast::<u32>()) })
 }
 unsafe fn read_usize(image: *const u8, size: usize, offset: usize) -> Option<usize> {
-    (offset <= size.checked_sub(8)?)
+    (offset <= size.checked_sub(8)? && readable_mapped_range(unsafe { image.add(offset) }, 8))
         .then(|| unsafe { ptr::read_unaligned(image.add(offset).cast::<usize>()) })
 }
 
@@ -456,11 +492,9 @@ fn restore_slots(slots: &mut [HookSlot]) -> bool {
     )
 }
 
-/// The experimental IAT backend is available only to these disposable,
-/// offline test executables. No production process gets hook eligibility.
 /// Win32 process-lifetime code ownership is required before the first IAT
 /// pointer can refer to this DLL. An unsuccessful pin refuses installation.
-/// This does not enable arbitrary game hooking: fixture allowlisting remains.
+/// The remote selected-game entry is gated by the exact-target helper.
 fn pin_timer_module() -> bool {
     if MODULE_PINNED.load(Ordering::Acquire) {
         return true;
@@ -492,17 +526,26 @@ fn is_allowlisted_probe_process() -> bool {
     })
 }
 
-/// Only succeeds in Intimatr's fixture; never installs hooks into an
-/// arbitrary game, anti-cheat process, or another Wine program.
+/// Test-only direct activation; production games cannot call this entry
+/// through the ordinary fixture interface.
 pub fn enable_probe() -> bool {
     enable_probe_with_fault(None)
 }
 
+/// Called only by the dedicated selected-game remote control export after
+/// identity, architecture, loaded-module and protection checks in the helper.
+/// This path starts at the safe 1x baseline and still requires all four
+/// native IAT timer imports in the executable's main PE image.
+pub fn enable_selected_game_timers() -> bool {
+    enable_hook_set_with_fault(None)
+}
+
 /// Only the disposable Wine probe invokes the deterministic rollback fault.
 fn enable_probe_with_fault(fail_after: Option<usize>) -> bool {
-    if !is_allowlisted_probe_process() {
-        return false;
-    }
+    is_allowlisted_probe_process() && enable_hook_set_with_fault(fail_after)
+}
+
+fn enable_hook_set_with_fault(fail_after: Option<usize>) -> bool {
     let Ok(mut guard) = hooks().lock() else {
         return false;
     };

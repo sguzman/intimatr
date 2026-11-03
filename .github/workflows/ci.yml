@@ -551,7 +551,7 @@ jobs:
           mkdir -p target/wine-attach/game-fixture/config
           cp target/wine-attach/wine-attach-target.exe target/wine-attach/game-fixture/
           cp config/wine-attach-target.exe.toml target/wine-attach/game-fixture/config/
-          INTIMATR_TEST_HOOK_STATUS_GATE=1 INTIMATR_TEST_REMOTE_STOP_WITH_HOOKS=1 xvfb-run -a wine target/wine-attach/game-fixture/wine-attach-target.exe >target/wine-attach/game-fixture/stdout 2>target/wine-attach/game-fixture/stderr &
+          INTIMATR_TEST_HOOK_STATUS_GATE=1 INTIMATR_TEST_REMOTE_STOP_WITH_HOOKS=1 INTIMATR_TEST_EXTERNAL_TIMER_ARM=1 xvfb-run -a wine target/wine-attach/game-fixture/wine-attach-target.exe >target/wine-attach/game-fixture/stdout 2>target/wine-attach/game-fixture/stderr &
           game_launcher=$!
           trap 'kill "$game_launcher" 2>/dev/null || true' EXIT
           for i in $(seq 1 100); do
@@ -649,6 +649,39 @@ jobs:
             and .speed_controls_verified == false
             and .attachment_attempted == true
             and .offline_single_player_acknowledged == true' target/wine-attach/game-attach.json > /dev/null
+          # Attachment alone leaves all game IAT imports untouched.
+          XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles status-game "${game_args[@]}" --offline-single-player >target/wine-attach/game-before-arm.json
+          jq -e '.runtime_state == "running"
+            and .timer_hook_state == "none"
+            and .timer_hooks_installed_verified == false
+            and .speed_controls_verified == false' target/wine-attach/game-before-arm.json > /dev/null
+          # The experimental marker must be separate from offline consent.
+          if XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles arm-game-timers "${game_args[@]}" --offline-single-player >target/wine-attach/game-arm-no-consent.stdout 2>target/wine-attach/game-arm-no-consent.stderr; then
+            echo "ERROR: game timer activation accepted without experimental opt-in" >&2
+            exit 1
+          fi
+          grep -q 'requires explicit --experimental-four-timers' target/wine-attach/game-arm-no-consent.stderr
+          for i in $(seq 1 100); do
+            if test -s target/wine-attach/game-fixture/attach-await-arm.flag; then
+              break
+            fi
+            sleep 0.1
+          done
+          test -s target/wine-attach/game-fixture/attach-await-arm.flag
+          XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles arm-game-timers "${game_args[@]}" --offline-single-player --experimental-four-timers >target/wine-attach/game-armed.json
+          jq -e '.operation == "explicit_offline_single_player_game_timer_activation"
+            and .runtime_running_verified == true
+            and .timer_hooks_installed_verified == true
+            and .gameplay_speed_verified == false
+            and .speed_controls_verified == false
+            and .experimental_four_timers_acknowledged == true' target/wine-attach/game-armed.json > /dev/null
+          # Repeated timer arming must not repatch imports.
+          if XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles arm-game-timers "${game_args[@]}" --offline-single-player --experimental-four-timers >target/wine-attach/game-arm-duplicate.stdout 2>target/wine-attach/game-arm-duplicate.stderr; then
+            echo "ERROR: duplicate game timer activation succeeded" >&2
+            exit 1
+          fi
+          grep -q 'already installed or need cleanup' target/wine-attach/game-arm-duplicate.stderr
+          touch target/wine-attach/game-fixture/attach-external-armed.flag
           # Pause the disposable target while its four imports are hooked.
           for i in $(seq 1 100); do
             if test -s target/wine-attach/game-fixture/attach-hooks-ready.flag; then
@@ -706,6 +739,12 @@ jobs:
             and .timer_hook_state == "none"
             and .timer_hooks_installed_verified == false
             and .speed_controls_verified == false' target/wine-attach/game-stopped-status.json > /dev/null
+          # Stopped runtimes may not resurrect hooks even with fresh consent.
+          if XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles arm-game-timers "${game_args[@]}" --offline-single-player --experimental-four-timers >target/wine-attach/game-arm-after-stop.stdout 2>target/wine-attach/game-arm-after-stop.stderr; then
+            echo "ERROR: timer hooks rearmed in stopped game runtime" >&2
+            exit 1
+          fi
+          grep -q 'target runtime is not Running' target/wine-attach/game-arm-after-stop.stderr
           # Repeated stop is idempotent; never free a still-referenced DLL.
           XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles stop-game "${game_args[@]}" --offline-single-player > target/wine-attach/game-stopped-again.json
           jq -e '.runtime_stopped_verified == true and .intimatr_module_unloaded == false' target/wine-attach/game-stopped-again.json > /dev/null

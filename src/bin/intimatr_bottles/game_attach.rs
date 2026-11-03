@@ -11,6 +11,7 @@ struct GameAttachOptions {
     live_args: Vec<String>,
     attach_helper: String,
     expected_creation_time_100ns: String,
+    experimental_four_timers: bool,
 }
 
 impl GameAttachOptions {
@@ -19,12 +20,19 @@ impl GameAttachOptions {
         let mut attach_helper = None;
         let mut expected_creation_time_100ns = None;
         let mut consent = false;
+        let mut experimental_four_timers = false;
         let mut iter = args.iter();
         while let Some(arg) = iter.next() {
             match arg.as_str() {
                 "--offline-single-player" if !consent => consent = true,
                 "--offline-single-player" => {
                     return Err("duplicate offline-single-player acknowledgment".into());
+                }
+                "--experimental-four-timers" if !experimental_four_timers => {
+                    experimental_four_timers = true;
+                }
+                "--experimental-four-timers" => {
+                    return Err("duplicate experimental-four-timers acknowledgment".into());
                 }
                 "--attach-helper" if attach_helper.is_none() => {
                     let path = iter.next().ok_or("missing --attach-helper path")?;
@@ -70,6 +78,7 @@ impl GameAttachOptions {
             live_args,
             attach_helper,
             expected_creation_time_100ns,
+            experimental_four_timers,
         })
     }
 }
@@ -79,6 +88,7 @@ enum GameAction {
     Attach,
     Stop,
     Status,
+    ArmTimers,
 }
 
 pub(super) fn run_game_attach(args: Vec<String>) -> Result<(), String> {
@@ -93,8 +103,18 @@ pub(super) fn run_game_status(args: Vec<String>) -> Result<(), String> {
     run_game_action(args, GameAction::Status)
 }
 
+pub(super) fn run_game_timer_activation(args: Vec<String>) -> Result<(), String> {
+    run_game_action(args, GameAction::ArmTimers)
+}
+
 fn run_game_action(args: Vec<String>, action: GameAction) -> Result<(), String> {
     let options = GameAttachOptions::parse(&args)?;
+    if action == GameAction::ArmTimers && !options.experimental_four_timers {
+        return Err("arm-game-timers requires explicit --experimental-four-timers opt-in".into());
+    }
+    if action != GameAction::ArmTimers && options.experimental_four_timers {
+        return Err("--experimental-four-timers is only valid for arm-game-timers".into());
+    }
     let attach_helper = fs::canonicalize(&options.attach_helper)
         .map_err(|error| format!("cannot find game attach helper: {error}"))?;
     if !attach_helper.is_file()
@@ -168,6 +188,11 @@ fn run_game_action(args: Vec<String>, action: GameAction) -> Result<(), String> 
         GameAction::Status => {
             command.arg("--status-only");
         }
+        GameAction::ArmTimers => {
+            command
+                .arg("--arm-four-timers-only")
+                .arg("--experimental-four-timers");
+        }
     }
     let output = command
         .output()
@@ -210,10 +235,11 @@ fn run_game_action(args: Vec<String>, action: GameAction) -> Result<(), String> 
         }
         Some(state)
     } else {
-        let expected_marker = if action == GameAction::Stop {
-            "INTIMATR_REMOTE_RUNTIME_STOPPED=1"
-        } else {
-            "INTIMATR_REMOTE_RUNTIME_RUNNING=1"
+        let expected_marker = match action {
+            GameAction::Stop => "INTIMATR_REMOTE_RUNTIME_STOPPED=1",
+            GameAction::ArmTimers => "INTIMATR_REMOTE_FOUR_TIMERS_INSTALLED=1",
+            GameAction::Attach => "INTIMATR_REMOTE_RUNTIME_RUNNING=1",
+            GameAction::Status => return Err("status response unexpectedly missing".into()),
         };
         if !stdout.lines().any(|line| line == expected_marker) {
             return Err(
@@ -255,6 +281,25 @@ fn run_game_action(args: Vec<String>, action: GameAction) -> Result<(), String> 
             "timer_hook_state": hook_state,
             "timer_hooks_installed_verified": state == "running" && hook_state == "installed_four_timers",
             "speed_controls_verified": false,
+            "offline_single_player_acknowledged": true
+        })
+    } else if action == GameAction::ArmTimers {
+        serde_json::json!({
+            "operation": "explicit_offline_single_player_game_timer_activation",
+            "selected_bottle": candidate.selected_bottle,
+            "selected_windows_pid": candidate.selected_windows_pid,
+            "selected_executable_path": candidate.selected_executable_path,
+            "verified_process_creation_time_100ns": creation,
+            "verified_wine_prefix": selected.prefix,
+            "verified_wine_runner": selected.runner,
+            "intimatr_module_loaded": true,
+            "runtime_running_verified": true,
+            "timer_hooks_installed_verified": true,
+            "timer_hook_state": "installed_four_timers",
+            "gameplay_speed_verified": false,
+            "speed_controls_verified": false,
+            "activation_attempted": true,
+            "experimental_four_timers_acknowledged": true,
             "offline_single_player_acknowledged": true
         })
     } else if action == GameAction::Stop {

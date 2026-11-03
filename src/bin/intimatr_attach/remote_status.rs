@@ -21,6 +21,7 @@ const DONT_RESOLVE_DLL_REFERENCES: u32 = 0x0000_0001;
 const STATUS_EXPORT: &std::ffi::CStr = c"intimatr_remote_lifecycle_query";
 const SHUTDOWN_EXPORT: &std::ffi::CStr = c"intimatr_remote_shutdown";
 const HOOK_STATUS_EXPORT: &std::ffi::CStr = c"intimatr_remote_timer_hook_state";
+const ARM_TIMER_EXPORT: &std::ffi::CStr = c"intimatr_remote_arm_four_timers";
 
 #[repr(C)]
 #[allow(dead_code)]
@@ -276,6 +277,36 @@ fn timer_hook_label(code: u32) -> Result<&'static str, String> {
         3 => Err("target Intimatr timer-hook state unavailable".into()),
         _ => Err(format!("unknown Intimatr timer-hook state code {code}")),
     }
+}
+
+/// Explicitly activate the exact owned DLL's main-image IAT backend at 1x.
+/// This is not auto-attach, nor does it prove that gameplay speed changed.
+pub fn arm_four_timers(process: Handle, pid: u32, dll: &Path) -> Result<(), String> {
+    if query_lifecycle_state(process, pid, dll)? != "running" {
+        return Err("refusing timer activation: target runtime is not Running".into());
+    }
+    if query_timer_hook_state(process, pid, dll)? != "none" {
+        return Err("refusing timer activation: hooks already installed or need cleanup".into());
+    }
+    let (base, image_size) = target_base(pid, dll)?;
+    let rva = export_rva(dll, ARM_TIMER_EXPORT)?;
+    if rva >= image_size {
+        return Err("target Intimatr DLL lacks bounded timer activation export".into());
+    }
+    let entry = base
+        .checked_add(rva)
+        .ok_or("remote Intimatr timer activation address overflow")?;
+    if call_export(process, entry, 15_000)? != 1 {
+        return Err(
+            "timer activation rejected: incompatible main-image imports, unsafe state or incomplete rollback; inspect status and stop the target if cleanup is pending".into(),
+        );
+    }
+    if query_lifecycle_state(process, pid, dll)? != "running"
+        || query_timer_hook_state(process, pid, dll)? != "installed_four_timers"
+    {
+        return Err("timer activation did not remain installed in a Running target".into());
+    }
+    Ok(())
 }
 
 /// Return only after the selected DLL reports Running from the actual target.

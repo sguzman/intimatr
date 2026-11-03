@@ -520,6 +520,12 @@ pub mod helper {
             None => "attach",
             Some("--shutdown-only") if args.next().is_none() => "stop",
             Some("--status-only") if args.next().is_none() => "status",
+            Some("--arm-four-timers-only")
+                if args.next().as_deref() == Some("--experimental-four-timers")
+                    && args.next().is_none() =>
+            {
+                "arm"
+            }
             _ => return Err("unrecognized game action flags".into()),
         };
         let target = AttachTarget::SelectedOfflineGame {
@@ -529,8 +535,42 @@ pub mod helper {
         match action {
             "stop" => shutdown_selected(pid, &target),
             "status" => status_selected(pid, &target),
+            "arm" => arm_selected(pid, &target),
             _ => attach(pid, target),
         }
+    }
+
+    /// Enable experimental four-API timers only for the still-selected live
+    /// offline target. The helper verifies the same identity again under its
+    /// per-target mutex and rejects recognized protection modules. The DLL
+    /// independently requires Running and an intact original IAT layout.
+    fn arm_selected(pid: u32, target: &AttachTarget) -> Result<(), String> {
+        let executable = std::env::current_exe().map_err(|error| error.to_string())?;
+        let dll = executable
+            .parent()
+            .ok_or("game helper has no directory")?
+            .join("intimatr.dll");
+        let process = own(
+            unsafe { OpenProcess(ACCESS, 0, pid) },
+            "cannot open selected game for timer activation",
+        )?;
+        validate_target_image(process.0, &executable, target)?;
+        validate_target_generation(process.0, target)?;
+        let machine = unsafe { running_process_architecture(process.0) }
+            .ok_or("cannot verify selected game architecture before timer activation")?;
+        if machine.architecture != "x86_64" {
+            return Err("cannot activate timers in unsupported game architecture".into());
+        }
+        let _guard = acquire_attach_mutex(pid)?;
+        validate_target_image(process.0, &executable, target)?;
+        validate_target_generation(process.0, target)?;
+        reject_observed_protection_modules(pid)?;
+        if target_intimatr_module(pid, &dll)? != IntimatrModulePresence::Expected {
+            return Err("cannot activate timers: exact owned Intimatr DLL is not loaded".into());
+        }
+        super::remote_status::arm_four_timers(process.0, pid, &dll)?;
+        println!("INTIMATR_REMOTE_FOUR_TIMERS_INSTALLED=1");
+        Ok(())
     }
 
     /// Shutdown only the exact owned DLL in the exact selected process.

@@ -113,6 +113,20 @@ pub extern "system" fn intimatr_remote_timer_hook_state(_parameter: *mut c_void)
     crate::experimental_timer_probe::remote_hook_state()
 }
 
+/// Explicit, opt-in selected-offline-game timer activation. Only the
+/// dedicated exact-identity Windows helper invokes this remote-thread ABI.
+/// It installs no hooks at bootstrap and starts from 1x, never an automatic
+/// stored acceleration preset. Missing or inconsistent IAT imports fail closed.
+#[unsafe(no_mangle)]
+pub extern "system" fn intimatr_remote_arm_four_timers(_parameter: *mut c_void) -> u32 {
+    match std::panic::catch_unwind(AssertUnwindSafe(
+        crate::experimental_timer_probe::enable_selected_game_timers,
+    )) {
+        Ok(true) => 1,
+        Ok(false) | Err(_) => 0,
+    }
+}
+
 /// ABI-compatible remote shutdown of this DLL's own runtime. It deliberately
 /// does not call FreeLibrary or unload callback code.
 #[unsafe(no_mangle)]
