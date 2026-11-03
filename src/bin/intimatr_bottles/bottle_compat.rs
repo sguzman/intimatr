@@ -21,13 +21,22 @@ const MAX_DIRECTORY_ENTRIES: usize = 8192;
 struct Options {
     bottle: String,
     cli: String,
+    include_mapped_drives: bool,
 }
 
 fn parse_options(args: &[String]) -> Result<Options, String> {
     let mut bottle = None;
     let mut cli = None;
+    let mut include_mapped_drives = false;
     let mut iter = args.iter();
     while let Some(flag) = iter.next() {
+        if flag == "--include-mapped-drives" {
+            if include_mapped_drives {
+                return Err("duplicate --include-mapped-drives acknowledgment".into());
+            }
+            include_mapped_drives = true;
+            continue;
+        }
         let value = iter
             .next()
             .filter(|v| !v.is_empty() && !v.starts_with("--"))
@@ -53,7 +62,11 @@ fn parse_options(args: &[String]) -> Result<Options, String> {
     {
         return Err("expected a native bottles-cli executable".into());
     }
-    Ok(Options { bottle, cli })
+    Ok(Options {
+        bottle,
+        cli,
+        include_mapped_drives,
+    })
 }
 
 /// One case-insensitive lookup component at a time. On case-sensitive
@@ -86,18 +99,10 @@ fn resolve_windows_component(directory: &Path, requested: &str) -> Result<PathBu
     chosen.ok_or_else(|| format!("registered executable component is unavailable: {requested}"))
 }
 
-/// Do not guess Wine drive mappings. Restrict scanning to the verified
-/// C: drive; Z:, UNC, relative and traversal paths remain indeterminate.
-/// Each component is resolved against the real directory, with a bounded
-/// case-insensitive ASCII match and a canonical containment check.
-fn resolve_c_drive_file(prefix: &Path, windows_path: &str) -> Result<PathBuf, String> {
-    let slashes = windows_path.replace('\\', "/");
-    let Some(rest) = slashes
-        .strip_prefix("C:/")
-        .or_else(|| slashes.strip_prefix("c:/"))
-    else {
-        return Err("not a C: absolute path in the verified bottle".into());
-    };
+/// Every component is checked before reading further. Even for an
+/// explicitly selected host-mapped drive, paths cannot escape that drive's
+/// canonical root. ASCII case collisions remain unresolvable.
+fn resolve_components(root: &Path, rest: &str) -> Result<PathBuf, String> {
     let mut parts = Vec::new();
     for part in rest.split('/') {
         if part.is_empty()
@@ -113,20 +118,15 @@ fn resolve_c_drive_file(prefix: &Path, windows_path: &str) -> Result<PathBuf, St
         }
     }
     if parts.is_empty() {
-        return Err("no executable path below C: drive".into());
+        return Err("no executable path below selected mapped drive".into());
     }
-    let root = fs::canonicalize(prefix.join("drive_c"))
-        .map_err(|error| format!("cannot resolve selected bottle C: drive: {error}"))?;
-    if !root.starts_with(prefix) {
-        return Err("selected bottle C: drive escapes its verified prefix".into());
-    }
-    let mut current = root.clone();
+    let mut current = root.to_path_buf();
     for part in parts {
         let next = resolve_windows_component(&current, part)?;
         current = fs::canonicalize(&next)
             .map_err(|error| format!("cannot resolve registered executable path: {error}"))?;
-        if !current.starts_with(&root) {
-            return Err("registered executable resolves outside selected bottle C: drive".into());
+        if !current.starts_with(root) {
+            return Err("registered executable resolves outside selected mapped drive".into());
         }
     }
     if !current.is_file() {
@@ -135,8 +135,69 @@ fn resolve_c_drive_file(prefix: &Path, windows_path: &str) -> Result<PathBuf, St
     Ok(current)
 }
 
-fn inspect_program(prefix: &Path, program: &RegisteredProgram) -> serde_json::Value {
-    let (resolved, inspection) = match resolve_c_drive_file(prefix, &program.path) {
+/// The default inventory never traverses another host drive. Preserve
+/// the verified prefix's ordinary C: containment even if drive_c is a link.
+fn resolve_c_drive_file(prefix: &Path, windows_path: &str) -> Result<PathBuf, String> {
+    let slashes = windows_path.replace('\\', "/");
+    let Some(rest) = slashes
+        .strip_prefix("C:/")
+        .or_else(|| slashes.strip_prefix("c:/"))
+    else {
+        return Err("not a C: absolute path in the verified bottle".into());
+    };
+    let root = fs::canonicalize(prefix.join("drive_c"))
+        .map_err(|error| format!("cannot resolve selected bottle C: drive: {error}"))?;
+    if !root.starts_with(prefix) {
+        return Err("selected bottle C: drive escapes its verified prefix".into());
+    }
+    resolve_components(&root, rest)
+}
+
+/// Only an explicit opt-in allows reading an external registered file.
+/// Wine maps DOS drives through symlinks in this exact prefix's dosdevices.
+/// The mapping itself must be an existing symlink to a directory; never
+/// infer Z: as host root or substitute an unverified fallback.
+fn resolve_registered_file(
+    prefix: &Path,
+    windows_path: &str,
+    include_mapped_drives: bool,
+) -> Result<PathBuf, String> {
+    let slashes = windows_path.replace('\\', "/");
+    let (drive, rest) = slashes
+        .split_once(":/")
+        .ok_or("registered executable has no absolute DOS drive path")?;
+    if drive.len() != 1 || !drive.as_bytes()[0].is_ascii_alphabetic() {
+        return Err("unsupported registered executable drive letter".into());
+    }
+    if drive.eq_ignore_ascii_case("c") {
+        return resolve_c_drive_file(prefix, windows_path);
+    }
+    if !include_mapped_drives {
+        return Err("non-C: registered drive requires explicit --include-mapped-drives".into());
+    }
+    let mapping = prefix
+        .join("dosdevices")
+        .join(format!("{}:", drive.to_ascii_lowercase()));
+    let metadata = fs::symlink_metadata(&mapping)
+        .map_err(|error| format!("selected drive has no verified Wine mapping: {error}"))?;
+    if !metadata.file_type().is_symlink() {
+        return Err("selected Wine drive mapping is not a symlink".into());
+    }
+    let root = fs::canonicalize(&mapping)
+        .map_err(|error| format!("cannot resolve selected Wine drive mapping: {error}"))?;
+    if !root.is_dir() {
+        return Err("selected Wine drive mapping is not a directory".into());
+    }
+    resolve_components(&root, rest)
+}
+
+fn inspect_program(
+    prefix: &Path,
+    program: &RegisteredProgram,
+    include_mapped_drives: bool,
+) -> serde_json::Value {
+    let (resolved, inspection) =
+        match resolve_registered_file(prefix, &program.path, include_mapped_drives) {
         Ok(file) => {
             let result = inspect_pe_timer_imports(&file);
             (Some(file), result)
@@ -175,7 +236,13 @@ pub(super) fn run_bottle_compat(args: Vec<String>) -> Result<(), String> {
     }
     let reviewed = programs
         .iter()
-        .map(|program| inspect_program(&ownership.canonical_bottle_prefix, program))
+        .map(|program| {
+            inspect_program(
+                &ownership.canonical_bottle_prefix,
+                program,
+                options.include_mapped_drives,
+            )
+        })
         .collect::<Vec<_>>();
     let output = serde_json::json!({
         "operation": "read_only_registered_bottle_static_pe_compatibility",
@@ -183,6 +250,7 @@ pub(super) fn run_bottle_compat(args: Vec<String>) -> Result<(), String> {
         "verified_bottle_prefix": ownership.canonical_bottle_prefix,
         "bottle_prefix_association_verified": true,
         "registered_programs_only": true,
+        "external_drive_inspection_opted_in": options.include_mapped_drives,
         "wine_runner_verified": false,
         "process_identity_verified": false,
         "gameplay_speed_verified": false,
@@ -241,6 +309,12 @@ mod tests {
                 "--bottles-cli".into(),
                 "sh".into(),
             ],
+            vec![
+                "--bottle".into(),
+                "Games".into(),
+                "--include-mapped-drives".into(),
+                "--include-mapped-drives".into(),
+            ],
         ] {
             assert!(parse_options(&args).is_err());
         }
@@ -273,7 +347,7 @@ mod tests {
             path: r"C:\Games\Game.exe".into(),
             arguments: String::new(),
         };
-        let report = inspect_program(&f.0, &item);
+        let report = inspect_program(&f.0, &item, false);
         assert_eq!(
             report["static_pe_compatibility"]["static_import_status"],
             "static_import_inventory_unknown"
@@ -296,6 +370,49 @@ mod tests {
                 "{path}"
             );
         }
+    }
+
+
+    #[cfg(unix)]
+    #[test]
+    fn mapped_external_drive_needs_opt_in_and_verified_symlink() {
+        use std::os::unix::fs::symlink;
+        let f = Fixture::new();
+        let external = f.0.with_extension("external");
+        fs::create_dir_all(&external).unwrap();
+        fs::write(external.join("Game.exe"), b"not a PE").unwrap();
+        fs::create_dir_all(f.0.join("dosdevices")).unwrap();
+        symlink(&external, f.0.join("dosdevices/d:")).unwrap();
+
+        assert!(resolve_registered_file(&f.0, r"D:\Game.exe", false)
+            .unwrap_err()
+            .contains("--include-mapped-drives"));
+        assert_eq!(
+            resolve_registered_file(&f.0, r"d:\game.EXE", true).unwrap(),
+            fs::canonicalize(external.join("Game.exe")).unwrap()
+        );
+        assert!(resolve_registered_file(&f.0, r"E:\Game.exe", true).is_err());
+        assert!(resolve_registered_file(&f.0, r"D:\..\Game.exe", true).is_err());
+        assert!(resolve_registered_file(&f.0, r"\\server\Game.exe", true).is_err());
+
+        let escaped = external.join("Outside.exe");
+        let outside = f.0.join("drive_c/Games/Game.exe");
+        symlink(&outside, &escaped).unwrap();
+        assert!(resolve_registered_file(&f.0, r"D:\Outside.exe", true)
+            .unwrap_err()
+            .contains("outside selected mapped drive"));
+
+        fs::remove_dir_all(&external).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_non_symlinked_external_drive_mapping() {
+        let f = Fixture::new();
+        fs::create_dir_all(f.0.join("dosdevices/d:")).unwrap();
+        assert!(resolve_registered_file(&f.0, r"D:\Game.exe", true)
+            .unwrap_err()
+            .contains("not a symlink"));
     }
 
     #[cfg(unix)]
