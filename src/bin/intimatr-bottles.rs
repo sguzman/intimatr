@@ -11,6 +11,9 @@ use std::process::Command;
 use intimatr::bottles::{BottleInventory, parse_bottle_names, parse_registered_programs};
 
 #[cfg(target_os = "linux")]
+#[path = "intimatr_bottles/game_attach.rs"]
+mod game_attach;
+#[cfg(target_os = "linux")]
 #[path = "intimatr_bottles/live_match.rs"]
 mod live_match;
 #[cfg(target_os = "linux")]
@@ -45,7 +48,7 @@ fn run() -> Result<(), String> {
     let action = args.next().unwrap_or_default();
     if action == "--help" || action == "-h" {
         println!(
-            "Usage:\n  intimatr-bottles scan\n  intimatr-bottles plan (--all | --include-bottle GLOB | --include-program GLOB) [--exclude-bottle GLOB] [--exclude-program GLOB]\n  intimatr-bottles probe-attach --pid PID --prefix WINEPREFIX --helper PATH --runner ABSOLUTE_WINE_BINARY\n  intimatr-bottles profile-check --config TOML --bottle NAME --exe WINDOWS_PATH\n  intimatr-bottles processes --prefix INITIALIZED_WINEPREFIX\n  intimatr-bottles win-processes --prefix INITIALIZED_WINEPREFIX --helper WINE_PROCESS_LIST_EXE --runner ABSOLUTE_WINE_BINARY\n  intimatr-bottles match-snapshot --bottle NAME --programs BOTTLES_JSON --windows WINE_PROCESS_JSON\n  intimatr-bottles live-match --bottle NAME --helper WINE_PROCESS_LIST_EXE --runner ABSOLUTE_WINE_BINARY [--prefix WINEPREFIX] [--bottles-cli BOTTLES_CLI] [--pid WINDOWS_PID --exe EXACT_WINDOWS_PATH]\n  intimatr-bottles speed --prefix INITIALIZED_WINEPREFIX --runner ABSOLUTE_WINE --client ABSOLUTE_INTIMATR_SPEED_EXE (--tcp LOOPBACK:PORT | --pipe NAME) (status | increase | decrease | toggle | reset | preset MULTIPLIER | hold MULTIPLIER DURATION_MS | release)\n\nscan and plan are read-only. probe-attach runs only the strictly allowlisted offline Wine test helper; it cannot attach a real game."
+            "Usage:\n  intimatr-bottles scan\n  intimatr-bottles plan (--all | --include-bottle GLOB | --include-program GLOB) [--exclude-bottle GLOB] [--exclude-program GLOB]\n  intimatr-bottles probe-attach --pid PID --prefix WINEPREFIX --helper PATH --runner ABSOLUTE_WINE_BINARY\n  intimatr-bottles profile-check --config TOML --bottle NAME --exe WINDOWS_PATH\n  intimatr-bottles processes --prefix INITIALIZED_WINEPREFIX\n  intimatr-bottles win-processes --prefix INITIALIZED_WINEPREFIX --helper WINE_PROCESS_LIST_EXE --runner ABSOLUTE_WINE_BINARY\n  intimatr-bottles match-snapshot --bottle NAME --programs BOTTLES_JSON --windows WINE_PROCESS_JSON\n  intimatr-bottles live-match --bottle NAME --helper WINE_PROCESS_LIST_EXE --runner ABSOLUTE_WINE_BINARY [--prefix WINEPREFIX] [--bottles-cli BOTTLES_CLI] [--pid WINDOWS_PID --exe EXACT_WINDOWS_PATH]\n  intimatr-bottles attach-game --bottle NAME --helper WINE_PROCESS_LIST_EXE --attach-helper ABSOLUTE_GAME_ATTACH_HELPER --runner ABSOLUTE_WINE_BINARY --pid WINDOWS_PID --exe EXACT_WINDOWS_PATH --offline-single-player [--prefix WINEPREFIX] [--bottles-cli BOTTLES_CLI]\n  intimatr-bottles speed --prefix INITIALIZED_WINEPREFIX --runner ABSOLUTE_WINE --client ABSOLUTE_INTIMATR_SPEED_EXE (--tcp LOOPBACK:PORT | --pipe NAME) (status | increase | decrease | toggle | reset | preset MULTIPLIER | hold MULTIPLIER DURATION_MS | release)\n\nscan/plan/live-match are read-only. probe-attach is fixture-only. attach-game requires exact game registration, verified managed runner and explicit offline-single-player acknowledgment; do not use with online or protected games."
         );
         return Ok(());
     }
@@ -66,6 +69,9 @@ fn run() -> Result<(), String> {
     }
     if action == "live-match" {
         return live_match::run_live_match(args.collect());
+    }
+    if action == "attach-game" {
+        return game_attach::run_game_attach(args.collect());
     }
     if action == "speed" {
         return intimatr::bottles_speed_cli::run(args.collect());
