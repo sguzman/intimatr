@@ -512,7 +512,9 @@ pub mod helper {
             return Err("game process creation time must be nonzero".into());
         }
         if args.next().as_deref() != Some("--offline-single-player") {
-            return Err("game action requires explicit --offline-single-player acknowledgment".into());
+            return Err(
+                "game action requires explicit --offline-single-player acknowledgment".into(),
+            );
         }
         let stop_only = match args.next().as_deref() {
             None => false,
@@ -553,7 +555,9 @@ pub mod helper {
         validate_target_image(process.0, &executable, target)?;
         validate_target_generation(process.0, target)?;
         if target_intimatr_module(pid, &dll)? != IntimatrModulePresence::Expected {
-            return Err("cannot stop: exact owned Intimatr DLL is not loaded in selected game".into());
+            return Err(
+                "cannot stop: exact owned Intimatr DLL is not loaded in selected game".into(),
+            );
         }
         super::remote_status::request_shutdown(process.0, pid, &dll)?;
         println!("INTIMATR_REMOTE_RUNTIME_STOPPED=1");

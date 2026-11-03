@@ -172,8 +172,7 @@ fn export_rva(dll: &Path, export: &std::ffi::CStr) -> Result<usize, String> {
     let module = LocalModule(mapped);
     let base = module.0 as usize;
     let size = local_image_size(base).ok_or("invalid local Intimatr PE image")?;
-    let address =
-        unsafe { GetProcAddress(module.0, export.as_ptr().cast()) } as usize;
+    let address = unsafe { GetProcAddress(module.0, export.as_ptr().cast()) } as usize;
     if address < base || address >= base.saturating_add(size) {
         return Err("owned Intimatr lifecycle export is missing or forwarded".into());
     }
@@ -250,8 +249,12 @@ pub fn request_shutdown(process: Handle, pid: u32, dll: &Path) -> Result<(), Str
     if shutdown_rva >= image_size || status_rva >= image_size {
         return Err("target Intimatr DLL lacks bounded lifecycle exports".into());
     }
-    let shutdown = base.checked_add(shutdown_rva).ok_or("remote Intimatr shutdown address overflow")?;
-    let status = base.checked_add(status_rva).ok_or("remote Intimatr status address overflow")?;
+    let shutdown = base
+        .checked_add(shutdown_rva)
+        .ok_or("remote Intimatr shutdown address overflow")?;
+    let status = base
+        .checked_add(status_rva)
+        .ok_or("remote Intimatr status address overflow")?;
     if call_export(process, shutdown, 15_000)? != 1 {
         return Err("target Intimatr shutdown failed; DLL remains loaded".into());
     }

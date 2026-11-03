@@ -138,7 +138,8 @@ fn run_game_action(args: Vec<String>, stop_only: bool) -> Result<(), String> {
     // image and live architecture again under its per-target mutex before
     // writing a DLL path; the snapshot alone is never attachment authority.
     let mut command = Command::new(&selected.runner);
-    command.arg(&attach_helper)
+    command
+        .arg(&attach_helper)
         .arg("--pid")
         .arg(candidate.selected_windows_pid.to_string())
         .arg("--exe")
