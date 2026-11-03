@@ -1,5 +1,5 @@
 //! Read-only native Bottles and scoped Wine live-process reconciliation.
-use super::{bottles_json_with_command, query_windows_process_snapshot, WindowsProcessesOptions};
+use super::{WindowsProcessesOptions, bottles_json_with_command, query_windows_process_snapshot};
 
 #[cfg(target_os = "linux")]
 #[derive(Debug, PartialEq, Eq)]

@@ -11,6 +11,9 @@ use std::process::Command;
 use intimatr::bottles::{BottleInventory, parse_bottle_names, parse_registered_programs};
 
 #[cfg(target_os = "linux")]
+#[path = "intimatr_bottles/live_match.rs"]
+mod live_match;
+#[cfg(target_os = "linux")]
 #[path = "intimatr_bottles/probe_attach.rs"]
 mod probe_attach;
 #[cfg(target_os = "linux")]
@@ -19,9 +22,6 @@ mod profile_check;
 #[cfg(target_os = "linux")]
 #[path = "intimatr_bottles/read_only_snapshot.rs"]
 mod read_only_snapshot;
-#[cfg(target_os = "linux")]
-#[path = "intimatr_bottles/live_match.rs"]
-mod live_match;
 
 #[cfg(not(target_os = "linux"))]
 fn main() {
@@ -344,4 +344,3 @@ mod windows_processes_tests {
         assert_eq!(parsed.prefix, "/tmp/Wine prefix");
     }
 }
-

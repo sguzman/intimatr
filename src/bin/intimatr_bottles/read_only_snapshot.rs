@@ -50,4 +50,3 @@ pub(super) fn run_match_snapshot(args: Vec<String>) -> Result<(), String> {
     );
     Ok(())
 }
-

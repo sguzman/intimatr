@@ -116,4 +116,3 @@ mod profile_check_tests {
         assert_eq!(options.executable, r"C:\Games\Game.exe");
     }
 }
-

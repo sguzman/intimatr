@@ -169,4 +169,3 @@ mod probe_tests {
         assert_eq!(parsed.runner, "/opt/patched-runner/bin/wine");
     }
 }
-
