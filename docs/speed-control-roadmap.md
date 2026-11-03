@@ -341,3 +341,7 @@ The fixture remote loader now treats a `Module32NextW` failure as end-of-list on
 ### 🧩 Post-load DLL identity verification — fixture-only INT-1407 work (2026-11-02)
 
 The Windows remote loader now treats a module basename as a collision for **pre-load duplicate refusal**, but requires the full canonical module path to equal the owned helper-side `intimatr.dll` to claim **post-load confirmation**. Missing, malformed, or mismatched paths are rejected. Added Windows unit tests; ongoing Wine CI will verify that the positive owned load still works. The production game loader and actual native Bottles QA remain pending. **Verified expansion 16/100, previous 16, Δ +0 pp.**
+
+### 🧱 Shared live x64 machine gate for fixture remote loading — 2026-11-02
+
+Refactored `IsWow64Process2` machine decoding into `windows_process_machine` for both the read-only Wine process inventory and the test-only remote loader. The helper now requires **positively verified live x86-64 architecture** on the already-open target handle before writing any remote memory; missing API/unknown machine and x86/ARM64 fail closed. Added deterministic native x64, WoW64 and unrecognized-machine tests. Full CI is pending; a real user's Wine runner/game remains untested. **INT-1406/1407 still open; verified expansion 16% (previous 16%, Δ +0 pp).**

@@ -290,6 +290,14 @@ The Windows-only fixture helper now classifies a same-named observed module usin
 
 This is an additional safeguard for disposable owned fixtures, **not** a signature check, a remote process attestation, proof of runner compatibility or authorization to attach to a game. Real offline-game support and INT-1407 remain unfinished; no new weighted points are earned.
 
+## 2026-11-02 — Shared live-machine identification and x64 remote-load gate
+
+`wine-process-list.exe` and `wine-attach-helper.exe` now use a shared Windows `windows_process_machine` module. It obtains the **actual running process's** machine using dynamically discovered `IsWow64Process2`, with no guessed fallback if the API is missing, fails, or returns unknown machine codes. Unit tests cover native x64, x86 WoW64, ARM64 and unsupported values. The read-only PID inventory retains its existing nullable architecture metadata.
+
+Before creating a remote loader thread or modifying remote memory, the **disposable fixture-only attach helper** now checks the held target process handle and refuses it unless the live machine is positively identified as `x86_64`. This is independent of the target's basename, full image path and on-disk PE header. The tested Wine runner supports this Win32 query, but other Wine runners may not; unknown evidence is a refusal, **not** authorization to try an unsafe cross-bitness injection. The live Windows/PE architecture report and the fixture-only attach helper now share decoding semantics.
+
+The positive Wine fixture and cross-Windows CI for this new gate were running when this section was written. Real native Bottles runner selection, actual game process ownership, x86 builds, offline-game safety and general timed-hook compatibility remain unverified. No general game attachment was enabled, and the weighted expansion stays at 16/100.
+
 ## Combined native Linux + Wine bundle (experimental)
 
 The Linux cross-build CI now produces `intimatr-linux-wine-x86_64-VERSION.tar.gz` alongside its archive SHA-256 sidecar. The verified archive contains the native `bin/intimatr-bottles` ELF, `wine/intimatr.dll`, `wine/intimatr-speed.exe`, read-only `wine/wine-process-list.exe`, examples, version marker, per-file SHA-256 checksums, and reference docs. To build it after compiling the native CLI plus Windows GNU binaries:
