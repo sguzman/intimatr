@@ -20,11 +20,11 @@ mod live_match;
 #[path = "intimatr_bottles/probe_attach.rs"]
 mod probe_attach;
 #[cfg(target_os = "linux")]
-#[path = "intimatr_bottles/profile_check.rs"]
-mod profile_check;
-#[cfg(target_os = "linux")]
 #[path = "intimatr_bottles/pe_compat.rs"]
 mod pe_compat;
+#[cfg(target_os = "linux")]
+#[path = "intimatr_bottles/profile_check.rs"]
+mod profile_check;
 #[cfg(target_os = "linux")]
 #[path = "intimatr_bottles/read_only_snapshot.rs"]
 mod read_only_snapshot;

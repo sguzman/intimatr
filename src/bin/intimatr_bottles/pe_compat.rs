@@ -2,7 +2,10 @@
 //! A successful file scan is NOT proof of Wine resolution, ownership, actual
 //! engine timing usage or permission to attach to any process.
 
-use std::{fs, path::{Path, PathBuf}};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 use intimatr::pe_timer_imports::{TimerImportCoverage, inspect_pe_timer_imports};
 
@@ -100,8 +103,17 @@ mod tests {
     fn distinguishes_missing_full_and_unknown_without_gameplay_claim() {
         let path = Path::new("/tmp/disposable-example.exe");
         let empty = report(path, Ok(TimerImportCoverage::default()));
-        assert_eq!(empty["static_import_status"], "static_timer_imports_missing");
-        assert_eq!(empty["static_timer_imports_missing"].as_array().unwrap().len(), 4);
+        assert_eq!(
+            empty["static_import_status"],
+            "static_timer_imports_missing"
+        );
+        assert_eq!(
+            empty["static_timer_imports_missing"]
+                .as_array()
+                .unwrap()
+                .len(),
+            4
+        );
         let mut full = TimerImportCoverage {
             query_performance_counter: true,
             get_tick_count64: true,
@@ -110,14 +122,29 @@ mod tests {
             all_four_static_names: true,
         };
         let complete = report(path, Ok(full));
-        assert_eq!(complete["static_import_status"], "static_four_timer_names_present");
-        assert_eq!(complete["static_timer_imports_missing"].as_array().unwrap().len(), 0);
+        assert_eq!(
+            complete["static_import_status"],
+            "static_four_timer_names_present"
+        );
+        assert_eq!(
+            complete["static_timer_imports_missing"]
+                .as_array()
+                .unwrap()
+                .len(),
+            0
+        );
         full.time_get_time = false;
         full.all_four_static_names = false;
         let partial = report(path, Ok(full));
-        assert_eq!(partial["static_timer_imports_missing"], serde_json::json!(["timeGetTime"]));
+        assert_eq!(
+            partial["static_timer_imports_missing"],
+            serde_json::json!(["timeGetTime"])
+        );
         let unknown = report(path, Err("invalid PE".into()));
-        assert_eq!(unknown["static_import_status"], "static_import_inventory_unknown");
+        assert_eq!(
+            unknown["static_import_status"],
+            "static_import_inventory_unknown"
+        );
         assert!(unknown["static_timer_imports_missing"].is_null());
         assert_eq!(unknown["inspection_error"], "invalid PE");
         for item in [empty, complete, partial, unknown] {
