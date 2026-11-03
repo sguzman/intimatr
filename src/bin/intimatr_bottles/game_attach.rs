@@ -196,8 +196,14 @@ fn run_game_action(args: Vec<String>, action: GameAction) -> Result<(), String> 
         if states.next().is_some()
             || !matches!(
                 state,
-                "absent" | "detached" | "attached" | "bootstrapping"
-                    | "running" | "stopping" | "stopped" | "failed"
+                "absent"
+                    | "detached"
+                    | "attached"
+                    | "bootstrapping"
+                    | "running"
+                    | "stopping"
+                    | "stopped"
+                    | "failed"
             )
         {
             return Err("game status helper returned invalid or duplicate runtime states".into());
@@ -210,7 +216,9 @@ fn run_game_action(args: Vec<String>, action: GameAction) -> Result<(), String> 
             "INTIMATR_REMOTE_RUNTIME_RUNNING=1"
         };
         if !stdout.lines().any(|line| line == expected_marker) {
-            return Err("game helper returned without independent target runtime state proof".into());
+            return Err(
+                "game helper returned without independent target runtime state proof".into(),
+            );
         }
         None
     };

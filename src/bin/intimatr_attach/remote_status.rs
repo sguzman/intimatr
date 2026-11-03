@@ -221,7 +221,11 @@ fn classify(code: u32) -> Result<bool, String> {
 
 /// Read the exact selected Intimatr module's lifecycle without altering it.
 /// Absence is handled separately by the caller before executing this export.
-pub fn query_lifecycle_state(process: Handle, pid: u32, dll: &Path) -> Result<&'static str, String> {
+pub fn query_lifecycle_state(
+    process: Handle,
+    pid: u32,
+    dll: &Path,
+) -> Result<&'static str, String> {
     let (base, image_size) = target_base(pid, dll)?;
     let rva = export_rva(dll, STATUS_EXPORT)?;
     if rva >= image_size {
