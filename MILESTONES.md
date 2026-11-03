@@ -115,7 +115,7 @@ Work is ordered by dependency: later phases should build on the shared core inst
 **Status:** active (4/19 points verified). **Weight:** 19/100 expansion points.
 - [x] INT-1101 🧮 Pure virtual clock model (Linux CI 41357696793, cross-target build and synthetic tests).
 - [ ] INT-1102 🪝 Windows timing-hook backend.
-- [ ] INT-1103 🧭 Clock consistency and live multiplier transitions (active; coordinated pure QPC/millisecond model verified, timing hooks pending).
+- [ ] INT-1103 🧭 Clock consistency and live multiplier transitions (active; selected-fixture 0.5×/2×/1× IAT timing transitions driven by the native Linux CLI and shared command executor under Wine; real game QA pending).
 - [ ] INT-1104 🧯 Safe hook lifecycle and fallback.
 - [ ] INT-1105 🎮 Offline Wine game proof.
 
@@ -131,13 +131,13 @@ Work is ordered by dependency: later phases should build on the shared core inst
 - [x] INT-1301 🎚️ Step/preset/toggle/reset state machine (Linux CI 41358317446 core unit tests).
 - [ ] INT-1302 ✋ Hold-to-modulate and optional startup speed (active; bounded holds/startup expiry and opt-in preview focus worker wired; live in-game acceleration, modifier behavior and recovery still unverified).
 - [ ] INT-1303 🔑 Configurable, conflict-aware hotkeys (active; opt-in Win32 focused-window preview worker, command state handoff and unambiguous HWND selection implemented; real Wine game input/Wayland field QA pending).
-- [ ] INT-1304 🧷 Authoritative status and recovery (active; fail-closed preview status and focus-loss reset exposed; actual installed-hook/game-speed status not yet available).
+- [ ] INT-1304 🧷 Authoritative status and recovery (active; live installed-IAT-hook status and virtual clock multiplier separately queryable, but measured gameplay speed and real-game recovery not yet verified).
 
 ## 14. Bottles deployment manager 🍾
 **Status:** active (0/23 points verified; native read-only inventory implemented, real Bottles QA pending). **Weight:** 23/100 expansion points.
 - [ ] INT-1401 🔭 Discover native Bottles and games (active; Linux /proc prefix records and same-prefix Windows PID enumeration verified in fixtures, real native Bottles installation not yet inspected).
 - [ ] INT-1402 🧲 Include/exclude filters (active; read-only selection CLI and synthetic fixture tests implemented, native Bottles field QA pending).
-- [ ] INT-1403 📋 Non-mutating plan; apply/status operations.
+- [ ] INT-1403 📋 Non-mutating plan; apply/status operations (active; explicit attach/arm/preset/status/stop exercised against Wine fixture, actual Bottles field QA pending).
 - [ ] INT-1404 🔌 Verified normal-launch DLL loading.
 - [ ] INT-1405 🛟 Idempotence, backups and rollback (including process attach).
 - [ ] INT-1406 🧱 32-/64-bit, Linux GNU build and runner compatibility reporting.
@@ -145,9 +145,9 @@ Work is ordered by dependency: later phases should build on the shared core inst
 
 ## 15. Unified UI/RPC 🖥️
 **Status:** active (0/7 points verified; preview-only speed command DTOs and shared executor integrated, RPC integration QA pending). **Weight:** 7/100 expansion points.
-- [ ] INT-1501 🧠 Shared command and RPC interface (active; one serialized preview coordinator and real loopback RPC regression added; UI and applied-game-clock controls outstanding).
+- [ ] INT-1501 🧠 Shared command and RPC interface (active; CLI preset commands now synchronize a selected fixture's IAT clock through the same command executor as RPC/UI; production-game behavior and full frontend QA pending).
 - [ ] INT-1502 🪟 Native egui controls and appearance/keyboard QA.
-- [ ] INT-1503 📟 Status without keeping the scanner foregrounded (active; RPC preview-only status available, live hooked-game status unimplemented).
+- [ ] INT-1503 📟 Status without keeping the scanner foregrounded (active; exact-target lifecycle, IAT installation and installed virtual-clock multiplier available; gameplay-rate verification and real native Bottles QA outstanding).
 
 ## 16. Verification and hardening 🧪
 **Status:** pending. **Weight:** 15/100 expansion points.
@@ -203,3 +203,5 @@ Work is ordered by dependency: later phases should build on the shared core inst
 **Standalone RPC status staging (2026-11-02):** The Windows/Wine `intimatr-speed` CLI now supports explicit loopback TCP or named-pipe speed queries and commands without a foreground scanner window. It does not find/attach games or bypass the existing RPC authorization. Initial Windows build/CLI parser CI and instrumented Bottles game field QA remain outstanding; INT-1503 is not credited. **Expansion 16% (previous 16%, +0 pp).**
 
 **2026-11-02 speed RPC client packaging checkpoint:** The Windows build and Linux-hosted Wine cross-build CI now build and verify a standalone `intimatr-speed.exe` Windows PE client. The MSVC release package includes the CLI and a separate SHA-256 entry, both checked by the release verifier; CI publishes distinct native-Windows and Linux-cross-built Wine client artifacts. Real-game command execution and native Bottles field QA still block INT-1503, INT-1702 and INT-1404; do not award credit from packaging changes alone. **Verified expansion remains 16% (previous 16%, delta +0 pp)** pending complete CI and owner validation.
+
+**2026-11-03 explicit timer arming and shared preset checkpoint:** The dedicated `arm-game-timers` command now requires exact registered offline-game identity and independent experimental opt-in; it never activates during ordinary attachment. `set-game-speed` requests bounded half/normal/double presets via the shared speed-command executor, and `status-game` independently reads the installed timer-session multiplier without claiming the actual game's simulation speed. [Wine CI run 41711702763](https://github.com/sguzman/intimatr/actions/runs/41711702763) passed the integration test for external 0.5×/2×/1× requests, in-process four-API clock measurement, and external stop/rollback; that run's Windows/Linux Clippy jobs failed on a complex function return type, subsequently refactored into a small named bundle in commit `bc36cb7`. Full CI for this follow-up was still in progress when this checkpoint was recorded. No actual user game or native Bottles installation was modified or tested, and `gameplay_speed_verified` remains false. **Expansion 16% (previous 16%, delta +0 pp)**: INT-1102/1103/1104/1105, INT-1403/1407 and INT-1501/1503 acceptance remain open.
