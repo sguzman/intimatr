@@ -105,6 +105,14 @@ pub extern "system" fn intimatr_remote_lifecycle_query(_parameter: *mut c_void) 
     runtime::lifecycle_state().as_u8() as u32
 }
 
+/// Side-effect-free status for the separately managed four-timer IAT backend.
+/// An attached DLL can be Running while no timing hooks are installed.
+/// The returned code never represents measured game-time acceleration.
+#[unsafe(no_mangle)]
+pub extern "system" fn intimatr_remote_timer_hook_state(_parameter: *mut c_void) -> u32 {
+    crate::experimental_timer_probe::remote_hook_state()
+}
+
 /// ABI-compatible remote shutdown of this DLL's own runtime. It deliberately
 /// does not call FreeLibrary or unload callback code.
 #[unsafe(no_mangle)]

@@ -551,7 +551,7 @@ jobs:
           mkdir -p target/wine-attach/game-fixture/config
           cp target/wine-attach/wine-attach-target.exe target/wine-attach/game-fixture/
           cp config/wine-attach-target.exe.toml target/wine-attach/game-fixture/config/
-          xvfb-run -a wine target/wine-attach/game-fixture/wine-attach-target.exe >target/wine-attach/game-fixture/stdout 2>target/wine-attach/game-fixture/stderr &
+          INTIMATR_TEST_HOOK_STATUS_GATE=1 xvfb-run -a wine target/wine-attach/game-fixture/wine-attach-target.exe >target/wine-attach/game-fixture/stdout 2>target/wine-attach/game-fixture/stderr &
           game_launcher=$!
           trap 'kill "$game_launcher" 2>/dev/null || true' EXIT
           for i in $(seq 1 100); do
@@ -638,6 +638,8 @@ jobs:
             and .intimatr_module_loaded == false
             and .runtime_state == "absent"
             and .runtime_running_verified == false
+            and .timer_hook_state == "none"
+            and .timer_hooks_installed_verified == false
             and .speed_controls_verified == false' target/wine-attach/game-before.json > /dev/null
           XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles attach-game "${game_args[@]}" --offline-single-player >target/wine-attach/game-attach.json
           jq -e --arg created "$game_created" '.operation == "explicit_offline_single_player_game_attachment"
@@ -647,6 +649,21 @@ jobs:
             and .speed_controls_verified == false
             and .attachment_attempted == true
             and .offline_single_player_acknowledged == true' target/wine-attach/game-attach.json > /dev/null
+          # Pause the disposable target while its four imports are hooked.
+          for i in $(seq 1 100); do
+            if test -s target/wine-attach/game-fixture/attach-hooks-ready.flag; then
+              break
+            fi
+            sleep 0.1
+          done
+          test -s target/wine-attach/game-fixture/attach-hooks-ready.flag
+          XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles status-game "${game_args[@]}" --offline-single-player >target/wine-attach/game-hooked.json
+          jq -e '.intimatr_module_loaded == true
+            and .runtime_state == "running"
+            and .timer_hook_state == "installed_four_timers"
+            and .timer_hooks_installed_verified == true
+            and .speed_controls_verified == false' target/wine-attach/game-hooked.json > /dev/null
+          touch target/wine-attach/game-fixture/attach-hooks-inspected.flag
           for i in $(seq 1 100); do
             if test -s target/wine-attach/game-fixture/attach-verified.flag; then
               break
@@ -659,6 +676,8 @@ jobs:
             and .runtime_state == "running"
             and .runtime_running_verified == true
             and .runtime_stopped_verified == false
+            and .timer_hook_state == "none"
+            and .timer_hooks_installed_verified == false
             and .speed_controls_verified == false' target/wine-attach/game-running.json > /dev/null
           # The same process must refuse duplicate game helper attachment.
           if XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles attach-game "${game_args[@]}" --offline-single-player >target/wine-attach/game-duplicate.stdout 2>target/wine-attach/game-duplicate.stderr; then
@@ -681,6 +700,8 @@ jobs:
             and .runtime_state == "stopped"
             and .runtime_running_verified == false
             and .runtime_stopped_verified == true
+            and .timer_hook_state == "none"
+            and .timer_hooks_installed_verified == false
             and .speed_controls_verified == false' target/wine-attach/game-stopped-status.json > /dev/null
           # Repeated stop is idempotent; never free a still-referenced DLL.
           XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles stop-game "${game_args[@]}" --offline-single-player > target/wine-attach/game-stopped-again.json

@@ -121,7 +121,7 @@ mod target {
         Ok(())
     }
 
-    fn exercise_remote_speed(module: *mut c_void) -> Result<(), String> {
+    fn exercise_remote_speed(module: *mut c_void, directory: &Path) -> Result<(), String> {
         let enable: ToggleFn =
             unsafe { std::mem::transmute(resolve(module, c"intimatr_timer_probe_enable")?) };
         let disable: ToggleFn =
@@ -139,6 +139,24 @@ mod target {
                     "remote-attached target expected exactly four timer imports, observed {}",
                     unsafe { count() }
                 ));
+            }
+            // Only the explicitly flagged CI game fixture pauses with hooks
+            // installed for external status inspection; no normal target waits.
+            if std::env::var_os("INTIMATR_TEST_HOOK_STATUS_GATE").is_some() {
+                let ready = directory.join("attach-hooks-ready.flag");
+                let release = directory.join("attach-hooks-inspected.flag");
+                std::fs::write(&ready, b"four_hooks_installed")
+                    .map_err(|error| format!("cannot publish hook status gate: {error}"))?;
+                if !(0..400).any(|_| {
+                    if release.is_file() {
+                        true
+                    } else {
+                        thread::sleep(Duration::from_millis(25));
+                        false
+                    }
+                }) {
+                    return Err("test coordinator did not inspect installed timer hooks".into());
+                }
             }
             for speed in [0.5, 2.0, 1.0] {
                 if unsafe { change(speed) } == 0 {
@@ -190,7 +208,7 @@ mod target {
                             // Allow the remote helper to finish its load thread
                             // before this deliberately controlled target exits.
                             thread::sleep(Duration::from_millis(250));
-                            exercise_remote_speed(module)?;
+                            exercise_remote_speed(module, directory)?;
                             // Keep the disposable process alive long enough to
                             // assert that a second explicit attach is refused.
                             let verified = directory.join("attach-verified.flag");

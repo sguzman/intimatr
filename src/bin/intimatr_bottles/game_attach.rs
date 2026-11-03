@@ -224,6 +224,19 @@ fn run_game_action(args: Vec<String>, action: GameAction) -> Result<(), String> 
     };
     let result = if action == GameAction::Status {
         let state = runtime_state.ok_or("missing selected target status")?;
+        let mut hooks = stdout
+            .lines()
+            .filter_map(|line| line.strip_prefix("INTIMATR_REMOTE_TIMER_HOOK_STATE="));
+        let hook_state = hooks
+            .next()
+            .ok_or("game status helper did not return a target timer-hook state")?;
+        if hooks.next().is_some()
+            || !matches!(hook_state, "none" | "installed_four_timers" | "cleanup_pending")
+            || (state == "absent" && hook_state != "none")
+            || (state != "running" && hook_state == "installed_four_timers")
+        {
+            return Err("inconsistent or duplicate target timer-hook state".into());
+        }
         serde_json::json!({
             "operation": "explicit_offline_single_player_game_status",
             "selected_bottle": candidate.selected_bottle,
@@ -236,6 +249,8 @@ fn run_game_action(args: Vec<String>, action: GameAction) -> Result<(), String> 
             "runtime_state": state,
             "runtime_running_verified": state == "running",
             "runtime_stopped_verified": state == "stopped",
+            "timer_hook_state": hook_state,
+            "timer_hooks_installed_verified": state == "running" && hook_state == "installed_four_timers",
             "speed_controls_verified": false,
             "offline_single_player_acknowledged": true
         })

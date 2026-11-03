@@ -587,16 +587,18 @@ pub mod helper {
         let _guard = acquire_attach_mutex(pid)?;
         validate_target_image(process.0, &executable, target)?;
         validate_target_generation(process.0, target)?;
-        let state = match target_intimatr_module(pid, &dll)? {
-            IntimatrModulePresence::Absent => "absent",
-            IntimatrModulePresence::Expected => {
-                super::remote_status::query_lifecycle_state(process.0, pid, &dll)?
-            }
+        let (state, hook_state) = match target_intimatr_module(pid, &dll)? {
+            IntimatrModulePresence::Absent => ("absent", "none"),
+            IntimatrModulePresence::Expected => (
+                super::remote_status::query_lifecycle_state(process.0, pid, &dll)?,
+                super::remote_status::query_timer_hook_state(process.0, pid, &dll)?,
+            ),
             IntimatrModulePresence::UnexpectedPath => {
                 return Err("cannot query status of a different Intimatr DLL".into());
             }
         };
         println!("INTIMATR_REMOTE_RUNTIME_STATE={state}");
+        println!("INTIMATR_REMOTE_TIMER_HOOK_STATE={hook_state}");
         Ok(())
     }
 

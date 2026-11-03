@@ -20,6 +20,7 @@ const ERROR_NO_MORE_FILES: u32 = 18;
 const DONT_RESOLVE_DLL_REFERENCES: u32 = 0x0000_0001;
 const STATUS_EXPORT: &std::ffi::CStr = c"intimatr_remote_lifecycle_query";
 const SHUTDOWN_EXPORT: &std::ffi::CStr = c"intimatr_remote_shutdown";
+const HOOK_STATUS_EXPORT: &std::ffi::CStr = c"intimatr_remote_timer_hook_state";
 
 #[repr(C)]
 #[allow(dead_code)]
@@ -250,6 +251,29 @@ fn lifecycle_label(code: u32) -> Result<&'static str, String> {
     }
 }
 
+/// Inspect only the exact owned module and its side-effect-free hook status.
+pub fn query_timer_hook_state(process: Handle, pid: u32, dll: &Path) -> Result<&'static str, String> {
+    let (base, image_size) = target_base(pid, dll)?;
+    let rva = export_rva(dll, HOOK_STATUS_EXPORT)?;
+    if rva >= image_size {
+        return Err("target Intimatr module lacks bounded timer-hook status export".into());
+    }
+    let entry = base
+        .checked_add(rva)
+        .ok_or("remote Intimatr timer-hook status address overflow")?;
+    timer_hook_label(call_export(process, entry, 2_000)?)
+}
+
+fn timer_hook_label(code: u32) -> Result<&'static str, String> {
+    match code {
+        0 => Ok("none"),
+        1 => Ok("installed_four_timers"),
+        2 => Ok("cleanup_pending"),
+        3 => Err("target Intimatr timer-hook state unavailable".into()),
+        _ => Err(format!("unknown Intimatr timer-hook state code {code}")),
+    }
+}
+
 /// Return only after the selected DLL reports Running from the actual target.
 /// Absence of this proof means loaded but not runtime-verified; caller must
 /// never advertise speed functionality or automatic cleanup.
@@ -325,5 +349,15 @@ mod tests {
         }
         assert!(lifecycle_label(7).is_err());
         assert!(lifecycle_label(u32::MAX).is_err());
+    }
+
+    #[test]
+    fn independent_hook_state_cannot_confuse_cleanup_with_installed() {
+        assert_eq!(timer_hook_label(0).unwrap(), "none");
+        assert_eq!(timer_hook_label(1).unwrap(), "installed_four_timers");
+        assert_eq!(timer_hook_label(2).unwrap(), "cleanup_pending");
+        assert!(timer_hook_label(3).is_err());
+        assert!(timer_hook_label(4).is_err());
+        assert!(timer_hook_label(u32::MAX).is_err());
     }
 }

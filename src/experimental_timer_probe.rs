@@ -651,6 +651,28 @@ pub fn probe_module_pinned() -> bool {
     MODULE_PINNED.load(Ordering::Acquire)
 }
 
+/// Side-effect-free, bounded status for an explicitly selected target.
+/// 0 = no owned IAT hooks, 1 = all four installed while runtime is Running,
+/// 2 = partial/cleanup-pending, 3 = poisoned/unavailable. Never infer that
+/// actual gameplay speed has changed solely from the installed-hook state.
+pub fn remote_hook_state() -> u32 {
+    match hooks().lock() {
+        Ok(guard) => match guard.as_ref() {
+            None => 0,
+            Some(active)
+                if fully_installed_hook_set(&active.slots)
+                    && MODULE_PINNED.load(Ordering::Acquire)
+                    && !crate::runtime::shutdown_requested()
+                    && crate::runtime::lifecycle_state() == LifecycleState::Running =>
+            {
+                1
+            }
+            Some(_) => 2,
+        },
+        Err(_) => 3,
+    }
+}
+
 fn probe_hook_set_complete() -> bool {
     hooks()
         .lock()
