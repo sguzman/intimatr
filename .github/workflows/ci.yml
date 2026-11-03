@@ -306,6 +306,50 @@ jobs:
           esac
           MOCK_BOTTLES
           chmod +x target/wine-attach/mocks/bottles-cli
+          # Batch, read-only compatibility inspection of registered programs.
+          # No Wine process is launched by bottle-compat; this mocked bottle
+          # contains valid, incomplete, missing, unsupported and escape paths.
+          mkdir -p "$WINEPREFIX/drive_c/Games"
+          cp target/wine-attach/wine-attach-target.exe "$WINEPREFIX/drive_c/Games/Full.exe"
+          cp target/x86_64-pc-windows-gnu/release/wine-incompatible-target.exe "$WINEPREFIX/drive_c/Games/Partial.exe"
+          ln -s "$(pwd)/target/wine-attach/wine-attach-target.exe" "$WINEPREFIX/drive_c/Games/Outside.exe"
+          cat >target/wine-attach/mocks/compat-programs.json <<'MOCK_COMPAT_PROGRAMS'
+          [
+            {"name":"Full","executable":"Full.exe","path":"C:\\Games\\Full.exe"},
+            {"name":"Partial","executable":"Partial.exe","path":"C:\\Games\\Partial.exe"},
+            {"name":"Unavailable","executable":"Absent.exe","path":"C:\\Games\\Absent.exe"},
+            {"name":"Other Drive","executable":"Other.exe","path":"Z:\\other\\Other.exe"},
+            {"name":"Escaping Link","executable":"Outside.exe","path":"C:\\Games\\Outside.exe"}
+          ]
+          MOCK_COMPAT_PROGRAMS
+          export INTIMATR_MOCK_PROGRAMS_JSON="$(pwd)/target/wine-attach/mocks/compat-programs.json"
+          target/release/intimatr-bottles bottle-compat \
+            --bottle Fixture \
+            --bottles-cli target/wine-attach/mocks/bottles-cli >target/wine-attach/bottle-compat.json
+          jq -e '.operation == "read_only_registered_bottle_static_pe_compatibility"
+            and .bottle_prefix_association_verified == true
+            and .registered_programs_only == true
+            and .wine_runner_verified == false
+            and .process_identity_verified == false
+            and .process_attachment_attempted == false
+            and .timer_hook_installation_attempted == false
+            and .gameplay_speed_verified == false
+            and (.programs | length) == 5
+            and ([.programs[] | select(.registered_name == "Full"
+              and .static_pe_compatibility.static_import_status == "static_four_timer_names_present")] | length) == 1
+            and ([.programs[] | select(.registered_name == "Partial"
+              and .static_pe_compatibility.static_import_status == "static_timer_imports_missing"
+              and (.static_pe_compatibility.static_timer_imports_missing | index("timeGetTime") != null))] | length) == 1
+            and ([.programs[] | select(.registered_name == "Unavailable" or .registered_name == "Other Drive" or .registered_name == "Escaping Link") |
+              select(.resolved_linux_file == null and .static_pe_compatibility.static_import_status == "static_import_inventory_unknown")] | length) == 3' target/wine-attach/bottle-compat.json > /dev/null
+          if target/release/intimatr-bottles bottle-compat \
+            --bottle DoesNotExist \
+            --bottles-cli target/wine-attach/mocks/bottles-cli >target/wine-attach/bottle-compat-missing.stdout 2>target/wine-attach/bottle-compat-missing.stderr; then
+            echo "ERROR: batch static inspection accepted unregistered bottle" >&2
+            exit 1
+          fi
+          grep -q 'selected bottle not found' target/wine-attach/bottle-compat-missing.stderr
+          unset INTIMATR_MOCK_PROGRAMS_JSON
           target/release/intimatr-bottles live-match \
             --bottle Fixture \
             --helper target/wine-attach/wine-process-list.exe \
