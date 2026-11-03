@@ -22,10 +22,7 @@ pub struct ObservedProcessMachine {
     pub source: &'static str,
 }
 
-fn classify_process_machine(
-    process_machine: u16,
-    native_machine: u16,
-) -> Option<&'static str> {
+fn classify_process_machine(process_machine: u16, native_machine: u16) -> Option<&'static str> {
     // IMAGE_FILE_MACHINE_UNKNOWN means not WoW64. Only then should the
     // native architecture replace the process machine reported by Windows.
     let machine = if process_machine == 0 {
