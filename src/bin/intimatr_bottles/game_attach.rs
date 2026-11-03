@@ -844,6 +844,70 @@ mod tests {
     }
 
     #[test]
+    fn selected_game_steps_require_one_action_and_independent_opt_in() {
+        let mut values = args(&[
+            "--attach-helper",
+            "/tmp/wine-game-attach-helper.exe",
+            "--bottle",
+            "Games",
+            "--pid",
+            "42",
+            "--exe",
+            r"C:\Games\Game.exe",
+            "--created-100ns",
+            "133700000000000001",
+            "--offline-single-player",
+            "--action",
+            "increase",
+        ]);
+        assert!(
+            run_game_step(values.clone())
+                .unwrap_err()
+                .contains("requires explicit --experimental-four-timers")
+        );
+        values.push("--experimental-four-timers".into());
+        assert_eq!(
+            GameAttachOptions::parse(&values)
+                .unwrap()
+                .step_action
+                .as_deref(),
+            Some("increase")
+        );
+        for action in ["increase", "decrease", "toggle", "reset"] {
+            let mut selected = values.clone();
+            *selected.iter_mut().find(|value| *value == "increase").unwrap() = action.into();
+            assert_eq!(
+                GameAttachOptions::parse(&selected)
+                    .unwrap()
+                    .step_action
+                    .as_deref(),
+                Some(action)
+            );
+        }
+        for other in [GameAction::Attach, GameAction::Stop, GameAction::SetRate] {
+            assert!(
+                run_game_action(values.clone(), other)
+                    .unwrap_err()
+                    .contains("--action is only valid")
+            );
+        }
+        let mut missing = values.clone();
+        missing.truncate(missing.len() - 3);
+        missing.push("--experimental-four-timers".into());
+        assert!(
+            run_game_step(missing)
+                .unwrap_err()
+                .contains("requires --action")
+        );
+        values.extend(args(&["--action", "decrease"]));
+        assert!(GameAttachOptions::parse(&values).is_err());
+        values.truncate(values.len() - 2);
+        let mut incompatible = values;
+        incompatible.extend(args(&["--multiplier", "2.0"]));
+        assert!(GameAttachOptions::parse(&incompatible).is_err());
+    }
+
+    #[test]
     fn retains_exact_selected_candidate_flags_without_implicit_selection() {
         let parsed = GameAttachOptions::parse(&args(&[
             "--attach-helper",
