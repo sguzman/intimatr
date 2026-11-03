@@ -75,9 +75,7 @@ fn resolve_windows_component(directory: &Path, requested: &str) -> Result<PathBu
             continue;
         };
         if name == requested
-            || (name.is_ascii()
-                && requested.is_ascii()
-                && name.eq_ignore_ascii_case(requested))
+            || (name.is_ascii() && requested.is_ascii() && name.eq_ignore_ascii_case(requested))
         {
             if chosen.is_some() {
                 return Err("ambiguous case-insensitive registered executable path".into());
