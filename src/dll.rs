@@ -113,6 +113,14 @@ pub extern "system" fn intimatr_remote_timer_hook_state(_parameter: *mut c_void)
     crate::experimental_timer_probe::remote_hook_state()
 }
 
+/// Read-only main-image timer import capability report. Return a four-bit
+/// coverage mask or u32::MAX when the PE inventory cannot be trusted.
+/// Presence does not establish that the game actually uses these clocks.
+#[unsafe(no_mangle)]
+pub extern "system" fn intimatr_remote_timer_import_coverage(_parameter: *mut c_void) -> u32 {
+    crate::experimental_timer_probe::remote_import_coverage_mask()
+}
+
 /// Explicit, opt-in selected-offline-game timer activation. Only the
 /// dedicated exact-identity Windows helper invokes this remote-thread ABI.
 /// It installs no hooks at bootstrap and starts from 1x, never an automatic

@@ -343,7 +343,15 @@ unsafe fn read_usize(image: *const u8, size: usize, offset: usize) -> Option<usi
         .then(|| unsafe { ptr::read_unaligned(image.add(offset).cast::<usize>()) })
 }
 
-fn timer_import_slots() -> Option<Vec<(usize, usize, usize)>> {
+/// Read-only observation of the main executable's current IAT. A complete
+/// bitmask only establishes presence of these four imports, not that the
+/// engine uses them for simulation timing.
+struct TimerImportScan {
+    slots: Vec<(usize, usize, usize)>,
+    coverage_mask: u8,
+}
+
+fn scan_timer_imports() -> Option<TimerImportScan> {
     let image = unsafe { GetModuleHandleW(ptr::null()) }.cast::<u8>();
     if image.is_null() {
         return None;
@@ -369,12 +377,19 @@ fn timer_import_slots() -> Option<Vec<(usize, usize, usize)>> {
     // PE32+ import data-directory index 1, relative to OptionalHeader.
     let imports = unsafe { read_u32(image, header_size, optional + 120) }? as usize;
     let import_size = unsafe { read_u32(image, header_size, optional + 124) }? as usize;
+    if imports == 0 && import_size == 0 {
+        return Some(TimerImportScan {
+            slots: Vec::new(),
+            coverage_mask: 0,
+        });
+    }
     if imports == 0 || import_size < 20 || imports.checked_add(import_size)? > size {
         return None;
     }
 
     let originals = original_timer_addresses()?;
     let mut slots = Vec::new();
+    let mut coverage_mask = 0_u8;
     for desc in 0..MAX_DESCRIPTORS {
         let offset = imports.checked_add(desc * 20)?;
         if offset.checked_add(20)? > imports + import_size {
@@ -390,7 +405,10 @@ fn timer_import_slots() -> Option<Vec<(usize, usize, usize)>> {
             if resolved == 0 {
                 break;
             }
-            for (original, replacement) in originals {
+            for (index, &(original, replacement)) in originals.iter().enumerate() {
+                if resolved == original || resolved == replacement {
+                    coverage_mask |= 1_u8 << index;
+                }
                 if resolved == original {
                     slots.push((
                         unsafe { image.add(thunk_offset) } as usize,
@@ -401,7 +419,39 @@ fn timer_import_slots() -> Option<Vec<(usize, usize, usize)>> {
             }
         }
     }
-    has_all_required_timer_imports(&slots, &originals).then_some(slots)
+    Some(TimerImportScan {
+        slots,
+        coverage_mask,
+    })
+}
+
+fn timer_import_slots() -> Option<Vec<(usize, usize, usize)>> {
+    let scan = scan_timer_imports()?;
+    let originals = original_timer_addresses()?;
+    (scan.coverage_mask == 0x0f && has_all_required_timer_imports(&scan.slots, &originals))
+        .then_some(scan.slots)
+}
+
+/// Read-only main-image timer IAT coverage. Bits: QPC=1, Tick64=2,
+/// Tick32=4, WinMM=8. 0xffff_ffff represents unavailable/ambiguous parsing,
+/// including partial rollback. It does not mutate imports or enable hooks.
+pub fn remote_import_coverage_mask() -> u32 {
+    match hooks().lock() {
+        Ok(guard) => match guard.as_ref() {
+            Some(active)
+                if fully_installed_hook_set(&active.slots)
+                    && MODULE_PINNED.load(Ordering::Acquire)
+                    && !crate::runtime::shutdown_requested()
+                    && crate::runtime::lifecycle_state() == LifecycleState::Running =>
+            {
+                return 0x0f;
+            }
+            Some(_) => return u32::MAX,
+            None => {}
+        },
+        Err(_) => return u32::MAX,
+    };
+    scan_timer_imports().map_or(u32::MAX, |scan| u32::from(scan.coverage_mask))
 }
 
 /// Record the pointer mutation independently of page-protection recovery.
@@ -842,6 +892,25 @@ pub extern "system" fn intimatr_timer_probe_fail_after(steps: u32) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn coverage_mask_tracks_each_timer_import_independently() {
+        let originals = [(11_usize, 21_usize), (12, 22), (13, 23), (14, 24)];
+        let coverage = |observed: &[usize]| {
+            originals.iter().enumerate().fold(0_u8, |mask, (index, (original, replacement))| {
+                if observed.contains(original) || observed.contains(replacement) {
+                    mask | (1_u8 << index)
+                } else {
+                    mask
+                }
+            })
+        };
+        assert_eq!(coverage(&[]), 0);
+        assert_eq!(coverage(&[11, 12]), 0b0011);
+        assert_eq!(coverage(&[14, 13, 12, 11]), 0b1111);
+        assert_eq!(coverage(&[21, 22, 23, 24]), 0b1111);
+        assert_eq!(coverage(&[11, 13, 24]), 0b1101);
+    }
 
     #[test]
     fn import_coverage_requires_each_distinct_timer_api() {

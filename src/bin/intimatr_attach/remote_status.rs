@@ -22,6 +22,7 @@ const STATUS_EXPORT: &std::ffi::CStr = c"intimatr_remote_lifecycle_query";
 const SHUTDOWN_EXPORT: &std::ffi::CStr = c"intimatr_remote_shutdown";
 const HOOK_STATUS_EXPORT: &std::ffi::CStr = c"intimatr_remote_timer_hook_state";
 const ARM_TIMER_EXPORT: &std::ffi::CStr = c"intimatr_remote_arm_four_timers";
+const TIMER_IMPORT_COVERAGE_EXPORT: &std::ffi::CStr = c"intimatr_remote_timer_import_coverage";
 const SET_PRESET_EXPORT: &std::ffi::CStr = c"intimatr_remote_game_preset";
 const READ_RATE_EXPORT: &std::ffi::CStr = c"intimatr_remote_game_rate_milli";
 
@@ -290,6 +291,43 @@ fn timer_hook_label(code: u32) -> Result<&'static str, String> {
     }
 }
 
+/// Observe which timer APIs occur in the exact selected main executable's
+/// current import address table. A missing/unsafe PE read is unknown, never
+/// interpreted as zero coverage.
+pub fn query_timer_import_coverage(
+    process: Handle,
+    pid: u32,
+    dll: &Path,
+) -> Result<Option<u8>, String> {
+    let (base, image_size) = target_base(pid, dll)?;
+    let rva = export_rva(dll, TIMER_IMPORT_COVERAGE_EXPORT)?;
+    if rva >= image_size {
+        return Err("target Intimatr DLL lacks bounded timer import inventory export".into());
+    }
+    let entry = base
+        .checked_add(rva)
+        .ok_or("remote Intimatr timer import inventory address overflow")?;
+    classify_import_coverage(call_export(process, entry, 2_000)?)
+}
+
+fn classify_import_coverage(code: u32) -> Result<Option<u8>, String> {
+    if code == u32::MAX {
+        return Ok(None);
+    }
+    if code > 0x0f {
+        return Err("target reported invalid main-image timer import coverage".into());
+    }
+    Ok(Some(code as u8))
+}
+
+fn missing_imports(mask: u8) -> Vec<&'static str> {
+    ["QueryPerformanceCounter", "GetTickCount64", "GetTickCount", "timeGetTime"]
+        .into_iter()
+        .enumerate()
+        .filter_map(|(index, name)| (mask & (1_u8 << index) == 0).then_some(name))
+        .collect()
+}
+
 /// Explicitly activate the exact owned DLL's main-image IAT backend at 1x.
 /// This is not auto-attach, nor does it prove that gameplay speed changed.
 pub fn arm_four_timers(process: Handle, pid: u32, dll: &Path) -> Result<(), String> {
@@ -298,6 +336,20 @@ pub fn arm_four_timers(process: Handle, pid: u32, dll: &Path) -> Result<(), Stri
     }
     if query_timer_hook_state(process, pid, dll)? != "none" {
         return Err("refusing timer activation: hooks already installed or need cleanup".into());
+    }
+    match query_timer_import_coverage(process, pid, dll)? {
+        Some(0x0f) => {}
+        Some(mask) => {
+            return Err(format!(
+                "refusing timer activation: main executable is missing timer imports: {} (read-only preflight; no imports modified)",
+                missing_imports(mask).join(", ")
+            ));
+        }
+        None => {
+            return Err(
+                "refusing timer activation: main executable timer import inventory unavailable; no imports modified".into(),
+            );
+        }
     }
     let (base, image_size) = target_base(pid, dll)?;
     let rva = export_rva(dll, ARM_TIMER_EXPORT)?;
@@ -449,6 +501,21 @@ mod tests {
         }
         assert!(lifecycle_label(7).is_err());
         assert!(lifecycle_label(u32::MAX).is_err());
+    }
+
+    #[test]
+    fn timer_import_inventory_preserves_unavailable_and_missing_api_names() {
+        assert_eq!(classify_import_coverage(u32::MAX).unwrap(), None);
+        assert_eq!(classify_import_coverage(0).unwrap(), Some(0));
+        assert_eq!(classify_import_coverage(15).unwrap(), Some(15));
+        for invalid in [16, 31, 256, u32::MAX - 1] {
+            assert!(classify_import_coverage(invalid).is_err());
+        }
+        assert_eq!(
+            missing_imports(0b1010),
+            ["QueryPerformanceCounter", "GetTickCount"]
+        );
+        assert!(missing_imports(15).is_empty());
     }
 
     #[test]

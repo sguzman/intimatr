@@ -641,6 +641,9 @@ jobs:
             and .timer_hook_state == "none"
             and .timer_hooks_installed_verified == false
             and .installed_virtual_clock_multiplier == null
+            and .main_image_four_timer_imports_present == null
+            and .main_image_timer_imports_observed == null
+            and .main_image_timer_imports_missing == null
             and .speed_controls_verified == false' target/wine-attach/game-before.json > /dev/null
           XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles attach-game "${game_args[@]}" --offline-single-player >target/wine-attach/game-attach.json
           jq -e --arg created "$game_created" '.operation == "explicit_offline_single_player_game_attachment"
@@ -655,6 +658,9 @@ jobs:
           jq -e '.runtime_state == "running"
             and .timer_hook_state == "none"
             and .timer_hooks_installed_verified == false
+            and .main_image_four_timer_imports_present == true
+            and (.main_image_timer_imports_observed | length) == 4
+            and (.main_image_timer_imports_missing | length) == 0
             and .speed_controls_verified == false' target/wine-attach/game-before-arm.json > /dev/null
           if XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles set-game-speed "${game_args[@]}" --offline-single-player --experimental-four-timers --preset half >target/wine-attach/game-rate-before-arm.stdout 2>target/wine-attach/game-rate-before-arm.stderr; then
             echo "ERROR: game speed changed without timer activation" >&2
@@ -702,6 +708,8 @@ jobs:
             and .runtime_state == "running"
             and .timer_hook_state == "installed_four_timers"
             and .timer_hooks_installed_verified == true
+            and .main_image_four_timer_imports_present == true
+            and (.main_image_timer_imports_observed | length) == 4
             and .speed_controls_verified == false' target/wine-attach/game-hooked.json > /dev/null
           touch target/wine-attach/game-fixture/attach-hooks-inspected.flag
           for preset in half double normal; do
@@ -772,6 +780,8 @@ jobs:
             and .timer_hook_state == "none"
             and .timer_hooks_installed_verified == false
             and .installed_virtual_clock_multiplier == null
+            and .main_image_four_timer_imports_present == true
+            and (.main_image_timer_imports_missing | length) == 0
             and .speed_controls_verified == false' target/wine-attach/game-stopped-status.json > /dev/null
           # Stopped runtimes may not resurrect hooks even with fresh consent.
           if XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles arm-game-timers "${game_args[@]}" --offline-single-player --experimental-four-timers >target/wine-attach/game-arm-after-stop.stdout 2>target/wine-attach/game-arm-after-stop.stderr; then

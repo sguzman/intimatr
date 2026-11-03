@@ -326,6 +326,46 @@ fn run_game_action(args: Vec<String>, action: GameAction) -> Result<(), String> 
         {
             return Err("target hook rate conflicts with timer installation status".into());
         }
+        let mut inventory = stdout
+            .lines()
+            .filter_map(|line| line.strip_prefix("INTIMATR_REMOTE_TIMER_IMPORT_MASK="));
+        let inventory_label = inventory
+            .next()
+            .ok_or("game status helper did not return timer import inventory")?;
+        if inventory.next().is_some() {
+            return Err("duplicate target main-image timer import inventory".into());
+        }
+        let import_mask = if inventory_label == "unknown" {
+            None
+        } else {
+            let parsed = inventory_label
+                .parse::<u8>()
+                .map_err(|_| "invalid target timer import coverage")?;
+            if parsed > 15 {
+                return Err("invalid target timer import coverage bits".into());
+            }
+            Some(parsed)
+        };
+        if (state == "absent" && import_mask.is_some())
+            || (hook_state == "installed_four_timers" && import_mask != Some(15))
+        {
+            return Err("target timer import inventory contradicts hook/module status".into());
+        }
+        let present = import_mask.map(|mask| mask == 15);
+        let known_imports = import_mask.map(|mask| {
+            ["QueryPerformanceCounter", "GetTickCount64", "GetTickCount", "timeGetTime"]
+                .into_iter()
+                .enumerate()
+                .filter_map(|(index, name)| (mask & (1_u8 << index) != 0).then_some(name))
+                .collect::<Vec<_>>()
+        });
+        let missing_imports = import_mask.map(|mask| {
+            ["QueryPerformanceCounter", "GetTickCount64", "GetTickCount", "timeGetTime"]
+                .into_iter()
+                .enumerate()
+                .filter_map(|(index, name)| (mask & (1_u8 << index) == 0).then_some(name))
+                .collect::<Vec<_>>()
+        });
         let virtual_rate = (rate_milli != 0).then_some(f64::from(rate_milli) / 1000.0);
         serde_json::json!({
             "operation": "explicit_offline_single_player_game_status",
@@ -342,6 +382,9 @@ fn run_game_action(args: Vec<String>, action: GameAction) -> Result<(), String> 
             "timer_hook_state": hook_state,
             "timer_hooks_installed_verified": state == "running" && hook_state == "installed_four_timers",
             "installed_virtual_clock_multiplier": virtual_rate,
+            "main_image_four_timer_imports_present": present,
+            "main_image_timer_imports_observed": known_imports,
+            "main_image_timer_imports_missing": missing_imports,
             "gameplay_speed_verified": false,
             "speed_controls_verified": false,
             "offline_single_player_acknowledged": true
