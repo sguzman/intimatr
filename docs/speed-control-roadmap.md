@@ -337,3 +337,7 @@ The controlled `wine-attach-helper.exe` now compares the **full canonical Window
 ### 🧯 Module inventory completion and explicit fixture Wine runner — 2026-11-02
 
 The fixture remote loader now treats a `Module32NextW` failure as end-of-list only for `ERROR_NO_MORE_FILES`, refusing an attach after a partial or uncertain module inventory. `probe-attach` no longer chooses implicit system `wine`: the owner must explicitly specify `--runner` just as in the read-only commands. Windows unit and Wine CI negative checks were added; full CI is pending. No general-game attach path or production hook permissions were enabled. INT-1407 remains active. **Verified expansion 16/100; previous 16%, Δ +0 pp.**
+
+### 🧩 Post-load DLL identity verification — fixture-only INT-1407 work (2026-11-02)
+
+The Windows remote loader now treats a module basename as a collision for **pre-load duplicate refusal**, but requires the full canonical module path to equal the owned helper-side `intimatr.dll` to claim **post-load confirmation**. Missing, malformed, or mismatched paths are rejected. Added Windows unit tests; ongoing Wine CI will verify that the positive owned load still works. The production game loader and actual native Bottles QA remain pending. **Verified expansion 16/100, previous 16, Δ +0 pp.**

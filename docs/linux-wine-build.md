@@ -280,7 +280,15 @@ The controlled `wine-attach-helper.exe` scans the selected Windows PID's module 
 
 Likewise, the Linux `intimatr-bottles probe-attach` fixture-only command now **requires** `--runner EXPLICIT_WINE_BINARY`. It no longer silently invokes the host's default `wine` for a selected prefix. The existing Wine CI smoke calls all supply a runner, and a new negative check rejects omission before starting a Windows helper. This makes runner selection consistent with `live-match` and `win-processes`; it still does not prove that the chosen runner equals a real bottle's configured runner.
 
-Both changes remain within disposable fixture testing. The module enumeration result is not an anti-race guarantee; real-game loader eligibility, production hook compatibility, native Bottles field QA and independent status attestation remain open. Changes are pending final CI verification; expansion stays 16% (+0 pp).
+Both changes remain within disposable fixture testing. The module enumeration result is not an anti-race guarantee; real-game loader eligibility, production hook compatibility, native Bottles field QA and independent status attestation remain open. All three CI jobs passed in [run 41560000448](https://github.com/sguzman/intimatr/actions/runs/41560000448). Expansion stays 16% (+0 pp).
+
+## 2026-11-02 — Exact Intimatr DLL module identity after remote fixture load
+
+Module presence and **module identity** are different checks. The fixture loader already refused duplicate loads when the target module inventory contained `intimatr.dll`. However, its post-load check previously accepted a matching basename alone. This could falsely claim successful attachment if another file named `intimatr.dll` appeared between the initial check and the remote loader thread.
+
+The Windows-only fixture helper now classifies a same-named observed module using the complete path supplied by `MODULEENTRY32W`, comparing its canonical path against the **specific `intimatr.dll` beside the helper**. Before remote loading, any pre-existing same-named module is refused, regardless of its path; after loading, only the expected owned file counts as successful confirmation. Invalid UTF-16, missing paths, failed canonicalization and incomplete enumeration fail closed. Synthetic Windows tests cover matching, same-named different-path, and unresolvable DLL paths. The existing Wine smoke continues to exercise the positive owned-DLL load and independently observed target lifecycle. Latest CI for this exact-path extension remains pending.
+
+This is an additional safeguard for disposable owned fixtures, **not** a signature check, a remote process attestation, proof of runner compatibility or authorization to attach to a game. Real offline-game support and INT-1407 remain unfinished; no new weighted points are earned.
 
 ## Combined native Linux + Wine bundle (experimental)
 
