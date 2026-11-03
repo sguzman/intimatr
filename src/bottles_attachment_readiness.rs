@@ -8,8 +8,7 @@
 use serde::Serialize;
 
 use crate::{
-    bottles_prefix::BottlePrefixIdentity,
-    bottles_preflight::CandidatePreflight,
+    bottles_prefix::BottlePrefixIdentity, bottles_preflight::CandidatePreflight,
     bottles_runner::RunnerAudit,
 };
 
@@ -146,9 +145,21 @@ mod tests {
         assert!(report.snapshot_registered_identity_verified);
         assert!(!report.safe_to_attach);
         assert!(!report.attachment_attempted);
-        assert!(!report.blockers.contains(&"configured_wine_runner_unverified"));
-        assert!(report.blockers.contains(&"live_process_prefix_ownership_unverified"));
-        assert!(report.blockers.contains(&"production_game_loader_not_implemented"));
+        assert!(
+            !report
+                .blockers
+                .contains(&"configured_wine_runner_unverified")
+        );
+        assert!(
+            report
+                .blockers
+                .contains(&"live_process_prefix_ownership_unverified")
+        );
+        assert!(
+            report
+                .blockers
+                .contains(&"production_game_loader_not_implemented")
+        );
     }
 
     #[test]
@@ -158,10 +169,25 @@ mod tests {
         candidate.status = "selected_pid_not_in_snapshot";
         candidate.x64_dll_compatible = None;
         let report = review_attachment_readiness(&candidate, &prefix, &runner);
-        assert_eq!(report.status, "candidate_identity_or_architecture_unverified");
-        assert!(report.blockers.contains(&"selected_pid_executable_registration_unverified"));
-        assert!(report.blockers.contains(&"live_and_file_architecture_unverified"));
-        assert!(report.blockers.contains(&"configured_wine_runner_unverified"));
+        assert_eq!(
+            report.status,
+            "candidate_identity_or_architecture_unverified"
+        );
+        assert!(
+            report
+                .blockers
+                .contains(&"selected_pid_executable_registration_unverified")
+        );
+        assert!(
+            report
+                .blockers
+                .contains(&"live_and_file_architecture_unverified")
+        );
+        assert!(
+            report
+                .blockers
+                .contains(&"configured_wine_runner_unverified")
+        );
     }
 
     #[test]
@@ -171,8 +197,16 @@ mod tests {
         runner.runner_path_verified = true;
         let report = review_attachment_readiness(&candidate, &prefix, &runner);
         assert!(!report.safe_to_attach);
-        assert!(report.blockers.contains(&"fresh_process_identity_at_apply_not_proven"));
-        assert!(report.blockers.contains(&"production_game_loader_not_implemented"));
+        assert!(
+            report
+                .blockers
+                .contains(&"fresh_process_identity_at_apply_not_proven")
+        );
+        assert!(
+            report
+                .blockers
+                .contains(&"production_game_loader_not_implemented")
+        );
     }
 
     #[test]
@@ -182,9 +216,20 @@ mod tests {
         candidate.x64_dll_compatible = Some(false);
         candidate.status = "unsupported_x64_dll_architecture";
         let report = review_attachment_readiness(&candidate, &prefix, &runner);
-        assert!(report.blockers.contains(&"selected_bottle_prefix_identity_mismatch"));
-        assert!(report.blockers.contains(&"incompatible_x64_dll_architecture"));
-        assert_eq!(report.status, "candidate_identity_or_architecture_unverified");
+        assert!(
+            report
+                .blockers
+                .contains(&"selected_bottle_prefix_identity_mismatch")
+        );
+        assert!(
+            report
+                .blockers
+                .contains(&"incompatible_x64_dll_architecture")
+        );
+        assert_eq!(
+            report.status,
+            "candidate_identity_or_architecture_unverified"
+        );
         assert!(!report.safe_to_attach);
     }
 }
