@@ -42,7 +42,10 @@ impl GameAttachOptions {
                         .parse::<u64>()
                         .map_err(|_| "invalid selected process creation time")?;
                     if parsed == 0 || parsed.to_string() != *value {
-                        return Err("selected process creation time must be a canonical positive FILETIME".into());
+                        return Err(
+                            "selected process creation time must be a canonical positive FILETIME"
+                                .into(),
+                        );
                     }
                     expected_creation_time_100ns = Some(value.clone());
                 }
@@ -208,13 +211,22 @@ mod tests {
     #[test]
     fn refuses_missing_duplicate_and_malformed_process_generation_selectors() {
         let base = [
-            "--attach-helper", "/tmp/wine-game-attach-helper.exe",
-            "--bottle", "Games", "--pid", "42",
-            "--exe", r"C:\Games\Game.exe",
+            "--attach-helper",
+            "/tmp/wine-game-attach-helper.exe",
+            "--bottle",
+            "Games",
+            "--pid",
+            "42",
+            "--exe",
+            r"C:\Games\Game.exe",
         ];
         for invalid in ["0", "-1", "1.5", "0001", "18446744073709551616"] {
             let mut values = args(&base);
-            values.extend(args(&["--created-100ns", invalid, "--offline-single-player"]));
+            values.extend(args(&[
+                "--created-100ns",
+                invalid,
+                "--offline-single-player",
+            ]));
             assert!(GameAttachOptions::parse(&values).is_err());
         }
         let mut missing = args(&base);
@@ -223,8 +235,10 @@ mod tests {
 
         let mut duplicated = args(&base);
         duplicated.extend(args(&[
-            "--created-100ns", "133700000000000001",
-            "--created-100ns", "133700000000000001",
+            "--created-100ns",
+            "133700000000000001",
+            "--created-100ns",
+            "133700000000000001",
             "--offline-single-player",
         ]));
         assert!(GameAttachOptions::parse(&duplicated).is_err());
