@@ -24,6 +24,7 @@ const HOOK_STATUS_EXPORT: &std::ffi::CStr = c"intimatr_remote_timer_hook_state";
 const ARM_TIMER_EXPORT: &std::ffi::CStr = c"intimatr_remote_arm_four_timers";
 const TIMER_IMPORT_COVERAGE_EXPORT: &std::ffi::CStr = c"intimatr_remote_timer_import_coverage";
 const SET_PRESET_EXPORT: &std::ffi::CStr = c"intimatr_remote_game_preset";
+const SET_MILLI_RATE_EXPORT: &std::ffi::CStr = c"intimatr_remote_game_set_rate_milli";
 const READ_RATE_EXPORT: &std::ffi::CStr = c"intimatr_remote_game_rate_milli";
 
 #[repr(C)]
@@ -431,6 +432,43 @@ pub fn select_game_preset(
     Ok(observed)
 }
 
+/// Set a finite, positive configured step in thousandths. The local command
+/// always checks bounds; the DLL independently rejects off-profile steps and
+/// missing IAT hooks through the same CommandExecutor as named presets.
+pub fn select_game_rate_milli(
+    process: Handle,
+    pid: u32,
+    dll: &Path,
+    milli: u32,
+) -> Result<u32, String> {
+    if !(100..=10_000).contains(&milli) {
+        return Err("selected-game speed multiplier is outside the bounded clock range".into());
+    }
+    if query_lifecycle_state(process, pid, dll)? != "running"
+        || query_timer_hook_state(process, pid, dll)? != "installed_four_timers"
+    {
+        return Err(
+            "cannot set game speed: exact target has no active four-timer IAT hooks".into(),
+        );
+    }
+    let (base, image_size) = target_base(pid, dll)?;
+    let rva = export_rva(dll, SET_MILLI_RATE_EXPORT)?;
+    if rva >= image_size {
+        return Err("target Intimatr DLL lacks bounded thousandth-rate export".into());
+    }
+    let entry = base
+        .checked_add(rva)
+        .ok_or("remote Intimatr thousandth-rate address overflow")?;
+    if call_export_with_selector(process, entry, milli as usize, 5_000)? != 1 {
+        return Err("selected-game rate is not an allowed profile step or target is unavailable".into());
+    }
+    let observed = query_rate_milli(process, pid, dll)?;
+    if observed != milli {
+        return Err("selected-game virtual clock did not confirm the requested multiplier".into());
+    }
+    Ok(observed)
+}
+
 /// Return only after the selected DLL reports Running from the actual target.
 /// Absence of this proof means loaded but not runtime-verified; caller must
 /// never advertise speed functionality or automatic cleanup.
@@ -521,6 +559,16 @@ mod tests {
             ["QueryPerformanceCounter", "GetTickCount"]
         );
         assert!(missing_imports(15).is_empty());
+    }
+
+    #[test]
+    fn selected_rate_range_rejects_zero_and_overflow_before_remote_execution() {
+        for rate in [0_u32, 1, 99, 10_001, u32::MAX] {
+            assert!(!(100..=10_000).contains(&rate));
+        }
+        for rate in [100_u32, 250, 750, 1000, 1500, 2000, 10_000] {
+            assert!((100..=10_000).contains(&rate));
+        }
     }
 
     #[test]

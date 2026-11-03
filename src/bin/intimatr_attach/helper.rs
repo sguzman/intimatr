@@ -516,15 +516,15 @@ pub mod helper {
                 "game action requires explicit --offline-single-player acknowledgment".into(),
             );
         }
-        let (action, preset) = match args.next().as_deref() {
-            None => ("attach", None),
-            Some("--shutdown-only") if args.next().is_none() => ("stop", None),
-            Some("--status-only") if args.next().is_none() => ("status", None),
+        let (action, preset, milli_rate) = match args.next().as_deref() {
+            None => ("attach", None, None),
+            Some("--shutdown-only") if args.next().is_none() => ("stop", None, None),
+            Some("--status-only") if args.next().is_none() => ("status", None, None),
             Some("--arm-four-timers-only")
                 if args.next().as_deref() == Some("--experimental-four-timers")
                     && args.next().is_none() =>
             {
-                ("arm", None)
+                ("arm", None, None)
             }
             Some("--set-game-preset-only") => {
                 let preset = args.next().ok_or("missing selected-game speed preset")?;
@@ -534,7 +534,21 @@ pub mod helper {
                 {
                     return Err("invalid or unacknowledged selected-game speed preset".into());
                 }
-                ("preset", Some(preset))
+                ("preset", Some(preset), None)
+            }
+            Some("--set-game-rate-milli-only") => {
+                let raw = args.next().ok_or("missing selected-game rate in thousandths")?;
+                let rate = raw
+                    .parse::<u32>()
+                    .map_err(|_| "invalid selected-game rate in thousandths")?;
+                if !(100..=10_000).contains(&rate)
+                    || raw != rate.to_string()
+                    || args.next().as_deref() != Some("--experimental-four-timers")
+                    || args.next().is_some()
+                {
+                    return Err("invalid or unacknowledged selected-game rate in thousandths".into());
+                }
+                ("rate", None, Some(rate))
             }
             _ => return Err("unrecognized game action flags".into()),
         };
@@ -547,6 +561,7 @@ pub mod helper {
             "status" => status_selected(pid, &target),
             "arm" => arm_selected(pid, &target),
             "preset" => preset_selected(pid, &target, preset.as_deref().unwrap_or_default()),
+            "rate" => rate_selected(pid, &target, milli_rate.unwrap_or_default()),
             _ => attach(pid, target),
         }
     }
@@ -588,6 +603,19 @@ pub mod helper {
     /// Revalidate architecture, image, generation, loaded DLL and known
     /// protection modules under the same per-target mutex.
     fn preset_selected(pid: u32, target: &AttachTarget, preset: &str) -> Result<(), String> {
+        apply_selected_rate(pid, target, Some(preset), None)
+    }
+
+    fn rate_selected(pid: u32, target: &AttachTarget, rate_milli: u32) -> Result<(), String> {
+        apply_selected_rate(pid, target, None, Some(rate_milli))
+    }
+
+    fn apply_selected_rate(
+        pid: u32,
+        target: &AttachTarget,
+        preset: Option<&str>,
+        rate_milli: Option<u32>,
+    ) -> Result<(), String> {
         let executable = std::env::current_exe().map_err(|error| error.to_string())?;
         let dll = executable
             .parent()
@@ -611,7 +639,15 @@ pub mod helper {
         if target_intimatr_module(pid, &dll)? != IntimatrModulePresence::Expected {
             return Err("cannot set speed: exact owned Intimatr DLL is not loaded".into());
         }
-        let applied = super::remote_status::select_game_preset(process.0, pid, &dll, preset)?;
+        let applied = match (preset, rate_milli) {
+            (Some(preset), None) => {
+                super::remote_status::select_game_preset(process.0, pid, &dll, preset)?
+            }
+            (None, Some(rate)) => {
+                super::remote_status::select_game_rate_milli(process.0, pid, &dll, rate)?
+            }
+            _ => return Err("selected-game rate request is ambiguous".into()),
+        };
         println!("INTIMATR_REMOTE_GAME_RATE_MILLI={applied}");
         Ok(())
     }

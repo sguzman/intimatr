@@ -151,6 +151,24 @@ pub extern "system" fn intimatr_remote_game_preset(selector: *mut c_void) -> u32
     }
 }
 
+/// Explicit thousandth-resolution speed selected through the existing
+/// shared command executor. The argument carries a small integer, never an
+/// address to dereference. Only a configured step can be applied, and only
+/// after this exact target's four timer imports were explicitly armed.
+#[unsafe(no_mangle)]
+pub extern "system" fn intimatr_remote_game_set_rate_milli(selector: *mut c_void) -> u32 {
+    let milli = selector as usize;
+    if !(100..=10_000).contains(&milli) {
+        return 0;
+    }
+    match std::panic::catch_unwind(AssertUnwindSafe(|| {
+        runtime::selected_game_select_rate(milli as f64 / 1000.0)
+    })) {
+        Ok(true) => 1,
+        Ok(false) | Err(_) => 0,
+    }
+}
+
 /// Installed virtual-clock rate, in thousandths; zero means unavailable.
 #[unsafe(no_mangle)]
 pub extern "system" fn intimatr_remote_game_rate_milli(_parameter: *mut c_void) -> u32 {
