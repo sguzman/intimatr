@@ -251,6 +251,23 @@ When both verified machines are x86 (or both ARM64), a matched registered execut
 
 Synthetic CI adds a registered second program with a known **x86** Windows PID/image snapshot, and requires `x64_dll_compatible: false`, an explicit unsupported status, a null selected program and no attachment. Actual native Bottles x86 game testing remains open.
 
+## 2026-11-02 — Explicit Windows PID and full-executable preflight (review only)
+
+The native `intimatr-bottles live-match` command also accepts an optional **paired** `--pid WINDOWS_PID --exe ABSOLUTE_WINDOWS_PATH` selection. Supplying just one selector, a zero PID, or an invalid drive-qualified executable path fails closed. The selected PID must be present in the current Wine read-only snapshot, and the supplied executable must match the *full observed image path*, not just its basename. The same path must uniquely match a registered program in the selected Bottles inventory.
+
+```bash
+intimatr-bottles live-match \
+  --bottle 'Offline Games' \
+  --helper /absolute/path/wine-process-list.exe \
+  --runner /absolute/path/to/wine \
+  --pid 42 \
+  --exe 'C:\\Games\\Example\\Example.exe'
+```
+
+When both selectors are provided, the result includes `selected_candidate` with `registered_identity_verified_at_snapshot`, `x64_dll_compatible`, the exact observed/selected paths and a reasoned `status`. Possible results distinguish a missing/recycled PID, wrong path, unregistered/ambiguous program, unknown architecture, incompatible x86/ARM64, or an x64 candidate for **further review only**. This is a *snapshot* with an unavoidable time-of-check/time-of-use window; an earlier matching PID is never a durable authorization token.
+
+Every result keeps `snapshot_only: true`, `safe_to_attach: false`, and `attachment_attempted: false`. The new selector does not run an attach helper, activate arbitrary-game hooks, modify games, or confer permission to inject. The existing `live-match` behavior without selectors is unchanged. Deterministic Rust fixtures cover exact matches, missing/wrong PIDs and paths, duplicate registrations, missing bitness, and unsupported architectures. A Wine CI fixture is also being extended to check the full selected PID/path command against an already-running disposable test process; actual native Bottles installation and offline-game field QA remain open.
+
 ## Combined native Linux + Wine bundle (experimental)
 
 The Linux cross-build CI now produces `intimatr-linux-wine-x86_64-VERSION.tar.gz` alongside its archive SHA-256 sidecar. The verified archive contains the native `bin/intimatr-bottles` ELF, `wine/intimatr.dll`, `wine/intimatr-speed.exe`, read-only `wine/wine-process-list.exe`, examples, version marker, per-file SHA-256 checksums, and reference docs. To build it after compiling the native CLI plus Windows GNU binaries:
