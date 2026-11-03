@@ -28,7 +28,6 @@ use crate::{
     speed_timers::TimerSnapshot,
 };
 
-const PAGE_READWRITE: u32 = 0x04;
 const GET_MODULE_HANDLE_EX_FLAG_PIN: u32 = 0x01;
 const GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS: u32 = 0x04;
 const MAX_IMAGE_SIZE: usize = 512 * 1024 * 1024;
