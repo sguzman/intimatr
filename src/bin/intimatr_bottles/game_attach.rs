@@ -158,9 +158,7 @@ pub(super) fn run_game_attach(args: Vec<String>) -> Result<(), String> {
         .lines()
         .any(|line| line == "INTIMATR_REMOTE_RUNTIME_RUNNING=1")
     {
-        return Err(
-            "game helper returned without independent target runtime Running proof".into(),
-        );
+        return Err("game helper returned without independent target runtime Running proof".into());
     }
     let result = serde_json::json!({
         "operation": "explicit_offline_single_player_game_attachment",

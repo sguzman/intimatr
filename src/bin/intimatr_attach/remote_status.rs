@@ -9,8 +9,7 @@ use std::{
     mem::{size_of, zeroed},
     os::windows::ffi::OsStrExt,
     path::Path,
-    ptr,
-    thread,
+    ptr, thread,
     time::Duration,
 };
 
@@ -159,17 +158,21 @@ fn local_image_size(base: usize) -> Option<usize> {
 /// for our exact, non-forwarded export; ASLR is handled by the remote module
 /// base. No local bootstrap and no second target-side LoadLibrary is issued.
 fn status_export_rva(dll: &Path) -> Result<usize, String> {
-    let wide: Vec<u16> = dll.as_os_str().encode_wide().chain(std::iter::once(0)).collect();
-    let mapped = unsafe {
-        LoadLibraryExW(wide.as_ptr(), ptr::null_mut(), DONT_RESOLVE_DLL_REFERENCES)
-    };
+    let wide: Vec<u16> = dll
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+    let mapped =
+        unsafe { LoadLibraryExW(wide.as_ptr(), ptr::null_mut(), DONT_RESOLVE_DLL_REFERENCES) };
     if mapped.is_null() {
         return Err("cannot inspect owned Intimatr lifecycle export without executing it".into());
     }
     let module = LocalModule(mapped);
     let base = module.0 as usize;
     let size = local_image_size(base).ok_or("invalid local Intimatr PE image")?;
-    let address = unsafe { GetProcAddress(module.0, EXPECTED_REMOTE_EXPORT.as_ptr().cast()) } as usize;
+    let address =
+        unsafe { GetProcAddress(module.0, EXPECTED_REMOTE_EXPORT.as_ptr().cast()) } as usize;
     if address < base || address >= base.saturating_add(size) {
         return Err("owned Intimatr lifecycle export is missing or forwarded".into());
     }
@@ -195,7 +198,9 @@ fn query_state(process: Handle, remote: usize) -> Result<u32, String> {
     }
     let thread = RemoteThread(thread);
     if unsafe { WaitForSingleObject(thread.0, 2_000) } != WAIT_OBJECT_0 {
-        return Err("Intimatr remote lifecycle query timed out or failed; module state unknown".into());
+        return Err(
+            "Intimatr remote lifecycle query timed out or failed; module state unknown".into(),
+        );
     }
     let mut status = 0;
     if unsafe { GetExitCodeThread(thread.0, &mut status) } == 0 {
@@ -206,8 +211,8 @@ fn query_state(process: Handle, remote: usize) -> Result<u32, String> {
 
 fn classify(code: u32) -> Result<bool, String> {
     match code {
-        3 => Ok(true),                // Running
-        0..=2 => Ok(false),          // Detached/Attached/Bootstrapping
+        3 => Ok(true),      // Running
+        0..=2 => Ok(false), // Detached/Attached/Bootstrapping
         4..=5 => Err("Intimatr stopped during target bootstrap".into()),
         6 => Err("Intimatr reported failed target bootstrap".into()),
         _ => Err(format!("unknown Intimatr lifecycle code {code}")),
@@ -223,7 +228,9 @@ pub fn wait_until_running(process: Handle, pid: u32, dll: &Path) -> Result<(), S
     if rva >= remote_image_size {
         return Err("target Intimatr module does not contain the lifecycle query export".into());
     }
-    let entry = base.checked_add(rva).ok_or("remote Intimatr lifecycle entry overflow")?;
+    let entry = base
+        .checked_add(rva)
+        .ok_or("remote Intimatr lifecycle entry overflow")?;
     for _ in 0..40 {
         if classify(query_state(process, entry)?)? {
             return Ok(());
