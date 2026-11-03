@@ -380,12 +380,12 @@ fn run_game_action(args: Vec<String>, action: GameAction) -> Result<(), String> 
         let expected_marker = match action {
             GameAction::Stop => "INTIMATR_REMOTE_RUNTIME_STOPPED=1",
             GameAction::ArmTimers => "INTIMATR_REMOTE_FOUR_TIMERS_INSTALLED=1",
-            GameAction::SetRate => "INTIMATR_REMOTE_GAME_RATE_MILLI=",
+            GameAction::SetRate | GameAction::Step => "INTIMATR_REMOTE_GAME_RATE_MILLI=",
             GameAction::Attach => "INTIMATR_REMOTE_RUNTIME_RUNNING=1",
             GameAction::Status => return Err("status response unexpectedly missing".into()),
         };
         if !stdout.lines().any(|line| {
-            if action == GameAction::SetRate {
+            if matches!(action, GameAction::SetRate | GameAction::Step) {
                 line.starts_with(expected_marker)
             } else {
                 line == expected_marker
