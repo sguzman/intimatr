@@ -41,7 +41,12 @@ fn classify_process_machine(process_machine: u16, native_machine: u16) -> Option
 /// Requires PROCESS_QUERY_LIMITED_INFORMATION on the provided process handle.
 /// Absence of this OS function, an API error, or unknown machine values is
 /// represented as None and must not be treated as x86-64 eligibility.
-pub fn running_process_architecture(handle: Handle) -> Option<ObservedProcessMachine> {
+///
+/// # Safety
+///
+/// `handle` must be a valid, open Windows process handle with
+/// `PROCESS_QUERY_LIMITED_INFORMATION` and must remain valid for this call.
+pub unsafe fn running_process_architecture(handle: Handle) -> Option<ObservedProcessMachine> {
     if handle.is_null() {
         return None;
     }

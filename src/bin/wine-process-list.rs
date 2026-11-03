@@ -97,7 +97,7 @@ mod windows {
             return (None, None);
         }
         let owned = OwnedHandle(handle);
-        let process_machine = running_process_architecture(owned.0);
+        let process_machine = unsafe { running_process_architecture(owned.0) };
         let mut buffer = [0_u16; 2048];
         let mut length = buffer.len() as u32;
         let image =

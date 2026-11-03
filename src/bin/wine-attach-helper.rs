@@ -383,7 +383,7 @@ mod helper {
         // Independent from both its filename and on-disk PE headers: query
         // the already-running process on the held Windows handle. This x64
         // loader must never guess at a 32-bit or unknown target architecture.
-        let machine = running_process_architecture(process.0)
+        let machine = unsafe { running_process_architecture(process.0) }
             .ok_or("refusing attach: live process architecture is unavailable")?;
         if machine.architecture != "x86_64" {
             return Err(format!(
