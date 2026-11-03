@@ -190,11 +190,41 @@ mod helper {
         }
     }
 
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum IntimatrModulePresence {
+        Absent,
+        Expected,
+        UnexpectedPath,
+    }
+
+    /// The module basename is sufficient to reject pre-existing collisions,
+    /// but successful post-load verification must identify our exact DLL.
+    fn classify_intimatr_module_path(
+        observed_dll: &Path,
+        expected_dll: &Path,
+    ) -> Result<IntimatrModulePresence, String> {
+        let observed = fs::canonicalize(observed_dll)
+            .map_err(|error| format!("cannot resolve observed Intimatr DLL path: {error}"))?;
+        let expected = fs::canonicalize(expected_dll)
+            .map_err(|error| format!("cannot resolve owned Intimatr DLL path: {error}"))?;
+        Ok(if observed
+            .to_string_lossy()
+            .eq_ignore_ascii_case(&expected.to_string_lossy())
+        {
+            IntimatrModulePresence::Expected
+        } else {
+            IntimatrModulePresence::UnexpectedPath
+        })
+    }
+
     /// Fail closed when the target module list cannot be inspected.
     /// In particular, never issue a second remote LoadLibrary for a target
-    /// already carrying Intimatr. The caller holds the fixture-only named
-    /// mutex across checking, loading, and post-load module verification.
-    fn target_has_intimatr(pid: u32) -> Result<bool, String> {
+    /// already carrying ANY same-named Intimatr DLL. The caller holds the
+    /// fixture-only mutex across checking, loading, and post-load inspection.
+    fn target_intimatr_module(
+        pid: u32,
+        expected_dll: &Path,
+    ) -> Result<IntimatrModulePresence, String> {
         let snapshot = own(
             unsafe { CreateToolhelp32Snapshot(SNAP_MODULE, pid) },
             "cannot inspect target DLLs",
@@ -212,7 +242,17 @@ mod helper {
                 .unwrap_or(entry.name.len());
             let name = String::from_utf16_lossy(&entry.name[..end]);
             if name.eq_ignore_ascii_case("intimatr.dll") {
-                return Ok(true);
+                let end = entry
+                    .path
+                    .iter()
+                    .position(|character| *character == 0)
+                    .unwrap_or(entry.path.len());
+                if end == 0 {
+                    return Err("Intimatr module has no verifiable full image path".into());
+                }
+                let image = String::from_utf16(&entry.path[..end])
+                    .map_err(|_| "Intimatr module has an invalid UTF-16 image path")?;
+                return classify_intimatr_module_path(Path::new(&image), expected_dll);
             }
             if unsafe { Module32NextW(snapshot.0, &mut entry) } == 0 {
                 // Capture GetLastError immediately after Module32NextW.
@@ -222,7 +262,7 @@ mod helper {
                 break;
             }
         }
-        Ok(false)
+        Ok(IntimatrModulePresence::Absent)
     }
 
     fn local_image_size(base: usize) -> Option<usize> {
@@ -338,7 +378,7 @@ mod helper {
             return Err("refusing to attach: target is not the helper's owned Wine fixture".into());
         }
         let _attachment_guard = acquire_attach_mutex(pid)?;
-        if target_has_intimatr(pid)? {
+        if target_intimatr_module(pid, &dll)? != IntimatrModulePresence::Absent {
             return Err("refusing duplicate attach: Intimatr is already loaded".into());
         }
         let loader = resolve_remote_loader(pid)?;
@@ -395,8 +435,11 @@ mod helper {
                 unsafe { VirtualFreeEx(process.0, remote, 0, MEM_RELEASE) };
                 // A signaled loader thread does not by itself prove that the
                 // DLL was loaded. Require a target-side module observation.
-                if !target_has_intimatr(pid)? {
-                    return Err("remote loader exited without Intimatr in the target".into());
+                if target_intimatr_module(pid, &dll)? != IntimatrModulePresence::Expected {
+                    return Err(
+                        "remote loader exited without the expected owned Intimatr DLL in target"
+                            .into(),
+                    );
                 }
                 println!("Wine helper confirmed Intimatr module in existing test PID {pid}");
                 Ok(())
@@ -412,7 +455,10 @@ mod helper {
 
     #[cfg(test)]
     mod tests {
-        use super::{ERROR_NO_MORE_FILES, complete_module_scan, same_owned_fixture_image};
+        use super::{
+            ERROR_NO_MORE_FILES, IntimatrModulePresence, classify_intimatr_module_path,
+            complete_module_scan, same_owned_fixture_image,
+        };
         use std::{
             fs,
             sync::atomic::{AtomicUsize, Ordering},
@@ -449,6 +495,36 @@ mod helper {
             assert!(!same_owned_fixture_image(&decoy, &helper).unwrap());
             assert!(same_owned_fixture_image(&other_dir.join("missing.exe"), &helper).is_err());
 
+            fs::remove_dir_all(root).unwrap();
+        }
+
+        #[test]
+        fn loaded_module_requires_expected_owned_dll_path() {
+            let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
+            let root = std::env::temp_dir().join(format!(
+                "intimatr-module-identity-{}-{id}",
+                std::process::id()
+            ));
+            let owned_dir = root.join("owned");
+            let other_dir = root.join("other");
+            fs::create_dir_all(&owned_dir).unwrap();
+            fs::create_dir_all(&other_dir).unwrap();
+            let expected = owned_dir.join("intimatr.dll");
+            let unrelated = other_dir.join("intimatr.dll");
+            fs::write(&expected, b"owned fixture module").unwrap();
+            fs::write(&unrelated, b"same name, unrelated file").unwrap();
+
+            assert_eq!(
+                classify_intimatr_module_path(&expected, &expected).unwrap(),
+                IntimatrModulePresence::Expected
+            );
+            assert_eq!(
+                classify_intimatr_module_path(&unrelated, &expected).unwrap(),
+                IntimatrModulePresence::UnexpectedPath
+            );
+            assert!(
+                classify_intimatr_module_path(&other_dir.join("missing.dll"), &expected).is_err()
+            );
             fs::remove_dir_all(root).unwrap();
         }
     }
