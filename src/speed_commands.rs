@@ -182,9 +182,14 @@ impl SpeedPreviewExecutor {
     /// into the target: every arm starts at 1x.
     #[cfg(windows)]
     pub(crate) fn arm_selected_game_session(&self) -> Result<(), SpeedPreviewError> {
-        let mut guard = self.session.lock().map_err(|_| SpeedPreviewError::StatePoisoned)?;
+        let mut guard = self
+            .session
+            .lock()
+            .map_err(|_| SpeedPreviewError::StatePoisoned)?;
         if let Some(session) = guard.as_mut() {
-            session.coordinator.apply(session.now(), SpeedAction::Reset)?;
+            session
+                .coordinator
+                .apply(session.now(), SpeedAction::Reset)?;
         } else {
             let settings = SpeedSettings {
                 enabled: true,

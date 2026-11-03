@@ -119,9 +119,7 @@ pub extern "system" fn intimatr_remote_timer_hook_state(_parameter: *mut c_void)
 /// stored acceleration preset. Missing or inconsistent IAT imports fail closed.
 #[unsafe(no_mangle)]
 pub extern "system" fn intimatr_remote_arm_four_timers(_parameter: *mut c_void) -> u32 {
-    match std::panic::catch_unwind(AssertUnwindSafe(
-        runtime::arm_selected_game_timers,
-    )) {
+    match std::panic::catch_unwind(AssertUnwindSafe(runtime::arm_selected_game_timers)) {
         Ok(true) => 1,
         Ok(false) | Err(_) => 0,
     }
@@ -137,7 +135,9 @@ pub extern "system" fn intimatr_remote_game_preset(selector: *mut c_void) -> u32
         3 => 2.0,
         _ => return 0,
     };
-    match std::panic::catch_unwind(AssertUnwindSafe(|| runtime::selected_game_select_rate(rate))) {
+    match std::panic::catch_unwind(AssertUnwindSafe(|| {
+        runtime::selected_game_select_rate(rate)
+    })) {
         Ok(true) => 1,
         Ok(false) | Err(_) => 0,
     }

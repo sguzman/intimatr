@@ -182,8 +182,23 @@ mod target {
                     return Err("test coordinator did not inspect installed timer hooks".into());
                 }
             }
-            for speed in [0.5, 2.0, 1.0] {
-                if unsafe { change(speed) } == 0 {
+            for (speed, label) in [(0.5, "half"), (2.0, "double"), (1.0, "normal")] {
+                if std::env::var_os("INTIMATR_TEST_EXTERNAL_RATE_COMMANDS").is_some() {
+                    let ready = directory.join(format!("attach-rate-{label}-ready.flag"));
+                    let done = directory.join(format!("attach-rate-{label}-done.flag"));
+                    std::fs::write(&ready, b"awaiting_explicit_speed_preset")
+                        .map_err(|error| format!("cannot publish rate gate: {error}"))?;
+                    if !(0..800).any(|_| {
+                        if done.is_file() {
+                            true
+                        } else {
+                            thread::sleep(Duration::from_millis(25));
+                            false
+                        }
+                    }) {
+                        return Err(format!("test coordinator did not set {label} rate"));
+                    }
+                } else if unsafe { change(speed) } == 0 {
                     return Err(format!(
                         "remote-attached target rejected valid speed {speed}"
                     ));
@@ -196,7 +211,10 @@ mod target {
         // responsible for restoring these still-installed imports. The
         // ordinary attach fixture continues to exercise its own cleanup.
         if std::env::var_os("INTIMATR_TEST_REMOTE_STOP_WITH_HOOKS").is_some() {
-            if measured.is_ok() && unsafe { change(2.0) } == 0 {
+            if measured.is_ok()
+                && std::env::var_os("INTIMATR_TEST_EXTERNAL_RATE_COMMANDS").is_none()
+                && unsafe { change(2.0) } == 0
+            {
                 return Err("remote-stop fixture could not retain a 2x timer rate".into());
             }
             return measured;

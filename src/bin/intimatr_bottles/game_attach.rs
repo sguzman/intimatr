@@ -126,11 +126,14 @@ pub(super) fn run_game_rate(args: Vec<String>) -> Result<(), String> {
 fn run_game_action(args: Vec<String>, action: GameAction) -> Result<(), String> {
     let options = GameAttachOptions::parse(&args)?;
     let needs_experimental = matches!(action, GameAction::ArmTimers | GameAction::SetRate);
-    if needs_experimental && !options.experimental_four_timers {
-        return Err("game timer controls require explicit --experimental-four-timers opt-in".into());
+    if action == GameAction::ArmTimers && !options.experimental_four_timers {
+        return Err("arm-game-timers requires explicit --experimental-four-timers opt-in".into());
+    }
+    if action == GameAction::SetRate && !options.experimental_four_timers {
+        return Err("set-game-speed requires explicit --experimental-four-timers opt-in".into());
     }
     if !needs_experimental && options.experimental_four_timers {
-        return Err("--experimental-four-timers is only valid for game timer controls".into());
+        return Err("--experimental-four-timers is only valid for arm-game-timers or set-game-speed".into());
     }
     if action == GameAction::SetRate && options.rate_preset.is_none() {
         return Err("set-game-speed requires --preset half|normal|double".into());

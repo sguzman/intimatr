@@ -396,7 +396,9 @@ pub(crate) fn arm_selected_game_timers() -> bool {
         return false;
     }
     let preview = CONTEXT.lock().ok().and_then(|guard| {
-        guard.as_ref().map(|context| Arc::clone(&context.speed_preview_executor))
+        guard
+            .as_ref()
+            .map(|context| Arc::clone(&context.speed_preview_executor))
     });
     if preview.is_some_and(|preview| preview.arm_selected_game_session().is_ok()) {
         return true;
@@ -409,7 +411,10 @@ pub(crate) fn arm_selected_game_timers() -> bool {
 /// report is successful only when the installed timer session agrees.
 #[cfg(windows)]
 pub(crate) fn selected_game_select_rate(multiplier: f64) -> bool {
-    use crate::{command::{Command, CommandResult}, speed_commands::SpeedRequest};
+    use crate::{
+        command::{Command, CommandResult},
+        speed_commands::SpeedRequest,
+    };
     if shutdown_requested()
         || lifecycle_state() != LifecycleState::Running
         || crate::experimental_timer_probe::remote_hook_state() != 1
@@ -417,7 +422,9 @@ pub(crate) fn selected_game_select_rate(multiplier: f64) -> bool {
         return false;
     }
     let executor = CONTEXT.lock().ok().and_then(|guard| {
-        guard.as_ref().map(|context| Arc::clone(&context.command_executor))
+        guard
+            .as_ref()
+            .map(|context| Arc::clone(&context.command_executor))
     });
     let Some(executor) = executor else {
         return false;
