@@ -214,7 +214,11 @@ jobs:
               printf '%s' "$RUNNER_TEMP"
               ;;
             "--json programs -b Fixture")
-              printf '%s\n' '[{"name":"Unrelated Offline","executable":"Unrelated.exe","path":"C:\\Example\\Unrelated.exe"}]'
+              if test -n "${INTIMATR_MOCK_PROGRAMS_JSON:-}"; then
+                cat "$INTIMATR_MOCK_PROGRAMS_JSON"
+              else
+                printf '%s\n' '[{"name":"Unrelated Offline","executable":"Unrelated.exe","path":"C:\\Example\\Unrelated.exe"}]'
+              fi
               ;;
             *)
               echo "Unexpected Bottles mock arguments: $*" >&2
@@ -274,6 +278,59 @@ jobs:
           fi
           grep -q 'selected bottle not found' target/wine-attach/missing-bottle.stderr
           echo "Read-only live Bottles/Wine matching verified with mocked native inventory"
+          # Reuse the *real running* Wine fixture PID and verified image path,
+          # but register its path using mocked Bottles metadata. This tests
+          # explicit PID + full-path preflight, never arbitrary attachment.
+          observed_path="$(jq -r --argjson pid "$windows_pid" '.processes[] | select(.windows_pid == $pid) | .full_image_path // empty' target/wine-attach/windows-pids.json)"
+          test -n "$observed_path"
+          jq -n --arg path "$observed_path" '[{
+            "name":"Selected offline fixture",
+            "executable":"wine-attach-target.exe",
+            "path":$path
+          }]' > target/wine-attach/mocks/selected-programs.json
+          export INTIMATR_MOCK_PROGRAMS_JSON="$(pwd)/target/wine-attach/mocks/selected-programs.json"
+          target/release/intimatr-bottles live-match \
+            --bottle Fixture \
+            --helper target/wine-attach/wine-process-list.exe \
+            --runner wine \
+            --bottles-cli target/wine-attach/mocks/bottles-cli \
+            --pid "$windows_pid" --exe "$observed_path" > target/wine-attach/selected-preflight.json
+          jq -e --argjson pid "$windows_pid" '.selected_candidate | select(
+            .operation == "read_only_explicit_game_candidate_preflight"
+            and .selected_windows_pid == $pid
+            and .registered_identity_verified_at_snapshot == true
+            and (.status == "registered_x64_candidate_for_review_only"
+                 or .status == "architecture_unverified")
+            and .safe_to_attach == false
+            and .snapshot_only == true
+            and .attachment_attempted == false
+          )' target/wine-attach/selected-preflight.json > /dev/null
+          # Neither a recycled/missing PID nor a different full executable
+          # path may be promoted to an identity match.
+          target/release/intimatr-bottles live-match \
+            --bottle Fixture \
+            --helper target/wine-attach/wine-process-list.exe \
+            --runner wine \
+            --bottles-cli target/wine-attach/mocks/bottles-cli \
+            --pid 4294967295 --exe "$observed_path" > target/wine-attach/missing-pid-preflight.json
+          jq -e '.selected_candidate | select(
+            .status == "selected_pid_not_in_snapshot"
+            and .registered_identity_verified_at_snapshot == false
+            and .safe_to_attach == false
+          )' target/wine-attach/missing-pid-preflight.json > /dev/null
+          target/release/intimatr-bottles live-match \
+            --bottle Fixture \
+            --helper target/wine-attach/wine-process-list.exe \
+            --runner wine \
+            --bottles-cli target/wine-attach/mocks/bottles-cli \
+            --pid "$windows_pid" --exe 'C:\\Different\\Wrong.exe' > target/wine-attach/wrong-path-preflight.json
+          jq -e '.selected_candidate | select(
+            .status == "selected_executable_does_not_match_pid"
+            and .registered_identity_verified_at_snapshot == false
+            and .safe_to_attach == false
+          )' target/wine-attach/wrong-path-preflight.json > /dev/null
+          unset INTIMATR_MOCK_PROGRAMS_JSON
+          echo "Verified explicit Windows PID/full-image preflight against isolated Wine fixture"
           # Two distinct Linux invocations launch separate Windows helpers
           # against the same already-running fixture. Exactly one may load.
           target/release/intimatr-bottles probe-attach \
