@@ -51,7 +51,9 @@ impl GameAttachOptions {
                 "--action" if step_action.is_none() => {
                     let value = iter.next().ok_or("missing --action value")?;
                     if !matches!(value.as_str(), "increase" | "decrease" | "toggle" | "reset") {
-                        return Err("speed action must be increase, decrease, toggle or reset".into());
+                        return Err(
+                            "speed action must be increase, decrease, toggle or reset".into()
+                        );
                     }
                     step_action = Some(value.clone());
                 }
@@ -325,7 +327,12 @@ fn run_game_action(args: Vec<String>, action: GameAction) -> Result<(), String> 
         GameAction::Step => {
             command
                 .arg("--step-game-speed-only")
-                .arg(options.step_action.as_deref().ok_or("missing speed action")?)
+                .arg(
+                    options
+                        .step_action
+                        .as_deref()
+                        .ok_or("missing speed action")?,
+                )
                 .arg("--experimental-four-timers");
         }
     }
@@ -875,7 +882,10 @@ mod tests {
         );
         for action in ["increase", "decrease", "toggle", "reset"] {
             let mut selected = values.clone();
-            *selected.iter_mut().find(|value| *value == "increase").unwrap() = action.into();
+            *selected
+                .iter_mut()
+                .find(|value| *value == "increase")
+                .unwrap() = action.into();
             assert_eq!(
                 GameAttachOptions::parse(&selected)
                     .unwrap()

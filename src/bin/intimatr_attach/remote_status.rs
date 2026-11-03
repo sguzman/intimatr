@@ -491,7 +491,9 @@ pub fn change_game_speed(
     if query_lifecycle_state(process, pid, dll)? != "running"
         || query_timer_hook_state(process, pid, dll)? != "installed_four_timers"
     {
-        return Err("cannot change game speed: exact target has no active four-timer IAT hooks".into());
+        return Err(
+            "cannot change game speed: exact target has no active four-timer IAT hooks".into(),
+        );
     }
     let (base, image_size) = target_base(pid, dll)?;
     let rva = export_rva(dll, STEP_ACTION_EXPORT)?;
