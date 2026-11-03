@@ -141,7 +141,7 @@ Work is ordered by dependency: later phases should build on the shared core inst
 - [ ] INT-1404 🔌 Verified normal-launch DLL loading.
 - [ ] INT-1405 🛟 Idempotence, backups and rollback (including process attach).
 - [ ] INT-1406 🧱 32-/64-bit, Linux GNU build and runner compatibility reporting.
-- [ ] INT-1407 🧷 Explicit attach to already-running Wine processes via native Linux manager (active; same-PID competing helpers serialized in isolated Wine CI, actual Bottles game compatibility and cleanup outstanding).
+- [ ] INT-1407 🧷 Explicit attach to already-running Wine processes via native Linux manager (active; same-PID competing helpers serialized in disposable Wine CI; explicit PID/full-image read-only preflight added with fail-closed checks; real Bottles game, attachment authorization, and cleanup remain unverified).
 
 ## 15. Unified UI/RPC 🖥️
 **Status:** active (0/7 points verified; preview-only speed command DTOs and shared executor integrated, RPC integration QA pending). **Weight:** 7/100 expansion points.
