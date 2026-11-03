@@ -316,11 +316,20 @@ jobs:
           # unambiguously distinguish; inventory must fail closed.
           cp "$WINEPREFIX/drive_c/Games/Full.exe" "$WINEPREFIX/drive_c/Games/Overlap.exe"
           cp "$WINEPREFIX/drive_c/Games/Partial.exe" "$WINEPREFIX/drive_c/Games/OVERLAP.EXE"
+          # Explicitly mapped external path: Wine's DOS device mapping is
+          # the only authority. No host-wide path scan without opt-in.
+          external_games="$RUNNER_TEMP/intimatr-external-games"
+          mkdir -p "$external_games"
+          cp "$WINEPREFIX/drive_c/Games/Full.exe" "$external_games/Full.exe"
+          ln -s "$(pwd)/target/wine-attach/wine-attach-target.exe" "$external_games/Escape.exe"
+          ln -s "$external_games" "$WINEPREFIX/dosdevices/q:"
           ln -s "$(pwd)/target/wine-attach/wine-attach-target.exe" "$WINEPREFIX/drive_c/Games/Outside.exe"
           cat >target/wine-attach/mocks/compat-programs.json <<'MOCK_COMPAT_PROGRAMS'
           [
             {"name":"Full","executable":"Full.exe","path":"C:\\Games\\Full.exe"},
             {"name":"Mixed-Case Registration","executable":"Full.exe","path":"c:\\gAmEs\\fULL.eXe"},
+            {"name":"Mapped External","executable":"Full.exe","path":"Q:\\fULL.eXe"},
+            {"name":"Mapped Escape","executable":"Escape.exe","path":"Q:\\Escape.exe"},
             {"name":"Ambiguous Case","executable":"Overlap.exe","path":"C:\\Games\\overlap.exe"},
             {"name":"Partial","executable":"Partial.exe","path":"C:\\Games\\Partial.exe"},
             {"name":"Unavailable","executable":"Absent.exe","path":"C:\\Games\\Absent.exe"},
@@ -333,6 +342,7 @@ jobs:
             --bottle Fixture \
             --bottles-cli target/wine-attach/mocks/bottles-cli >target/wine-attach/bottle-compat.json
           jq -e '.operation == "read_only_registered_bottle_static_pe_compatibility"
+            and .external_drive_inspection_opted_in == false
             and .bottle_prefix_association_verified == true
             and .registered_programs_only == true
             and .wine_runner_verified == false
@@ -340,7 +350,9 @@ jobs:
             and .process_attachment_attempted == false
             and .timer_hook_installation_attempted == false
             and .gameplay_speed_verified == false
-            and (.programs | length) == 7
+            and (.programs | length) == 9
+            and ([.programs[] | select(.registered_name == "Mapped External" or .registered_name == "Mapped Escape")
+              | select(.resolved_linux_file == null and .static_pe_compatibility.static_import_status == "static_import_inventory_unknown")] | length) == 2
             and ([.programs[] | select(.registered_name == "Mixed-Case Registration"
               and .static_pe_compatibility.static_import_status == "static_four_timer_names_present"
               and (.resolved_linux_file | endswith("/Games/Full.exe")))] | length) == 1
@@ -355,6 +367,29 @@ jobs:
               and (.static_pe_compatibility.static_timer_imports_missing | index("timeGetTime") != null))] | length) == 1
             and ([.programs[] | select(.registered_name == "Unavailable" or .registered_name == "Other Drive" or .registered_name == "Escaping Link") |
               select(.resolved_linux_file == null and .static_pe_compatibility.static_import_status == "static_import_inventory_unknown")] | length) == 3' target/wine-attach/bottle-compat.json > /dev/null
+          target/release/intimatr-bottles bottle-compat \
+            --bottle Fixture \
+            --bottles-cli target/wine-attach/mocks/bottles-cli \
+            --include-mapped-drives >target/wine-attach/bottle-compat-mapped.json
+          jq -e '.external_drive_inspection_opted_in == true
+            and .process_attachment_attempted == false
+            and .timer_hook_installation_attempted == false
+            and (.programs | length) == 9
+            and ([.programs[] | select(.registered_name == "Mapped External"
+              and .static_pe_compatibility.static_import_status == "static_four_timer_names_present"
+              and (.resolved_linux_file | endswith("/intimatr-external-games/Full.exe")))] | length) == 1
+            and ([.programs[] | select(.registered_name == "Mapped Escape"
+              and .resolved_linux_file == null
+              and .static_pe_compatibility.static_import_status == "static_import_inventory_unknown"
+              and (.static_pe_compatibility.inspection_error | contains("outside selected mapped drive")))] | length) == 1' target/wine-attach/bottle-compat-mapped.json > /dev/null
+          if target/release/intimatr-bottles bottle-compat \
+            --bottle Fixture \
+            --bottles-cli target/wine-attach/mocks/bottles-cli \
+            --include-mapped-drives --include-mapped-drives >target/wine-attach/bottle-compat-repeat.stdout 2>target/wine-attach/bottle-compat-repeat.stderr; then
+            echo "ERROR: read-only scan accepted duplicated external-drive consent" >&2
+            exit 1
+          fi
+          grep -q 'duplicate --include-mapped-drives' target/wine-attach/bottle-compat-repeat.stderr
           if target/release/intimatr-bottles bottle-compat \
             --bottle DoesNotExist \
             --bottles-cli target/wine-attach/mocks/bottles-cli >target/wine-attach/bottle-compat-missing.stdout 2>target/wine-attach/bottle-compat-missing.stderr; then
