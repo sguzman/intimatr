@@ -231,8 +231,11 @@ fn bootstrap_inner(
     );
 
     #[cfg(windows)]
-    let (command_executor, hotkey_worker, speed_preview_executor) =
-        create_command_executor(&config, &module_directory)?;
+    let SpeedExecutorBundle {
+        executor: command_executor,
+        hotkey_worker,
+        preview: speed_preview_executor,
+    } = create_command_executor(&config, &module_directory)?;
     #[cfg(windows)]
     let rpc_server = start_rpc_if_enabled(&config, Arc::clone(&command_executor))?;
     #[cfg(windows)]
@@ -263,17 +266,17 @@ fn bootstrap_inner(
 }
 
 #[cfg(windows)]
+struct SpeedExecutorBundle {
+    executor: Arc<dyn CommandExecutor>,
+    hotkey_worker: Option<SpeedHotkeyWorker>,
+    preview: Arc<SpeedPreviewExecutor>,
+}
+
+#[cfg(windows)]
 fn create_command_executor(
     config: &AppConfig,
     module_directory: &Path,
-) -> Result<
-    (
-        Arc<dyn CommandExecutor>,
-        Option<SpeedHotkeyWorker>,
-        Arc<SpeedPreviewExecutor>,
-    ),
-    RuntimeError,
-> {
+) -> Result<SpeedExecutorBundle, RuntimeError> {
     let analysis_directory = module_directory
         .join("analysis")
         .join(&config.target.executable);
@@ -307,7 +310,11 @@ fn create_command_executor(
         }
     };
     let executor: Arc<dyn CommandExecutor> = Arc::clone(&preview) as Arc<dyn CommandExecutor>;
-    Ok((executor, worker, preview))
+    Ok(SpeedExecutorBundle {
+        executor,
+        hotkey_worker: worker,
+        preview,
+    })
 }
 
 #[cfg(windows)]
