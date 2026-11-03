@@ -1,6 +1,8 @@
 #[cfg(windows)]
 pub mod helper {
-    use intimatr::{speed_policy::game_path_key, windows_process_machine::running_process_architecture};
+    use intimatr::{
+        speed_policy::game_path_key, windows_process_machine::running_process_architecture,
+    };
     use std::{
         ffi::c_void,
         fs,
@@ -208,9 +210,13 @@ pub mod helper {
                     .unwrap_or_default();
                 if matches!(
                     name.as_str(),
-                    "explorer.exe" | "services.exe" | "svchost.exe"
-                        | "wine-attach-helper.exe" | "wine-game-attach-helper.exe"
-                        | "wine-process-list.exe" | "rundll32.exe"
+                    "explorer.exe"
+                        | "services.exe"
+                        | "svchost.exe"
+                        | "wine-attach-helper.exe"
+                        | "wine-game-attach-helper.exe"
+                        | "wine-process-list.exe"
+                        | "rundll32.exe"
                 ) {
                     return Err("refusing attach: selected Windows program is not a game".into());
                 }
@@ -240,10 +246,18 @@ pub mod helper {
             let name = String::from_utf16(&entry.name[..end])
                 .map_err(|_| "invalid UTF-16 in game module inventory")?
                 .to_ascii_lowercase();
-            if ["easyanticheat", "battleye", "xigncode", "nprotect",
-                "anticheat", "faceit", "vgk", "eac_"]
-                .iter()
-                .any(|part| name.contains(part))
+            if [
+                "easyanticheat",
+                "battleye",
+                "xigncode",
+                "nprotect",
+                "anticheat",
+                "faceit",
+                "vgk",
+                "eac_",
+            ]
+            .iter()
+            .any(|part| name.contains(part))
             {
                 return Err("refusing attach: game has a known protection module loaded".into());
             }
@@ -461,9 +475,14 @@ pub mod helper {
         game_path_key(&expected)
             .map_err(|error| format!("invalid selected Windows game path: {error}"))?;
         if args.next().as_deref() != Some("--offline-single-player") || args.next().is_some() {
-            return Err("game attach requires explicit --offline-single-player acknowledgment".into());
+            return Err(
+                "game attach requires explicit --offline-single-player acknowledgment".into(),
+            );
         }
-        attach(pid, AttachTarget::SelectedOfflineGame(PathBuf::from(expected)))
+        attach(
+            pid,
+            AttachTarget::SelectedOfflineGame(PathBuf::from(expected)),
+        )
     }
 
     fn attach(pid: u32, target: AttachTarget) -> Result<(), String> {
@@ -661,5 +680,4 @@ pub mod helper {
             }
         }
     }
-
 }

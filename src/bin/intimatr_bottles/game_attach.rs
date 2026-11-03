@@ -27,7 +27,9 @@ impl GameAttachOptions {
                 "--attach-helper" if attach_helper.is_none() => {
                     let path = iter.next().ok_or("missing --attach-helper path")?;
                     if !Path::new(path).is_absolute() {
-                        return Err("game attach helper requires an absolute executable path".into());
+                        return Err(
+                            "game attach helper requires an absolute executable path".into()
+                        );
                     }
                     attach_helper = Some(path.clone());
                 }
@@ -59,7 +61,10 @@ pub(super) fn run_game_attach(args: Vec<String>) -> Result<(), String> {
     {
         return Err("expected the dedicated wine-game-attach-helper.exe".into());
     }
-    let dll = attach_helper.parent().ok_or("game helper directory missing")?.join("intimatr.dll");
+    let dll = attach_helper
+        .parent()
+        .ok_or("game helper directory missing")?
+        .join("intimatr.dll");
     let dll_meta = fs::metadata(&dll)
         .map_err(|error| format!("Intimatr DLL is missing beside game attach helper: {error}"))?;
     if !dll_meta.is_file() || dll_meta.len() == 0 {
@@ -148,10 +153,16 @@ mod tests {
             args(&[]),
             args(&["--offline-single-player"]),
             args(&["--attach-helper", "/tmp/wine-game-attach-helper.exe"]),
-            args(&["--attach-helper", "wine-game-attach-helper.exe", "--offline-single-player"]),
             args(&[
-                "--attach-helper", "/tmp/wine-game-attach-helper.exe",
-                "--offline-single-player", "--offline-single-player",
+                "--attach-helper",
+                "wine-game-attach-helper.exe",
+                "--offline-single-player",
+            ]),
+            args(&[
+                "--attach-helper",
+                "/tmp/wine-game-attach-helper.exe",
+                "--offline-single-player",
+                "--offline-single-player",
             ]),
         ] {
             assert!(GameAttachOptions::parse(&input).is_err());
@@ -161,16 +172,28 @@ mod tests {
     #[test]
     fn retains_exact_selected_candidate_flags_without_implicit_selection() {
         let parsed = GameAttachOptions::parse(&args(&[
-            "--attach-helper", "/tmp/wine-game-attach-helper.exe",
-            "--bottle", "Games", "--pid", "42",
-            "--exe", r"C:\Games\Game.exe",
+            "--attach-helper",
+            "/tmp/wine-game-attach-helper.exe",
+            "--bottle",
+            "Games",
+            "--pid",
+            "42",
+            "--exe",
+            r"C:\Games\Game.exe",
             "--offline-single-player",
         ]))
         .unwrap();
         assert_eq!(parsed.attach_helper, "/tmp/wine-game-attach-helper.exe");
         assert_eq!(
             parsed.live_args,
-            args(&["--bottle", "Games", "--pid", "42", "--exe", r"C:\Games\Game.exe"])
+            args(&[
+                "--bottle",
+                "Games",
+                "--pid",
+                "42",
+                "--exe",
+                r"C:\Games\Game.exe"
+            ])
         );
     }
 }
