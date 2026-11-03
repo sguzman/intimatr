@@ -133,7 +133,9 @@ fn run_game_action(args: Vec<String>, action: GameAction) -> Result<(), String> 
         return Err("set-game-speed requires explicit --experimental-four-timers opt-in".into());
     }
     if !needs_experimental && options.experimental_four_timers {
-        return Err("--experimental-four-timers is only valid for arm-game-timers or set-game-speed".into());
+        return Err(
+            "--experimental-four-timers is only valid for arm-game-timers or set-game-speed".into(),
+        );
     }
     if action == GameAction::SetRate && options.rate_preset.is_none() {
         return Err("set-game-speed requires --preset half|normal|double".into());
@@ -222,7 +224,12 @@ fn run_game_action(args: Vec<String>, action: GameAction) -> Result<(), String> 
         GameAction::SetRate => {
             command
                 .arg("--set-game-preset-only")
-                .arg(options.rate_preset.as_deref().ok_or("missing speed preset")?)
+                .arg(
+                    options
+                        .rate_preset
+                        .as_deref()
+                        .ok_or("missing speed preset")?,
+                )
                 .arg("--experimental-four-timers");
         }
     }

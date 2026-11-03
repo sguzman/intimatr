@@ -352,7 +352,9 @@ pub fn select_game_preset(
     if query_lifecycle_state(process, pid, dll)? != "running"
         || query_timer_hook_state(process, pid, dll)? != "installed_four_timers"
     {
-        return Err("cannot set game speed: exact target has no active four-timer IAT hooks".into());
+        return Err(
+            "cannot set game speed: exact target has no active four-timer IAT hooks".into(),
+        );
     }
     let (base, image_size) = target_base(pid, dll)?;
     let rva = export_rva(dll, SET_PRESET_EXPORT)?;
