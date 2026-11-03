@@ -187,7 +187,8 @@ impl ProbeAttachOptions {
             pid: pid.ok_or("missing --pid")?,
             prefix: prefix.ok_or("missing --prefix")?,
             helper: helper.ok_or("missing --helper")?,
-            runner: runner.ok_or("missing --runner: select explicit Wine binary for this prefix")?,
+            runner: runner
+                .ok_or("missing --runner: select explicit Wine binary for this prefix")?,
         })
     }
 }
