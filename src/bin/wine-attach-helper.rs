@@ -146,8 +146,13 @@ mod helper {
     /// Compare the complete target executable identity, not its filename.
     /// Only the known disposable fixture physically beside THIS helper may
     /// receive the test DLL. A same-named executable elsewhere is not enough.
-    fn same_owned_fixture_image(observed_image: &Path, helper_image: &Path) -> Result<bool, String> {
-        let helper_dir = helper_image.parent().ok_or("helper has no executable directory")?;
+    fn same_owned_fixture_image(
+        observed_image: &Path,
+        helper_image: &Path,
+    ) -> Result<bool, String> {
+        let helper_dir = helper_image
+            .parent()
+            .ok_or("helper has no executable directory")?;
         let expected_image = helper_dir.join("wine-attach-target.exe");
         let expected = fs::canonicalize(expected_image)
             .map_err(|error| format!("cannot resolve owned test fixture: {error}"))?;
