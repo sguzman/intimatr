@@ -17,11 +17,11 @@ mod game_attach;
 #[path = "intimatr_bottles/live_match.rs"]
 mod live_match;
 #[cfg(target_os = "linux")]
-#[path = "intimatr_bottles/probe_attach.rs"]
-mod probe_attach;
-#[cfg(target_os = "linux")]
 #[path = "intimatr_bottles/pe_compat.rs"]
 mod pe_compat;
+#[cfg(target_os = "linux")]
+#[path = "intimatr_bottles/probe_attach.rs"]
+mod probe_attach;
 #[cfg(target_os = "linux")]
 #[path = "intimatr_bottles/profile_check.rs"]
 mod profile_check;
