@@ -10,7 +10,16 @@ fn main() {
 
 #[cfg(windows)]
 mod target {
-    use std::{ffi::c_void, path::Path, thread, time::Duration};
+    use std::{
+        ffi::c_void,
+        path::Path,
+        sync::{
+            Arc,
+            atomic::{AtomicBool, Ordering},
+        },
+        thread,
+        time::Duration,
+    };
 
     #[link(name = "kernel32")]
     unsafe extern "system" {
@@ -218,6 +227,33 @@ mod target {
                             // before this deliberately controlled target exits.
                             thread::sleep(Duration::from_millis(250));
                             exercise_remote_speed(module, directory)?;
+                            // In the external-stop regression, keep two threads
+                            // reading the hooked timing APIs during the remote
+                            // shutdown. The DLL must restore imports while
+                            // callbacks may still be executing and stay mapped.
+                            let timer_stress =
+                                (std::env::var_os("INTIMATR_TEST_REMOTE_STOP_WITH_HOOKS")
+                                    .is_some())
+                                .then(|| {
+                                    let live = Arc::new(AtomicBool::new(true));
+                                    let threads = (0..2)
+                                        .map(|_| {
+                                            let live = Arc::clone(&live);
+                                            thread::spawn(move || {
+                                                while live.load(Ordering::Acquire) {
+                                                    let mut qpc = 0_i64;
+                                                    assert_ne!(unsafe { QueryPerformanceCounter(&mut qpc) }, 0);
+                                                    let ticks = unsafe {
+                                                        (GetTickCount64(), GetTickCount(), timeGetTime())
+                                                    };
+                                                    std::hint::black_box((qpc, ticks));
+                                                    thread::sleep(Duration::from_millis(1));
+                                                }
+                                            })
+                                        })
+                                        .collect::<Vec<_>>();
+                                    (live, threads)
+                                });
                             // Keep the disposable process alive long enough to
                             // assert that a second explicit attach is refused.
                             let verified = directory.join("attach-verified.flag");
@@ -238,6 +274,14 @@ mod target {
                             }
                             if unsafe { stop() } == 0 || unsafe { state() } != 5 {
                                 return Err("attached DLL failed clean shutdown".into());
+                            }
+                            if let Some((live, threads)) = timer_stress {
+                                live.store(false, Ordering::Release);
+                                for worker in threads {
+                                    worker
+                                        .join()
+                                        .map_err(|_| "timer worker panicked during external stop")?;
+                                }
                             }
                             println!("Wine attach target verified 0.5x/2x/1x timers, then Stopped");
                             return Ok(());
