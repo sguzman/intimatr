@@ -87,7 +87,17 @@ impl LiveMatchOptions {
 }
 
 #[cfg(target_os = "linux")]
-pub(super) fn run_live_match(args: Vec<String>) -> Result<(), String> {
+pub(super) struct LiveSelectionEvidence {
+    pub prefix: std::path::PathBuf,
+    pub runner: std::path::PathBuf,
+    pub runner_verified: bool,
+    pub prefix_verified: bool,
+    pub candidate: Option<intimatr::bottles_preflight::CandidatePreflight>,
+    pub report: serde_json::Value,
+}
+
+#[cfg(target_os = "linux")]
+pub(super) fn inspect_live_selection(args: Vec<String>) -> Result<LiveSelectionEvidence, String> {
     use intimatr::{
         bottles::{BottleInventory, parse_bottle_names, parse_registered_programs},
         bottles_attachment_readiness::review_attachment_readiness,
@@ -158,28 +168,42 @@ pub(super) fn run_live_match(args: Vec<String>) -> Result<(), String> {
     let attachment_readiness = selected_candidate
         .as_ref()
         .map(|candidate| review_attachment_readiness(candidate, &ownership, &runner_audit));
+    let report = serde_json::json!({
+        "operation": "read_only_live_bottles_wine_match",
+        "selected_bottle": options.bottle,
+        "resolved_prefix": &prefix,
+        "prefix_source": prefix_source,
+        "bottle_prefix_association_verified": ownership.bottle_prefix_association_verified,
+        "configured_bottles_root": ownership.canonical_bottles_root,
+        "runner_verified": runner_audit.runner_path_verified,
+        "runner_binary": &verified_runner,
+        "runner_binary_verified": true,
+        "runner_audit": runner_audit,
+        "game_process_identity_verified": ownership.game_process_identity_verified,
+        "windows_process_count": snapshot.processes.len(),
+        "matches": preview.matches,
+        "selected_candidate": &selected_candidate,
+        "attachment_readiness": attachment_readiness,
+        "safe_to_attach": false,
+        "attachment_attempted": false
+    });
+    Ok(LiveSelectionEvidence {
+        prefix,
+        runner: verified_runner,
+        runner_verified: runner_audit.runner_path_verified,
+        prefix_verified: ownership.bottle_prefix_association_verified,
+        candidate: selected_candidate,
+        report,
+    })
+}
+
+#[cfg(target_os = "linux")]
+pub(super) fn run_live_match(args: Vec<String>) -> Result<(), String> {
+    let selected = inspect_live_selection(args)?;
     println!(
         "{}",
-        serde_json::to_string_pretty(&serde_json::json!({
-            "operation": "read_only_live_bottles_wine_match",
-            "selected_bottle": options.bottle,
-            "resolved_prefix": prefix,
-            "prefix_source": prefix_source,
-            "bottle_prefix_association_verified": ownership.bottle_prefix_association_verified,
-            "configured_bottles_root": ownership.canonical_bottles_root,
-            "runner_verified": runner_audit.runner_path_verified,
-            "runner_binary": verified_runner,
-            "runner_binary_verified": true,
-            "runner_audit": runner_audit,
-            "game_process_identity_verified": ownership.game_process_identity_verified,
-            "windows_process_count": snapshot.processes.len(),
-            "matches": preview.matches,
-            "selected_candidate": selected_candidate,
-            "attachment_readiness": attachment_readiness,
-            "safe_to_attach": false,
-            "attachment_attempted": false
-        }))
-        .map_err(|error| format!("cannot serialize read-only live-match: {error}"))?
+        serde_json::to_string_pretty(&selected.report)
+            .map_err(|error| format!("cannot serialize read-only live-match: {error}"))?
     );
     Ok(())
 }
