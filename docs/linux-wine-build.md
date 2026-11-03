@@ -274,6 +274,14 @@ The standalone Windows attach helper no longer accepts a target solely because t
 
 A Windows-only synthetic regression checks that an unrelated executable with the **same filename** in another directory is rejected. The [Wine CI smoke run 41558365727](https://github.com/sguzman/intimatr/actions/runs/41558365727) additionally passed the owned-target load test and a real separate same-named Wine decoy rejection. This was **Wine integration evidence**, not a full-green run: that revision still had a strict Clippy test-placement failure, which was corrected in subsequent commits. This check is a fixture boundary, not a content hash, mapped-process attestation, security proof against races, or production game-attachment authorization. INT-1407 remains open and verified expansion remains 16%.
 
+## 2026-11-02 — Fail-closed module inventory and explicit fixture runner
+
+The controlled `wine-attach-helper.exe` scans the selected Windows PID's module list before remotely loading `intimatr.dll`. Previously a failed `Module32NextW` call was treated as an ordinary end-of-list; this could incorrectly report the DLL as absent after a truncated scan. The helper now checks `GetLastError` **immediately** after enumeration stops and treats only `ERROR_NO_MORE_FILES` as a complete list. Any other result aborts with an explicit enumeration error, before an attach decision. Deterministic Windows tests cover expected end-of-list and error results.
+
+Likewise, the Linux `intimatr-bottles probe-attach` fixture-only command now **requires** `--runner EXPLICIT_WINE_BINARY`. It no longer silently invokes the host's default `wine` for a selected prefix. The existing Wine CI smoke calls all supply a runner, and a new negative check rejects omission before starting a Windows helper. This makes runner selection consistent with `live-match` and `win-processes`; it still does not prove that the chosen runner equals a real bottle's configured runner.
+
+Both changes remain within disposable fixture testing. The module enumeration result is not an anti-race guarantee; real-game loader eligibility, production hook compatibility, native Bottles field QA and independent status attestation remain open. Changes are pending final CI verification; expansion stays 16% (+0 pp).
+
 ## Combined native Linux + Wine bundle (experimental)
 
 The Linux cross-build CI now produces `intimatr-linux-wine-x86_64-VERSION.tar.gz` alongside its archive SHA-256 sidecar. The verified archive contains the native `bin/intimatr-bottles` ELF, `wine/intimatr.dll`, `wine/intimatr-speed.exe`, read-only `wine/wine-process-list.exe`, examples, version marker, per-file SHA-256 checksums, and reference docs. To build it after compiling the native CLI plus Windows GNU binaries:
