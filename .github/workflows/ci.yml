@@ -300,6 +300,19 @@ jobs:
             and .snapshot_only == true
             and .attachment_attempted == false
           )' target/wine-attach/selected-preflight.json > /dev/null
+          # Read-only readiness aggregates prefix/runner/identity evidence.
+          # A matching registered x64 fixture is still not a game attach.
+          jq -e '.attachment_readiness | select(
+            .operation == "read_only_live_game_attachment_readiness"
+            and .snapshot_registered_identity_verified == true
+            and .bottle_prefix_verified == true
+            and .configured_runner_verified == false
+            and .safe_to_attach == false
+            and .attachment_attempted == false
+            and (.blockers | index("configured_wine_runner_unverified") != null)
+            and (.blockers | index("live_process_prefix_ownership_unverified") != null)
+            and (.blockers | index("production_game_loader_not_implemented") != null)
+          )' target/wine-attach/selected-preflight.json > /dev/null
           # Neither a recycled/missing PID nor a different full executable
           # path may be promoted to an identity match.
           target/release/intimatr-bottles live-match \
@@ -324,8 +337,20 @@ jobs:
             and .registered_identity_verified_at_snapshot == false
             and .safe_to_attach == false
           )' target/wine-attach/wrong-path-preflight.json > /dev/null
+          jq -e '.attachment_readiness | select(
+            .snapshot_registered_identity_verified == false
+            and .status == "candidate_identity_or_architecture_unverified"
+            and .safe_to_attach == false
+            and (.blockers | index("selected_pid_executable_registration_unverified") != null)
+          )' target/wine-attach/missing-pid-preflight.json > /dev/null
+          jq -e '.attachment_readiness | select(
+            .snapshot_registered_identity_verified == false
+            and .status == "candidate_identity_or_architecture_unverified"
+            and .safe_to_attach == false
+            and (.blockers | index("selected_pid_executable_registration_unverified") != null)
+          )' target/wine-attach/wrong-path-preflight.json > /dev/null
           unset INTIMATR_MOCK_PROGRAMS_JSON
-          echo "Verified explicit Windows PID/full-image preflight against isolated Wine fixture"
+          echo "Verified explicit Windows PID/full-image preflight and blocked game readiness against isolated Wine fixture"
           # A same-named executable in a DIFFERENT directory is not the
           # owned fixture beside wine-attach-helper.exe, even when it is
           # genuinely running under the same Wine prefix.

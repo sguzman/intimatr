@@ -6,6 +6,8 @@
 pub mod analysis;
 pub mod backpressure;
 pub mod bottles;
+#[cfg(target_os = "linux")]
+pub mod bottles_attachment_readiness;
 pub mod bottles_live_matches;
 #[cfg(target_os = "linux")]
 pub mod bottles_prefix;
