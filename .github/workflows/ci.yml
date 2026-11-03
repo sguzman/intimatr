@@ -147,6 +147,49 @@ jobs:
         shell: bash
         run: xvfb-run -a bash scripts/wine-speed-bridge-smoke.sh
 
+      - name: Verify independent Wine prefix process namespaces
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Two independent, disposable Wine sessions. The host process
+          # inventory must not accidentally return a target from another
+          # WINEPREFIX even when the executable basename is identical.
+          mkdir -p target/wine-namespace/a target/wine-namespace/b
+          cp target/x86_64-pc-windows-gnu/release/wine-attach-target.exe target/wine-namespace/a/
+          cp target/x86_64-pc-windows-gnu/release/wine-attach-target.exe target/wine-namespace/b/
+          cp target/x86_64-pc-windows-gnu/release/wine-process-list.exe target/wine-namespace/
+          prefix_a="$RUNNER_TEMP/namespace-a"
+          prefix_b="$RUNNER_TEMP/namespace-b"
+          mkdir -p "$prefix_a" "$prefix_b"
+          # Initialize prefixes before launching the short-lived fixtures.
+          WINEARCH=win64 WINEDEBUG=-all WINEPREFIX="$prefix_a" xvfb-run -a wineboot -u >/dev/null 2>&1
+          WINEARCH=win64 WINEDEBUG=-all WINEPREFIX="$prefix_b" xvfb-run -a wineboot -u >/dev/null 2>&1
+          WINEDEBUG=-all WINEPREFIX="$prefix_a" xvfb-run -a wine target/wine-namespace/a/wine-attach-target.exe >target/wine-namespace/a/stdout 2>target/wine-namespace/a/stderr &
+          launcher_a=$!
+          WINEDEBUG=-all WINEPREFIX="$prefix_b" xvfb-run -a wine target/wine-namespace/b/wine-attach-target.exe >target/wine-namespace/b/stdout 2>target/wine-namespace/b/stderr &
+          launcher_b=$!
+          trap 'kill "$launcher_a" "$launcher_b" 2>/dev/null || true' EXIT
+          for i in $(seq 1 100); do
+            if test -s target/wine-namespace/a/attach-target.pid && test -s target/wine-namespace/b/attach-target.pid; then
+              break
+            fi
+            sleep 0.1
+          done
+          test -s target/wine-namespace/a/attach-target.pid
+          test -s target/wine-namespace/b/attach-target.pid
+          pid_a="$(cat target/wine-namespace/a/attach-target.pid)"
+          pid_b="$(cat target/wine-namespace/b/attach-target.pid)"
+          target/release/intimatr-bottles win-processes --prefix "$prefix_a" --helper target/wine-namespace/wine-process-list.exe --runner wine > target/wine-namespace/a.json
+          target/release/intimatr-bottles win-processes --prefix "$prefix_b" --helper target/wine-namespace/wine-process-list.exe --runner wine > target/wine-namespace/b.json
+          # Full image paths distinguish identical basenames across prefixes;
+          # numerical Windows PIDs can collide between independent sessions.
+          image_a="$(jq -r --argjson pid "$pid_a" '[.processes[] | select(.windows_pid == $pid) | .full_image_path // empty] | first // empty' target/wine-namespace/a.json)"
+          image_b="$(jq -r --argjson pid "$pid_b" '[.processes[] | select(.windows_pid == $pid) | .full_image_path // empty] | first // empty' target/wine-namespace/b.json)"
+          test -n "$image_a" && test -n "$image_b" && test "$image_a" != "$image_b"
+          jq -e --arg path "$image_a" '([.processes[] | select(.full_image_path == $path)] | length) == 0' target/wine-namespace/b.json > /dev/null
+          jq -e --arg path "$image_b" '([.processes[] | select(.full_image_path == $path)] | length) == 0' target/wine-namespace/a.json > /dev/null
+          echo "Two independent Wine prefix process namespaces excluded one another's running fixture image"
+
       - name: Run isolated already-running Wine process attach smoke
         shell: bash
         run: |
