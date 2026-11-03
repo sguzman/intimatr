@@ -897,13 +897,16 @@ mod tests {
     fn coverage_mask_tracks_each_timer_import_independently() {
         let originals = [(11_usize, 21_usize), (12, 22), (13, 23), (14, 24)];
         let coverage = |observed: &[usize]| {
-            originals.iter().enumerate().fold(0_u8, |mask, (index, (original, replacement))| {
-                if observed.contains(original) || observed.contains(replacement) {
-                    mask | (1_u8 << index)
-                } else {
-                    mask
-                }
-            })
+            originals
+                .iter()
+                .enumerate()
+                .fold(0_u8, |mask, (index, (original, replacement))| {
+                    if observed.contains(original) || observed.contains(replacement) {
+                        mask | (1_u8 << index)
+                    } else {
+                        mask
+                    }
+                })
         };
         assert_eq!(coverage(&[]), 0);
         assert_eq!(coverage(&[11, 12]), 0b0011);

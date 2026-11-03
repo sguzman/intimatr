@@ -670,13 +670,15 @@ pub mod helper {
         let _guard = acquire_attach_mutex(pid)?;
         validate_target_image(process.0, &executable, target)?;
         validate_target_generation(process.0, target)?;
-        let (state, hook_state, rate_milli, import_mask) = match target_intimatr_module(pid, &dll)? {
+        let (state, hook_state, rate_milli, import_mask) = match target_intimatr_module(pid, &dll)?
+        {
             IntimatrModulePresence::Absent => ("absent", "none", 0, None),
             IntimatrModulePresence::Expected => {
                 let state = super::remote_status::query_lifecycle_state(process.0, pid, &dll)?;
                 let hooks = super::remote_status::query_timer_hook_state(process.0, pid, &dll)?;
                 let rate = super::remote_status::query_rate_milli(process.0, pid, &dll)?;
-                let coverage = super::remote_status::query_timer_import_coverage(process.0, pid, &dll)?;
+                let coverage =
+                    super::remote_status::query_timer_import_coverage(process.0, pid, &dll)?;
                 if (hooks == "installed_four_timers") != (rate != 0)
                     || (hooks == "installed_four_timers" && coverage != Some(15))
                 {

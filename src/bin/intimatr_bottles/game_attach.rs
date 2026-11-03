@@ -353,18 +353,28 @@ fn run_game_action(args: Vec<String>, action: GameAction) -> Result<(), String> 
         }
         let present = import_mask.map(|mask| mask == 15);
         let known_imports = import_mask.map(|mask| {
-            ["QueryPerformanceCounter", "GetTickCount64", "GetTickCount", "timeGetTime"]
-                .into_iter()
-                .enumerate()
-                .filter_map(|(index, name)| (mask & (1_u8 << index) != 0).then_some(name))
-                .collect::<Vec<_>>()
+            [
+                "QueryPerformanceCounter",
+                "GetTickCount64",
+                "GetTickCount",
+                "timeGetTime",
+            ]
+            .into_iter()
+            .enumerate()
+            .filter_map(|(index, name)| (mask & (1_u8 << index) != 0).then_some(name))
+            .collect::<Vec<_>>()
         });
         let missing_imports = import_mask.map(|mask| {
-            ["QueryPerformanceCounter", "GetTickCount64", "GetTickCount", "timeGetTime"]
-                .into_iter()
-                .enumerate()
-                .filter_map(|(index, name)| (mask & (1_u8 << index) == 0).then_some(name))
-                .collect::<Vec<_>>()
+            [
+                "QueryPerformanceCounter",
+                "GetTickCount64",
+                "GetTickCount",
+                "timeGetTime",
+            ]
+            .into_iter()
+            .enumerate()
+            .filter_map(|(index, name)| (mask & (1_u8 << index) == 0).then_some(name))
+            .collect::<Vec<_>>()
         });
         let virtual_rate = (rate_milli != 0).then_some(f64::from(rate_milli) / 1000.0);
         serde_json::json!({

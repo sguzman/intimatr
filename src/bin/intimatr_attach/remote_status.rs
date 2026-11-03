@@ -321,11 +321,16 @@ fn classify_import_coverage(code: u32) -> Result<Option<u8>, String> {
 }
 
 fn missing_imports(mask: u8) -> Vec<&'static str> {
-    ["QueryPerformanceCounter", "GetTickCount64", "GetTickCount", "timeGetTime"]
-        .into_iter()
-        .enumerate()
-        .filter_map(|(index, name)| (mask & (1_u8 << index) == 0).then_some(name))
-        .collect()
+    [
+        "QueryPerformanceCounter",
+        "GetTickCount64",
+        "GetTickCount",
+        "timeGetTime",
+    ]
+    .into_iter()
+    .enumerate()
+    .filter_map(|(index, name)| (mask & (1_u8 << index) == 0).then_some(name))
+    .collect()
 }
 
 /// Explicitly activate the exact owned DLL's main-image IAT backend at 1x.
