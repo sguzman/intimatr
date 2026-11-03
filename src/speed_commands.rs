@@ -115,6 +115,10 @@ fn apply_fixture_action(action: SpeedAction) -> Result<(), SpeedPreviewError> {
 
 struct PreviewSession {
     coordinator: SpeedCoordinator,
+    /// Profile steps used by both the preview state and an explicitly
+    /// armed selected-game timer session. Never substitute default steps
+    /// after profile validation.
+    settings: SpeedSettings,
     started_at: Instant,
     label: String,
 }
@@ -171,10 +175,29 @@ impl SpeedPreviewExecutor {
             inner,
             session: Mutex::new(Some(PreviewSession {
                 coordinator,
+                settings: settings.clone(),
                 started_at: Instant::now(),
                 label: label.to_owned(),
             })),
         })
+    }
+
+    /// Snapshot the validated profile that will govern an expressly armed
+    /// offline-game timer session. No profile means safe built-in steps, not
+    /// permission to install hooks; the caller still performs every gate.
+    #[cfg(windows)]
+    pub(crate) fn selected_game_timer_settings(&self) -> Result<SpeedSettings, SpeedPreviewError> {
+        let guard = self
+            .session
+            .lock()
+            .map_err(|_| SpeedPreviewError::StatePoisoned)?;
+        Ok(guard.as_ref().map_or_else(
+            || SpeedSettings {
+                enabled: true,
+                ..SpeedSettings::default()
+            },
+            |session| session.settings.clone(),
+        ))
     }
 
     /// Called only after an exact-target IAT arm succeeds. Existing explicit
@@ -205,6 +228,7 @@ impl SpeedPreviewExecutor {
             )?;
             *guard = Some(PreviewSession {
                 coordinator,
+                settings,
                 started_at: Instant::now(),
                 label: "explicit-offline-game".to_owned(),
             });
@@ -412,6 +436,35 @@ mod tests {
             CommandResult::Pong
         ));
         assert!(executor.watched_keys().unwrap().is_empty());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn selected_game_timer_settings_keep_custom_steps_without_startup_acceleration() {
+        let custom = SpeedSettings {
+            enabled: true,
+            initial_multiplier: 2.0,
+            steps: vec![0.5, 1.0, 1.5, 1.75, 2.0],
+            ..SpeedSettings::default()
+        };
+        let executor = SpeedPreviewExecutor::with_profile(
+            stub(),
+            &custom,
+            &SpeedHotkeyConfig::default(),
+            "custom-steps",
+        )
+        .unwrap();
+        assert_eq!(executor.selected_game_timer_settings().unwrap(), custom);
+        executor.arm_selected_game_session().unwrap();
+        assert_eq!(executor.selected_game_timer_settings().unwrap(), custom);
+        let state = report(
+            executor
+                .execute(Command::Speed {
+                    request: SpeedRequest::Status,
+                })
+                .unwrap(),
+        );
+        assert_eq!(state.preview_multiplier, 1.0);
     }
 
     #[cfg(windows)]

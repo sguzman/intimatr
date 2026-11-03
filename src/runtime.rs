@@ -399,15 +399,21 @@ pub(crate) fn arm_selected_game_timers() -> bool {
     if lifecycle_state() != LifecycleState::Running || shutdown_requested() {
         return false;
     }
-    if !crate::experimental_timer_probe::enable_selected_game_timers() {
-        return false;
-    }
     let preview = CONTEXT.lock().ok().and_then(|guard| {
         guard
             .as_ref()
             .map(|context| Arc::clone(&context.speed_preview_executor))
     });
-    if preview.is_some_and(|preview| preview.arm_selected_game_session().is_ok()) {
+    let Some(preview) = preview else {
+        return false;
+    };
+    let Ok(settings) = preview.selected_game_timer_settings() else {
+        return false;
+    };
+    if !crate::experimental_timer_probe::enable_selected_game_timers(&settings) {
+        return false;
+    }
+    if preview.arm_selected_game_session().is_ok() {
         return true;
     }
     let _ = crate::experimental_timer_probe::disable_probe();

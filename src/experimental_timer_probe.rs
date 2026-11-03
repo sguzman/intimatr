@@ -587,16 +587,35 @@ pub fn enable_probe() -> bool {
 /// identity, architecture, loaded-module and protection checks in the helper.
 /// This path starts at the safe 1x baseline and still requires all four
 /// native IAT timer imports in the executable's main PE image.
-pub fn enable_selected_game_timers() -> bool {
-    enable_hook_set_with_fault(None)
+pub fn enable_selected_game_timers(settings: &SpeedSettings) -> bool {
+    let settings = selected_game_safe_startup_settings(settings);
+    settings.validate().is_ok() && enable_hook_set_with_fault(None, &settings)
+}
+
+/// Preserve validated profile steps and bounds, while ensuring *every*
+/// newly armed selected-game hook session begins at 1x with no startup lease.
+fn selected_game_safe_startup_settings(settings: &SpeedSettings) -> SpeedSettings {
+    SpeedSettings {
+        enabled: true,
+        initial_multiplier: 1.0,
+        startup_duration_ms: 0,
+        ..settings.clone()
+    }
 }
 
 /// Only the disposable Wine probe invokes the deterministic rollback fault.
 fn enable_probe_with_fault(fail_after: Option<usize>) -> bool {
-    is_allowlisted_probe_process() && enable_hook_set_with_fault(fail_after)
+    is_allowlisted_probe_process()
+        && enable_hook_set_with_fault(
+            fail_after,
+            &SpeedSettings {
+                enabled: true,
+                ..SpeedSettings::default()
+            },
+        )
 }
 
-fn enable_hook_set_with_fault(fail_after: Option<usize>) -> bool {
+fn enable_hook_set_with_fault(fail_after: Option<usize>, settings: &SpeedSettings) -> bool {
     let Ok(mut guard) = hooks().lock() else {
         return false;
     };
@@ -620,10 +639,7 @@ fn enable_hook_set_with_fault(fail_after: Option<usize>) -> bool {
         return false;
     }
     let Ok(mut session) = SpeedSession::new(
-        &SpeedSettings {
-            enabled: true,
-            ..SpeedSettings::default()
-        },
+        settings,
         real_qpc,
         frequency as u64,
         unsafe { GetTickCount64() },
@@ -892,6 +908,29 @@ pub extern "system" fn intimatr_timer_probe_fail_after(steps: u32) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn selected_game_hooks_preserve_custom_steps_but_never_start_accelerated() {
+        let custom = SpeedSettings {
+            enabled: true,
+            initial_multiplier: 2.0,
+            startup_duration_ms: 5_000,
+            steps: vec![0.5, 1.0, 1.5, 1.75, 2.0],
+            ..SpeedSettings::default()
+        };
+        let safe = selected_game_safe_startup_settings(&custom);
+        assert!(safe.enabled);
+        assert_eq!(safe.initial_multiplier, 1.0);
+        assert_eq!(safe.startup_duration_ms, 0);
+        assert_eq!(safe.steps, custom.steps);
+        safe.validate().unwrap();
+        let mut clock = SpeedSession::new(&safe, 0, 10_000, 0, 0).unwrap();
+        assert_eq!(clock.multiplier(), 1.0);
+        clock.apply(100, SpeedAction::SelectPreset(1.75)).unwrap();
+        assert_eq!(clock.multiplier(), 1.75);
+        assert!(clock.apply(200, SpeedAction::SelectPreset(3.0)).is_err());
+        assert_eq!(clock.multiplier(), 1.75);
+    }
 
     #[test]
     fn coverage_mask_tracks_each_timer_import_independently() {
