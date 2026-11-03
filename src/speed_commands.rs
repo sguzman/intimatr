@@ -113,6 +113,24 @@ fn apply_fixture_action(action: SpeedAction) -> Result<(), SpeedPreviewError> {
     Ok(())
 }
 
+/// Backend application is fallible even after preview validation. If the
+/// installed clock refuses an action, disarm the preview and make one best-
+/// effort request to restore the target to normal speed. Never report the
+/// original action as successfully synchronized after either failure.
+fn apply_with_fail_safe(
+    coordinator: &mut SpeedCoordinator,
+    now: u64,
+    action: SpeedAction,
+    mut backend: impl FnMut(SpeedAction) -> Result<(), SpeedPreviewError>,
+) -> Result<(), SpeedPreviewError> {
+    if let Err(error) = backend(action) {
+        let _ = coordinator.apply(now, SpeedAction::FocusLost);
+        let _ = backend(SpeedAction::FocusLost);
+        return Err(error);
+    }
+    Ok(())
+}
+
 struct PreviewSession {
     coordinator: SpeedCoordinator,
     /// Profile steps used by both the preview state and an explicitly
@@ -250,13 +268,7 @@ impl SpeedPreviewExecutor {
             .coordinator
             .input_sample_with_actions(now, snapshot)?;
         for action in outcome.actions {
-            if let Err(error) = apply_fixture_action(action) {
-                let _ = session.coordinator.apply(now, SpeedAction::FocusLost);
-                // Attempt to restore the fixture clock, but never report
-                // synchronization success after a failed backend action.
-                let _ = apply_fixture_action(SpeedAction::FocusLost);
-                return Err(error);
-            }
+            apply_with_fail_safe(&mut session.coordinator, now, action, apply_fixture_action)?;
         }
         Ok(session.status())
     }
@@ -303,11 +315,8 @@ impl SpeedPreviewExecutor {
         // A status poll is observational and never re-anchors a timer lease.
         // Apply the original action to the already-installed fixture clock
         // so its hold duration expires even without a second RPC request.
-        if let Some(action) = action
-            && let Err(error) = apply_fixture_action(action)
-        {
-            let _ = session.coordinator.apply(now, SpeedAction::Reset);
-            return Err(error.into());
+        if let Some(action) = action {
+            apply_with_fail_safe(&mut session.coordinator, now, action, apply_fixture_action)?;
         }
         Ok(CommandExecution {
             result: CommandResult::Speed { status },
@@ -396,6 +405,47 @@ mod tests {
             CommandResult::Speed { status } => status,
             _ => panic!("expected speed preview result"),
         }
+    }
+
+    #[test]
+    fn backend_failure_resets_preview_and_attempts_target_recovery() {
+        let settings = SpeedSettings {
+            enabled: true,
+            ..SpeedSettings::default()
+        };
+        let mut coordinator = SpeedCoordinator::new(
+            &settings,
+            &SpeedHotkeyConfig::default(),
+            0,
+            PREVIEW_FREQUENCY,
+            0,
+            0,
+        )
+        .unwrap();
+        coordinator
+            .apply(100, SpeedAction::SelectPreset(2.0))
+            .unwrap();
+
+        let mut attempted = Vec::new();
+        let failure = apply_with_fail_safe(
+            &mut coordinator,
+            200,
+            SpeedAction::Increase,
+            |action| {
+                attempted.push(action);
+                Err(SpeedPreviewError::FixtureClock("simulated backend failure"))
+            },
+        );
+        assert!(matches!(failure, Err(SpeedPreviewError::FixtureClock(_))));
+        assert_eq!(
+            attempted,
+            vec![SpeedAction::Increase, SpeedAction::FocusLost]
+        );
+        assert_eq!(coordinator.status().preview_multiplier, 1.0);
+        assert_eq!(
+            coordinator.status().last_action,
+            Some(SpeedAction::FocusLost)
+        );
     }
 
     #[test]
