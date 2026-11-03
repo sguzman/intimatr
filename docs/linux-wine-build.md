@@ -365,3 +365,24 @@ For ordinary **native** Bottles managed runners, the read-only `live-match` comm
 This applies only when Bottles' configured runner name is a safe single directory component, the managed directory exists as an ordinary direct child of that root, the requested executable is the same canonical file, and Steam/host-system/recorded-external runner exceptions do not apply. If the managed location is missing, the result stays **unverified** instead of guessing. A different file is an error before the probe runs. The existing separately verified Steam `RunnerPath` case remains unchanged.
 
 The resulting `runner_verified=true` is **configuration-path evidence** for the active native Bottles CLI environment, not proof that an already-running game used this runner or that it's safe to modify. Game process identity, protection state, loader and hook cleanup remain unsolved, and `safe_to_attach` remains false. Unit tests use synthetic managed runners, and Wine CI uses a disposable managed root with a symlink to its real system Wine; a wrong runner is refused. Native user's Bottles compatibility still needs actual installation QA. **Expansion remains 16/100 (previous 16, Δ +0 pp)**.
+
+## 2026-11-03 — Experimental explicit offline-game attachment
+
+The `intimatr-bottles attach-game` CLI and separately built `wine-game-attach-helper.exe` now offer a single-target, opt-in path for an offline single-player executable registered in native Bottles. The existing `probe-attach` remains fixture-only. The manager requires a verified native Bottles prefix, the configured executable for a managed or recorded Wine runner, a freshly observed Windows PID plus exact registered full image path, matching observed x86-64 PE/live architecture, and `--offline-single-player`. The Windows helper rechecks the selected image on a held process handle under a per-PID lock, refuses duplicate Intimatr loads and obvious protected modules, and confirms that the exact Intimatr DLL appears in the target after loading. A protection-module scan is only a conservative veto, not proof of an unprotected game.
+
+The mixed Linux/Wine artifact now includes `bin/intimatr-bottles`, `wine/wine-process-list.exe`, `wine/wine-game-attach-helper.exe` and `wine/intimatr.dll`. Use the **same native Bottles runner** for inspecting and attaching. The following is a template, not a command to run without a known offline game:
+
+```fish
+./bin/intimatr-bottles live-match --bottle 'Bottle Name' \
+  --helper (pwd)/wine/wine-process-list.exe \
+  --runner /absolute/path/to/runner/bin/wine
+
+./bin/intimatr-bottles attach-game --bottle 'Bottle Name' \
+  --helper (pwd)/wine/wine-process-list.exe \
+  --attach-helper (pwd)/wine/wine-game-attach-helper.exe \
+  --runner /absolute/path/to/runner/bin/wine \
+  --pid WINDOWS_PID --exe 'C:\Games\Offline.exe' \
+  --offline-single-player
+```
+
+Choose the Windows PID and full image path from the live-match report, **not** a Linux PID or guessed basename. The positive `intimatr_module_loaded` result is deliberately not a claim that game timer interception, gameplay speed control, or production teardown work; `speed_controls_verified` remains false. The helper loads no DLL into personal games in CI: integration uses separate disposable PE test targets. Actual native Bottles QA, measured speed changes in a real game, protection compatibility and safe lifecycle recovery remain outstanding. **Expansion: 16/100 (previous 16, Δ +0 pp).**

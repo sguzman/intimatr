@@ -41,6 +41,11 @@ impl GameAttachOptions {
             return Err("explicit --offline-single-player acknowledgment is required".into());
         }
         let attach_helper = attach_helper.ok_or("missing --attach-helper")?;
+        if !live_args.iter().any(|arg| arg == "--pid")
+            || !live_args.iter().any(|arg| arg == "--exe")
+        {
+            return Err("attach-game requires both --pid and --exe for one explicit game".into());
+        }
         // Full candidate identity, one bottle, one PID, and one registered
         // executable are required later by the common live matcher.
         Ok(Self {
@@ -153,6 +158,11 @@ mod tests {
             args(&[]),
             args(&["--offline-single-player"]),
             args(&["--attach-helper", "/tmp/wine-game-attach-helper.exe"]),
+            args(&[
+                "--attach-helper",
+                "/tmp/wine-game-attach-helper.exe",
+                "--offline-single-player",
+            ]),
             args(&[
                 "--attach-helper",
                 "wine-game-attach-helper.exe",

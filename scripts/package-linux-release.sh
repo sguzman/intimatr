@@ -16,7 +16,8 @@ native="target/release/intimatr-bottles"
 windows="target/x86_64-pc-windows-gnu/release"
 mkdir -p dist
 for file in "$native" "$windows/intimatr.dll" "$windows/intimatr-speed.exe" \
-  "$windows/wine-process-list.exe" config/speed-overrides.example.toml \
+  "$windows/wine-process-list.exe" "$windows/wine-game-attach-helper.exe" \
+  config/speed-overrides.example.toml \
   config/ExampleGame.exe.toml README.md docs/linux-wine-build.md \
   docs/rpc.md docs/speed-control-roadmap.md; do
   if [[ ! -s "$file" || ! -f "$file" ]]; then
@@ -33,6 +34,7 @@ install -m 0755 "$native" "$root/bin/intimatr-bottles"
 install -m 0644 "$windows/intimatr.dll" "$root/wine/intimatr.dll"
 install -m 0644 "$windows/intimatr-speed.exe" "$root/wine/intimatr-speed.exe"
 install -m 0644 "$windows/wine-process-list.exe" "$root/wine/wine-process-list.exe"
+install -m 0644 "$windows/wine-game-attach-helper.exe" "$root/wine/wine-game-attach-helper.exe"
 install -m 0644 config/speed-overrides.example.toml "$root/config/"
 install -m 0644 config/ExampleGame.exe.toml "$root/config/"
 install -m 0644 README.md "$root/README.md"
@@ -45,13 +47,14 @@ Version: $version
 Linux: x86_64 ELF
 Wine: x86_64 Windows GNU PE
 Scope: offline/single-player testing only
-Status: automatic game enrollment and production-safe hooks NOT verified
+Status: experimental explicit offline-game attach; real-game compatibility and hook lifecycle NOT verified
 EOF
 (
   cd "$root"
   sha256sum \
     bin/intimatr-bottles \
     wine/intimatr.dll wine/intimatr-speed.exe wine/wine-process-list.exe \
+    wine/wine-game-attach-helper.exe \
     config/speed-overrides.example.toml config/ExampleGame.exe.toml \
     README.md docs/linux-wine-build.md docs/rpc.md \
     docs/speed-control-roadmap.md VERSION.txt > SHA256SUMS.txt

@@ -717,8 +717,8 @@ jobs:
       - name: Cross-build Wine-target Windows DLL on Linux
         run: cargo build --locked --release --lib --target x86_64-pc-windows-gnu
 
-      - name: Cross-build read-only Windows PID probe for native Wine users
-        run: cargo build --locked --release --bin wine-process-list --target x86_64-pc-windows-gnu
+      - name: Cross-build read-only Windows PID probe and explicit game attach helper
+        run: cargo build --locked --release --bin wine-process-list --bin wine-game-attach-helper --target x86_64-pc-windows-gnu
 
       - name: Verify read-only Windows PID probe PE artifact
         shell: bash
@@ -727,6 +727,9 @@ jobs:
           probe="target/x86_64-pc-windows-gnu/release/wine-process-list.exe"
           test -s "$probe"
           file "$probe" | grep -Eq 'PE32[+].*x86-64'
+          helper="target/x86_64-pc-windows-gnu/release/wine-game-attach-helper.exe"
+          test -s "$helper"
+          file "$helper" | grep -Eq 'PE32[+].*x86-64'
 
       - name: Cross-build Windows speed RPC client for Wine
         run: cargo build --locked --release --bin intimatr-speed --target x86_64-pc-windows-gnu
@@ -773,6 +776,13 @@ jobs:
         with:
           name: intimatr-wine-windows-x86_64-${{ github.sha }}
           path: target/x86_64-pc-windows-gnu/release/intimatr.dll
+          if-no-files-found: error
+
+      - name: Upload explicit offline Wine game helper
+        uses: actions/upload-artifact@v7
+        with:
+          name: intimatr-game-attach-helper-wine-x86_64-${{ github.sha }}
+          path: target/x86_64-pc-windows-gnu/release/wine-game-attach-helper.exe
           if-no-files-found: error
 
       - name: Upload read-only Wine Windows PID probe

@@ -41,7 +41,8 @@ if [[ -n "$(find "$root" -type l -print -quit)" ]]; then
   exit 1
 fi
 for file in bin/intimatr-bottles wine/intimatr.dll wine/intimatr-speed.exe \
-  wine/wine-process-list.exe config/speed-overrides.example.toml \
+  wine/wine-process-list.exe wine/wine-game-attach-helper.exe \
+  config/speed-overrides.example.toml \
   config/ExampleGame.exe.toml README.md docs/linux-wine-build.md \
   docs/rpc.md docs/speed-control-roadmap.md VERSION.txt SHA256SUMS.txt; do
   test -s "$root/$file" || { echo "Missing release entry: $file" >&2; exit 1; }
@@ -53,7 +54,7 @@ done
 grep -Fxq "Version: $version" "$root/VERSION.txt"
 file "$root/bin/intimatr-bottles" | grep -q 'ELF 64-bit'
 file "$root/wine/intimatr.dll" | grep -Eq 'PE32[+].*DLL.*x86-64'
-for exe in intimatr-speed.exe wine-process-list.exe; do
+for exe in intimatr-speed.exe wine-process-list.exe wine-game-attach-helper.exe; do
   file "$root/wine/$exe" | grep -Eq 'PE32[+].*x86-64'
 done
 echo "Verified Linux/Wine mixed-architecture bundle: $archive"
