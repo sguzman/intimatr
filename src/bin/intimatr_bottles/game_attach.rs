@@ -714,7 +714,7 @@ mod tests {
         assert!(
             run_game_timer_activation(args.clone())
                 .unwrap_err()
-                .contains("--preset is only valid")
+                .contains("--preset and --multiplier are only valid")
         );
         args.extend(["--preset".into(), "normal".into()]);
         assert!(GameAttachOptions::parse(&args).is_err());
