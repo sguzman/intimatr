@@ -168,6 +168,15 @@ mod target {
             }
             Ok(())
         })();
+        // In the selected-game CI case the *external* stop-game command is
+        // responsible for restoring these still-installed imports. The
+        // ordinary attach fixture continues to exercise its own cleanup.
+        if std::env::var_os("INTIMATR_TEST_REMOTE_STOP_WITH_HOOKS").is_some() {
+            if measured.is_ok() && unsafe { change(2.0) } == 0 {
+                return Err("remote-stop fixture could not retain a 2x timer rate".into());
+            }
+            return measured;
+        }
         let disabled = unsafe { disable() } != 0 && unsafe { count() } == 0;
         if !disabled {
             return Err("remote-attached target failed to restore timing imports".into());
