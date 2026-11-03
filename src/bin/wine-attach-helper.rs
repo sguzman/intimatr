@@ -294,41 +294,6 @@ mod helper {
         Err(format!("target has no loaded {module_name}"))
     }
 
-    #[cfg(test)]
-    mod tests {
-        use super::same_owned_fixture_image;
-        use std::{
-            fs,
-            sync::atomic::{AtomicUsize, Ordering},
-        };
-
-        static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
-
-        #[test]
-        fn same_basename_outside_owned_fixture_directory_is_rejected() {
-            let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
-            let root = std::env::temp_dir().join(format!(
-                "intimatr-owned-fixture-{}-{id}",
-                std::process::id()
-            ));
-            let owned_dir = root.join("owned");
-            let other_dir = root.join("unrelated");
-            fs::create_dir_all(&owned_dir).unwrap();
-            fs::create_dir_all(&other_dir).unwrap();
-            let fixture = owned_dir.join("wine-attach-target.exe");
-            let decoy = other_dir.join("wine-attach-target.exe");
-            fs::write(&fixture, b"owned fixture").unwrap();
-            fs::write(&decoy, b"unrelated same-name executable").unwrap();
-            let helper = owned_dir.join("wine-attach-helper.exe");
-
-            assert!(same_owned_fixture_image(&fixture, &helper).unwrap());
-            assert!(!same_owned_fixture_image(&decoy, &helper).unwrap());
-            assert!(same_owned_fixture_image(&other_dir.join("missing.exe"), &helper).is_err());
-
-            fs::remove_dir_all(root).unwrap();
-        }
-    }
-
     pub fn run() -> Result<(), String> {
         let mut args = std::env::args().skip(1);
         let pid: u32 = args
@@ -426,6 +391,41 @@ mod helper {
             _ => Err("remote test loader wait failed; retaining argument buffer".into()),
         }
     }
+    #[cfg(test)]
+    mod tests {
+        use super::same_owned_fixture_image;
+        use std::{
+            fs,
+            sync::atomic::{AtomicUsize, Ordering},
+        };
+
+        static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
+
+        #[test]
+        fn same_basename_outside_owned_fixture_directory_is_rejected() {
+            let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
+            let root = std::env::temp_dir().join(format!(
+                "intimatr-owned-fixture-{}-{id}",
+                std::process::id()
+            ));
+            let owned_dir = root.join("owned");
+            let other_dir = root.join("unrelated");
+            fs::create_dir_all(&owned_dir).unwrap();
+            fs::create_dir_all(&other_dir).unwrap();
+            let fixture = owned_dir.join("wine-attach-target.exe");
+            let decoy = other_dir.join("wine-attach-target.exe");
+            fs::write(&fixture, b"owned fixture").unwrap();
+            fs::write(&decoy, b"unrelated same-name executable").unwrap();
+            let helper = owned_dir.join("wine-attach-helper.exe");
+
+            assert!(same_owned_fixture_image(&fixture, &helper).unwrap());
+            assert!(!same_owned_fixture_image(&decoy, &helper).unwrap());
+            assert!(same_owned_fixture_image(&other_dir.join("missing.exe"), &helper).is_err());
+
+            fs::remove_dir_all(root).unwrap();
+        }
+    }
+
 }
 
 #[cfg(windows)]
