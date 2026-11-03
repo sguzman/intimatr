@@ -15,6 +15,7 @@ fn main() {
 mod helper {
     use std::{
         ffi::c_void,
+        fs,
         mem::{size_of, zeroed},
         os::windows::ffi::OsStrExt,
         path::Path,
@@ -142,7 +143,22 @@ mod helper {
         Ok(OwnedHandle(handle))
     }
 
-    fn target_is_fixture(handle: Handle) -> Result<bool, String> {
+    /// Compare the complete target executable identity, not its filename.
+    /// Only the known disposable fixture physically beside THIS helper may
+    /// receive the test DLL. A same-named executable elsewhere is not enough.
+    fn same_owned_fixture_image(observed_image: &Path, helper_image: &Path) -> Result<bool, String> {
+        let helper_dir = helper_image.parent().ok_or("helper has no executable directory")?;
+        let expected_image = helper_dir.join("wine-attach-target.exe");
+        let expected = fs::canonicalize(expected_image)
+            .map_err(|error| format!("cannot resolve owned test fixture: {error}"))?;
+        let observed = fs::canonicalize(observed_image)
+            .map_err(|error| format!("cannot resolve observed target executable: {error}"))?;
+        Ok(expected
+            .to_string_lossy()
+            .eq_ignore_ascii_case(&observed.to_string_lossy()))
+    }
+
+    fn target_is_fixture(handle: Handle, helper_image: &Path) -> Result<bool, String> {
         let mut path = [0_u16; 2048];
         let mut length = path.len() as u32;
         if unsafe { QueryFullProcessImageNameW(handle, 0, path.as_mut_ptr(), &mut length) } == 0 {
@@ -151,11 +167,8 @@ mod helper {
                 std::io::Error::last_os_error()
             ));
         }
-        let name = String::from_utf16_lossy(&path[..length as usize]);
-        Ok(name
-            .rsplit(['/', '\\'])
-            .next()
-            .is_some_and(|file| file.eq_ignore_ascii_case("wine-attach-target.exe")))
+        let image = String::from_utf16_lossy(&path[..length as usize]);
+        same_owned_fixture_image(Path::new(&image), helper_image)
     }
 
     /// Fail closed when the target module list cannot be inspected.
@@ -276,6 +289,41 @@ mod helper {
         Err(format!("target has no loaded {module_name}"))
     }
 
+    #[cfg(test)]
+    mod tests {
+        use super::same_owned_fixture_image;
+        use std::{
+            fs,
+            sync::atomic::{AtomicUsize, Ordering},
+        };
+
+        static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
+
+        #[test]
+        fn same_basename_outside_owned_fixture_directory_is_rejected() {
+            let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
+            let root = std::env::temp_dir().join(format!(
+                "intimatr-owned-fixture-{}-{id}",
+                std::process::id()
+            ));
+            let owned_dir = root.join("owned");
+            let other_dir = root.join("unrelated");
+            fs::create_dir_all(&owned_dir).unwrap();
+            fs::create_dir_all(&other_dir).unwrap();
+            let fixture = owned_dir.join("wine-attach-target.exe");
+            let decoy = other_dir.join("wine-attach-target.exe");
+            fs::write(&fixture, b"owned fixture").unwrap();
+            fs::write(&decoy, b"unrelated same-name executable").unwrap();
+            let helper = owned_dir.join("wine-attach-helper.exe");
+
+            assert!(same_owned_fixture_image(&fixture, &helper).unwrap());
+            assert!(!same_owned_fixture_image(&decoy, &helper).unwrap());
+            assert!(same_owned_fixture_image(&other_dir.join("missing.exe"), &helper).is_err());
+
+            fs::remove_dir_all(root).unwrap();
+        }
+    }
+
     pub fn run() -> Result<(), String> {
         let mut args = std::env::args().skip(1);
         let pid: u32 = args
@@ -298,8 +346,8 @@ mod helper {
             unsafe { OpenProcess(ACCESS, 0, pid) },
             "cannot open test target",
         )?;
-        if !target_is_fixture(process.0)? {
-            return Err("refusing to attach: target is not wine-attach-target.exe".into());
+        if !target_is_fixture(process.0, &executable)? {
+            return Err("refusing to attach: target is not the helper's owned Wine fixture".into());
         }
         let _attachment_guard = acquire_attach_mutex(pid)?;
         if target_has_intimatr(pid)? {
