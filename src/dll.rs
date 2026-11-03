@@ -120,11 +120,33 @@ pub extern "system" fn intimatr_remote_timer_hook_state(_parameter: *mut c_void)
 #[unsafe(no_mangle)]
 pub extern "system" fn intimatr_remote_arm_four_timers(_parameter: *mut c_void) -> u32 {
     match std::panic::catch_unwind(AssertUnwindSafe(
-        crate::experimental_timer_probe::enable_selected_game_timers,
+        runtime::arm_selected_game_timers,
     )) {
         Ok(true) => 1,
         Ok(false) | Err(_) => 0,
     }
+}
+
+/// Bounded, exact-target helper command. Selector is an integer encoded in
+/// the remote thread argument and is never dereferenced as a pointer.
+#[unsafe(no_mangle)]
+pub extern "system" fn intimatr_remote_game_preset(selector: *mut c_void) -> u32 {
+    let rate = match selector as usize {
+        1 => 0.5,
+        2 => 1.0,
+        3 => 2.0,
+        _ => return 0,
+    };
+    match std::panic::catch_unwind(AssertUnwindSafe(|| runtime::selected_game_select_rate(rate))) {
+        Ok(true) => 1,
+        Ok(false) | Err(_) => 0,
+    }
+}
+
+/// Installed virtual-clock rate, in thousandths; zero means unavailable.
+#[unsafe(no_mangle)]
+pub extern "system" fn intimatr_remote_game_rate_milli(_parameter: *mut c_void) -> u32 {
+    crate::experimental_timer_probe::remote_rate_milli()
 }
 
 /// ABI-compatible remote shutdown of this DLL's own runtime. It deliberately

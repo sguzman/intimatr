@@ -671,18 +671,18 @@ pub fn set_probe_rate(multiplier: f64) -> bool {
 /// Apply the original user action to the already-installed fixture hooks.
 /// Unlike replaying a raw multiplier, an active hold retains its lease
 /// deadline; repeated status reads cannot restart that deadline.
-pub(crate) fn apply_fixture_command(action: SpeedAction) -> Result<(), &'static str> {
-    if !is_allowlisted_probe_process() {
-        return Ok(());
-    }
-    let mut guard = hooks().lock().map_err(|_| "fixture hook state poisoned")?;
+pub(crate) fn apply_installed_command(action: SpeedAction) -> Result<(), &'static str> {
+    let mut guard = hooks().lock().map_err(|_| "timer hook state poisoned")?;
     let Some(active) = guard.as_mut() else {
         return Ok(());
     };
-    if !fully_installed_hook_set(&active.slots) {
-        return Err("fixture import hook set is incomplete");
+    if !fully_installed_hook_set(&active.slots)
+        || crate::runtime::shutdown_requested()
+        || crate::runtime::lifecycle_state() != LifecycleState::Running
+    {
+        return Err("installed timer hooks are unavailable or incomplete");
     }
-    let real = native_qpc().ok_or("fixture QPC unavailable")?;
+    let real = native_qpc().ok_or("timer QPC unavailable")?;
     let snapshot = active
         .session
         .apply(real, action)
@@ -715,6 +715,26 @@ pub fn remote_hook_state() -> u32 {
         },
         Err(_) => 3,
     }
+}
+
+/// Actual IAT virtual-clock session rate in thousandths of 1x. Zero
+/// denotes an unavailable or incomplete hook set, never game FPS.
+pub fn remote_rate_milli() -> u32 {
+    if crate::runtime::shutdown_requested()
+        || crate::runtime::lifecycle_state() != LifecycleState::Running
+    {
+        return 0;
+    }
+    let Ok(guard) = hooks().lock() else {
+        return 0;
+    };
+    let Some(active) = guard.as_ref() else {
+        return 0;
+    };
+    if !fully_installed_hook_set(&active.slots) || !MODULE_PINNED.load(Ordering::Acquire) {
+        return 0;
+    }
+    (active.session.multiplier() * 1000.0).round() as u32
 }
 
 fn probe_hook_set_complete() -> bool {
@@ -793,7 +813,7 @@ pub extern "system" fn intimatr_timer_probe_enable() -> i32 {
 }
 #[unsafe(no_mangle)]
 pub extern "system" fn intimatr_timer_probe_rate(multiplier: f64) -> i32 {
-    i32::from(set_probe_rate(multiplier))
+    i32::from(is_allowlisted_probe_process() && set_probe_rate(multiplier))
 }
 #[unsafe(no_mangle)]
 pub extern "system" fn intimatr_timer_probe_module_pinned() -> i32 {

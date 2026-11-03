@@ -1,4 +1,5 @@
-//! Frontend-neutral, strictly preview-only speed command boundary.
+//! Frontend-neutral speed command boundary. Ordinary processes stay preview-only;
+//! only explicitly armed offline-game IAT sessions receive applied actions.
 //!
 //! An opt-in wrapper around the existing CommandExecutor. It forwards every
 //! legacy command unchanged and serializes preview speed/UI/RPC/key actions
@@ -105,7 +106,7 @@ pub enum SpeedPreviewError {
 /// installs hooks from this command boundary.
 fn apply_fixture_action(action: SpeedAction) -> Result<(), SpeedPreviewError> {
     #[cfg(windows)]
-    crate::experimental_timer_probe::apply_fixture_command(action)
+    crate::experimental_timer_probe::apply_installed_command(action)
         .map_err(SpeedPreviewError::FixtureClock)?;
     #[cfg(not(windows))]
     let _ = action;
@@ -174,6 +175,36 @@ impl SpeedPreviewExecutor {
                 label: label.to_owned(),
             })),
         })
+    }
+
+    /// Called only after an exact-target IAT arm succeeds. Existing explicit
+    /// profile steps remain authoritative, but no startup rate is carried
+    /// into the target: every arm starts at 1x.
+    #[cfg(windows)]
+    pub(crate) fn arm_selected_game_session(&self) -> Result<(), SpeedPreviewError> {
+        let mut guard = self.session.lock().map_err(|_| SpeedPreviewError::StatePoisoned)?;
+        if let Some(session) = guard.as_mut() {
+            session.coordinator.apply(session.now(), SpeedAction::Reset)?;
+        } else {
+            let settings = SpeedSettings {
+                enabled: true,
+                ..SpeedSettings::default()
+            };
+            let coordinator = SpeedCoordinator::new(
+                &settings,
+                &SpeedHotkeyConfig::default(),
+                0,
+                PREVIEW_FREQUENCY,
+                0,
+                0,
+            )?;
+            *guard = Some(PreviewSession {
+                coordinator,
+                started_at: Instant::now(),
+                label: "explicit-offline-game".to_owned(),
+            });
+        }
+        apply_fixture_action(SpeedAction::Reset)
     }
 
     pub fn sample_input(

@@ -19,6 +19,7 @@ use crate::{
     debugger_ui::{DebuggerUiError, DebuggerUiHandle},
     platform::windows::{self, WindowsError, memory::CurrentProcessMemory},
     rpc::{self, PostActionHandler, RpcServerError, RpcServerHandle},
+    speed_commands::SpeedPreviewExecutor,
     speed_hotkey_worker::SpeedHotkeyWorker,
     speed_profile_load::wrap_explicit_preview_from_env,
     ui::{self, UiError, UiHandle},
@@ -36,6 +37,8 @@ pub struct RuntimeContext {
     pub config_path: PathBuf,
     #[cfg(windows)]
     command_executor: Arc<dyn CommandExecutor>,
+    #[cfg(windows)]
+    speed_preview_executor: Arc<SpeedPreviewExecutor>,
     #[cfg(windows)]
     _ui: Option<UiHandle>,
     #[cfg(windows)]
@@ -228,7 +231,8 @@ fn bootstrap_inner(
     );
 
     #[cfg(windows)]
-    let (command_executor, hotkey_worker) = create_command_executor(&config, &module_directory)?;
+    let (command_executor, hotkey_worker, speed_preview_executor) =
+        create_command_executor(&config, &module_directory)?;
     #[cfg(windows)]
     let rpc_server = start_rpc_if_enabled(&config, Arc::clone(&command_executor))?;
     #[cfg(windows)]
@@ -245,6 +249,8 @@ fn bootstrap_inner(
         #[cfg(windows)]
         command_executor,
         #[cfg(windows)]
+        speed_preview_executor,
+        #[cfg(windows)]
         _ui: ui,
         #[cfg(windows)]
         _debugger_ui: debugger_ui,
@@ -260,7 +266,14 @@ fn bootstrap_inner(
 fn create_command_executor(
     config: &AppConfig,
     module_directory: &Path,
-) -> Result<(Arc<dyn CommandExecutor>, Option<SpeedHotkeyWorker>), RuntimeError> {
+) -> Result<
+    (
+        Arc<dyn CommandExecutor>,
+        Option<SpeedHotkeyWorker>,
+        Arc<SpeedPreviewExecutor>,
+    ),
+    RuntimeError,
+> {
     let analysis_directory = module_directory
         .join("analysis")
         .join(&config.target.executable);
@@ -293,8 +306,8 @@ fn create_command_executor(
             None
         }
     };
-    let executor: Arc<dyn CommandExecutor> = preview;
-    Ok((executor, worker))
+    let executor: Arc<dyn CommandExecutor> = Arc::clone(&preview) as Arc<dyn CommandExecutor>;
+    Ok((executor, worker, preview))
 }
 
 #[cfg(windows)]
@@ -370,6 +383,56 @@ fn start_debugger_ui_if_enabled(
         "Intimatr debugger UI thread started"
     );
     Ok(Some(handle))
+}
+
+/// Require a Running runtime and atomically installed IAT before enabling
+/// the one shared speed executor. Roll back imports if command setup fails.
+#[cfg(windows)]
+pub(crate) fn arm_selected_game_timers() -> bool {
+    if lifecycle_state() != LifecycleState::Running || shutdown_requested() {
+        return false;
+    }
+    if !crate::experimental_timer_probe::enable_selected_game_timers() {
+        return false;
+    }
+    let preview = CONTEXT.lock().ok().and_then(|guard| {
+        guard.as_ref().map(|context| Arc::clone(&context.speed_preview_executor))
+    });
+    if preview.is_some_and(|preview| preview.arm_selected_game_session().is_ok()) {
+        return true;
+    }
+    let _ = crate::experimental_timer_probe::disable_probe();
+    false
+}
+
+/// Selected-game speed uses the same speed CommandExecutor as RPC/UI. A
+/// report is successful only when the installed timer session agrees.
+#[cfg(windows)]
+pub(crate) fn selected_game_select_rate(multiplier: f64) -> bool {
+    use crate::{command::{Command, CommandResult}, speed_commands::SpeedRequest};
+    if shutdown_requested()
+        || lifecycle_state() != LifecycleState::Running
+        || crate::experimental_timer_probe::remote_hook_state() != 1
+    {
+        return false;
+    }
+    let executor = CONTEXT.lock().ok().and_then(|guard| {
+        guard.as_ref().map(|context| Arc::clone(&context.command_executor))
+    });
+    let Some(executor) = executor else {
+        return false;
+    };
+    let Ok(result) = executor.execute(Command::Speed {
+        request: SpeedRequest::SelectPreset { multiplier },
+    }) else {
+        return false;
+    };
+    let CommandResult::Speed { status } = result.result else {
+        return false;
+    };
+    status.configured
+        && status.preview_multiplier == multiplier
+        && crate::experimental_timer_probe::remote_rate_milli() == (multiplier * 1000.0) as u32
 }
 
 /// Fixture-only bridge to the *same* command executor used by RPC/UI.
