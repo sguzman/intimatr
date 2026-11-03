@@ -182,7 +182,12 @@ mod target {
                     return Err("test coordinator did not inspect installed timer hooks".into());
                 }
             }
-            for (speed, label) in [(0.5, "half"), (2.0, "double"), (1.0, "normal")] {
+            for (speed, label) in [
+                (0.5, "half"),
+                (1.5, "onehalf"),
+                (2.0, "double"),
+                (1.0, "normal"),
+            ] {
                 if std::env::var_os("INTIMATR_TEST_EXTERNAL_RATE_COMMANDS").is_some() {
                     let ready = directory.join(format!("attach-rate-{label}-ready.flag"));
                     let done = directory.join(format!("attach-rate-{label}-done.flag"));

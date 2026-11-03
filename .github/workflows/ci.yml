@@ -838,7 +838,7 @@ jobs:
             and (.main_image_timer_imports_observed | length) == 4
             and .speed_controls_verified == false' target/wine-attach/game-hooked.json > /dev/null
           touch target/wine-attach/game-fixture/attach-hooks-inspected.flag
-          for preset in half double normal; do
+          for preset in half onehalf double normal; do
             for i in $(seq 1 200); do
               if test -s "target/wine-attach/game-fixture/attach-rate-$preset-ready.flag"; then
                 break
@@ -846,12 +846,19 @@ jobs:
               sleep 0.1
             done
             test -s "target/wine-attach/game-fixture/attach-rate-$preset-ready.flag"
-            XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles set-game-speed "${game_args[@]}" --offline-single-player --experimental-four-timers --preset "$preset" >"target/wine-attach/game-rate-$preset.json"
             expected_rate=1.0
-            case "$preset" in
-              half) expected_rate=0.5 ;;
-              double) expected_rate=2.0 ;;
-            esac
+            if test "$preset" = onehalf; then
+              # New thousandth-resolution ABI uses the SAME command executor
+              # and checks that 1.5 is one of the configured speed steps.
+              XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles set-game-speed "${game_args[@]}" --offline-single-player --experimental-four-timers --multiplier 1.5 >"target/wine-attach/game-rate-$preset.json"
+              expected_rate=1.5
+            else
+              XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles set-game-speed "${game_args[@]}" --offline-single-player --experimental-four-timers --preset "$preset" >"target/wine-attach/game-rate-$preset.json"
+              case "$preset" in
+                half) expected_rate=0.5 ;;
+                double) expected_rate=2.0 ;;
+              esac
+            fi
             jq -e --argjson rate "$expected_rate" '
                 .operation == "explicit_offline_single_player_game_speed_preset"
                 and .installed_virtual_clock_multiplier == $rate
@@ -862,6 +869,18 @@ jobs:
                 .installed_virtual_clock_multiplier == $rate
                 and .timer_hook_state == "installed_four_timers"
                 and .gameplay_speed_verified == false' "target/wine-attach/game-rate-$preset-status.json" > /dev/null
+            if test "$preset" = onehalf; then
+              # A bounded, valid-looking rate that is NOT a profile step
+              # must fail at the target executor and preserve current 1.5x.
+              if XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles set-game-speed "${game_args[@]}" --offline-single-player --experimental-four-timers --multiplier 1.25 >target/wine-attach/game-rate-disallowed.stdout 2>target/wine-attach/game-rate-disallowed.stderr; then
+                echo "ERROR: unconfigured game speed step was accepted" >&2
+                exit 1
+              fi
+              grep -q 'not an allowed profile step' target/wine-attach/game-rate-disallowed.stderr
+              XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles status-game "${game_args[@]}" --offline-single-player >target/wine-attach/game-rate-after-rejection.json
+              jq -e '.installed_virtual_clock_multiplier == 1.5
+                and .timer_hook_state == "installed_four_timers"' target/wine-attach/game-rate-after-rejection.json > /dev/null
+            fi
             touch "target/wine-attach/game-fixture/attach-rate-$preset-done.flag"
           done
           for i in $(seq 1 100); do
