@@ -337,3 +337,15 @@ The existing `intimatr-bottles live-match --bottle ... --pid ... --exe ...` read
 The isolated Wine test now sets up two fresh prefixes using the same runner, launches two separate disposable Windows PE fixture executables with the same **basename** from different directories, obtains Windows process inventories independently under each prefix, and requires that each snapshot include its own PID and full image but **exclude the other** prefix's image. It does not rely on Windows PID integers being globally unique across independent wineservers. This is a cross-prefix isolation regression on CI's tested Wine version, not a promise about all patched Wine builds or a Linux-PID-to-Windows-PID mapping.
 
 This improves the evidence that the explicit snapshot is scoped to the requested Wine session but does **not** prove that a game's Linux process belongs to the bottle, that a manually supplied runner equals Bottles' configured runner, or that a later PID still refers to the same game. The program continues to report `game_process_identity_verified=false` and `safe_to_attach=false`. No game was remotely loaded or mutated. CI for this new regression is pending. Expansion remains **16/100 (previous 16, Δ +0 pp)**.
+
+
+## 2026-11-02 — Native Linux controller responsibilities separated
+
+The native `intimatr-bottles` binary retains its existing subcommands but no longer owns four unrelated workflows in its entrypoint. The binary's central file focuses on command routing, read-only Bottles scan/planning and shared Windows process-snapshot launching; the following independently testable command modules live under `src/bin/intimatr_bottles/`:
+
+- `probe_attach.rs`: strictly disposable fixture remote loader CLI, explicit runner and prefix, no general-game loading.
+- `profile_check.rs`: read-only global/bottle/executable speed profile resolution.
+- `read_only_snapshot.rs`: offline Bottles programs and Windows process snapshot reconciliation.
+- `live_match.rs`: scoped native Bottles inventory, runner and prefix audit, live Windows process matching, and attachment-readiness reporting.
+
+These modules use ordinary Rust module boundaries, not source-code includes or a generated monolithic file. The extraction preserves command flags and JSON contracts, including `safe_to_attach=false` for all live-game reviews. Module-only Rust tests moved with their code. The structure change does **not** constitute a verified game attach. Strict Linux/Windows formatting, Clippy, unit and Wine integration CI results were pending at this checkpoint; expansion stays **16/100 (previous 16, Δ +0 pp)**.

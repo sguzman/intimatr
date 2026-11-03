@@ -353,3 +353,7 @@ Refactored `IsWow64Process2` machine decoding into `windows_process_machine` for
 ### 🍷 Two-prefix Wine namespace and explicit snapshot PID/image provenance — 2026-11-02
 
 Read-only candidate assessment and readiness now distinguish `pid_observed_in_selected_wineserver_snapshot` and `image_observed_in_selected_wineserver_snapshot`, including separate missing-PID vs wrong-path blockers. CI now exercises two independently initialized Wine prefixes with identically named but separately located running Windows fixtures, asserting each wineserver's snapshot contains its own full image and excludes the other's. This does not establish durable process identity or runner trust and does not authorize real-game attachment. New Wine regression pending CI verification. **16/100 (previous 16, Δ +0 pp)**.
+
+### 🧱 Linux controller modularity checkpoint — 2026-11-02
+
+Moved fixture-only attach, read-only profile-check, snapshot-match and live-match into independent `src/bin/intimatr_bottles/` command modules with their tests, preserving the CLI dispatcher and shared inventory/probe helpers. This is a responsibility-boundary refactor, not a line-count quota. It carries **no additional verified expansion points** while INT-1403/1407 require real-game proof. CI pending for modularized revision; **16/100 (previous 16, Δ +0 pp)**.
