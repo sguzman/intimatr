@@ -391,6 +391,7 @@ mod helper {
             _ => Err("remote test loader wait failed; retaining argument buffer".into()),
         }
     }
+
     #[cfg(test)]
     mod tests {
         use super::same_owned_fixture_image;
@@ -425,7 +426,6 @@ mod helper {
             fs::remove_dir_all(root).unwrap();
         }
     }
-
 }
 
 #[cfg(windows)]
