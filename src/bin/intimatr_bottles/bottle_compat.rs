@@ -16,6 +16,7 @@ use intimatr::{
 use super::{bottles_json_with_command, pe_compat::classify_imports};
 
 const MAX_REGISTERED_PROGRAMS: usize = 1024;
+const MAX_DIRECTORY_ENTRIES: usize = 8192;
 
 struct Options {
     bottle: String,
@@ -55,9 +56,42 @@ fn parse_options(args: &[String]) -> Result<Options, String> {
     Ok(Options { bottle, cli })
 }
 
-/// Do not guess Wine drive mappings. Restrict the initial scanner to C:
-/// inside this bottle's actual drive_c; Z:, UNC, shell links, relative and
-/// traversal paths are indeterminate. Never fall through to host root.
+/// One case-insensitive lookup component at a time. On case-sensitive
+/// Linux filesystems, distinct names may fold to the same Windows filename:
+/// reject both rather than guessing which executable Wine would open.
+/// We only fold ASCII; for Unicode the name must match exactly, avoiding
+/// unsupported assumptions about Windows Unicode casing rules.
+fn resolve_windows_component(directory: &Path, requested: &str) -> Result<PathBuf, String> {
+    let entries = fs::read_dir(directory)
+        .map_err(|error| format!("cannot inspect registered executable directory: {error}"))?;
+    let mut chosen = None;
+    for (index, entry) in entries.enumerate() {
+        if index >= MAX_DIRECTORY_ENTRIES {
+            return Err("registered executable directory exceeds bounded entry count".into());
+        }
+        let entry = entry.map_err(|error| format!("cannot read directory entry: {error}"))?;
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else {
+            continue;
+        };
+        if name == requested
+            || (name.is_ascii()
+                && requested.is_ascii()
+                && name.eq_ignore_ascii_case(requested))
+        {
+            if chosen.is_some() {
+                return Err("ambiguous case-insensitive registered executable path".into());
+            }
+            chosen = Some(entry.path());
+        }
+    }
+    chosen.ok_or_else(|| format!("registered executable component is unavailable: {requested}"))
+}
+
+/// Do not guess Wine drive mappings. Restrict scanning to the verified
+/// C: drive; Z:, UNC, relative and traversal paths remain indeterminate.
+/// Each component is resolved against the real directory, with a bounded
+/// case-insensitive ASCII match and a canonical containment check.
 fn resolve_c_drive_file(prefix: &Path, windows_path: &str) -> Result<PathBuf, String> {
     let slashes = windows_path.replace('\\', "/");
     let Some(rest) = slashes
@@ -66,8 +100,7 @@ fn resolve_c_drive_file(prefix: &Path, windows_path: &str) -> Result<PathBuf, St
     else {
         return Err("not a C: absolute path in the verified bottle".into());
     };
-    let mut relative = PathBuf::new();
-    let mut count = 0_usize;
+    let mut parts = Vec::new();
     for part in rest.split('/') {
         if part.is_empty()
             || matches!(part, "." | "..")
@@ -76,13 +109,12 @@ fn resolve_c_drive_file(prefix: &Path, windows_path: &str) -> Result<PathBuf, St
         {
             return Err("unsafe Windows path component or traversal".into());
         }
-        relative.push(part);
-        count += 1;
-        if count > 128 {
+        parts.push(part);
+        if parts.len() > 128 {
             return Err("Windows executable path exceeds bounded component count".into());
         }
     }
-    if count == 0 {
+    if parts.is_empty() {
         return Err("no executable path below C: drive".into());
     }
     let root = fs::canonicalize(prefix.join("drive_c"))
@@ -90,15 +122,19 @@ fn resolve_c_drive_file(prefix: &Path, windows_path: &str) -> Result<PathBuf, St
     if !root.starts_with(prefix) {
         return Err("selected bottle C: drive escapes its verified prefix".into());
     }
-    let selected = fs::canonicalize(root.join(relative))
-        .map_err(|error| format!("registered executable is unavailable: {error}"))?;
-    if !selected.starts_with(&root) {
-        return Err("registered executable resolves outside selected bottle C: drive".into());
+    let mut current = root.clone();
+    for part in parts {
+        let next = resolve_windows_component(&current, part)?;
+        current = fs::canonicalize(&next)
+            .map_err(|error| format!("cannot resolve registered executable path: {error}"))?;
+        if !current.starts_with(&root) {
+            return Err("registered executable resolves outside selected bottle C: drive".into());
+        }
     }
-    if !selected.is_file() {
+    if !current.is_file() {
         return Err("registered executable is not a regular file".into());
     }
-    Ok(selected)
+    Ok(current)
 }
 
 fn inspect_program(prefix: &Path, program: &RegisteredProgram) -> serde_json::Value {
@@ -218,6 +254,10 @@ mod tests {
         let selected = resolve_c_drive_file(&f.0, r"C:\Games\Game.exe").unwrap();
         assert!(selected.starts_with(&f.0));
         assert!(resolve_c_drive_file(&f.0, r"c:/Games/Game.exe").is_ok());
+        assert_eq!(
+            resolve_c_drive_file(&f.0, r"c:\\gAmEs\\gAME.ExE").unwrap(),
+            selected
+        );
         for invalid in [
             r"Z:\Games\Game.exe",
             r"C:\..\Games\Game.exe",
@@ -244,6 +284,20 @@ mod tests {
             report["static_pe_compatibility"]["process_attachment_attempted"],
             false
         );
+    }
+
+    #[test]
+    fn ambiguous_windows_case_is_unknown_even_with_exact_linux_spelling() {
+        let f = Fixture::new();
+        fs::write(f.0.join("drive_c/Games/GAME.EXE"), b"different file").unwrap();
+        for path in [r"C:\\Games\\Game.exe", r"c:\\games\\game.exe"] {
+            assert!(
+                resolve_c_drive_file(&f.0, path)
+                    .unwrap_err()
+                    .contains("ambiguous case-insensitive"),
+                "{path}"
+            );
+        }
     }
 
     #[cfg(unix)]
