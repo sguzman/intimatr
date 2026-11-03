@@ -32,7 +32,7 @@ fn run() -> Result<(), String> {
     let action = args.next().unwrap_or_default();
     if action == "--help" || action == "-h" {
         println!(
-            "Usage:\n  intimatr-bottles scan\n  intimatr-bottles plan (--all | --include-bottle GLOB | --include-program GLOB) [--exclude-bottle GLOB] [--exclude-program GLOB]\n  intimatr-bottles probe-attach --pid PID --prefix WINEPREFIX --helper PATH [--runner WINE]\n  intimatr-bottles profile-check --config TOML --bottle NAME --exe WINDOWS_PATH\n  intimatr-bottles processes --prefix INITIALIZED_WINEPREFIX\n  intimatr-bottles win-processes --prefix INITIALIZED_WINEPREFIX --helper WINE_PROCESS_LIST_EXE --runner EXPLICIT_WINE_BINARY\n  intimatr-bottles match-snapshot --bottle NAME --programs BOTTLES_JSON --windows WINE_PROCESS_JSON\n  intimatr-bottles live-match --bottle NAME --helper WINE_PROCESS_LIST_EXE --runner EXPLICIT_WINE_BINARY [--prefix WINEPREFIX] [--bottles-cli BOTTLES_CLI]\n  intimatr-bottles speed --prefix INITIALIZED_WINEPREFIX --runner ABSOLUTE_WINE --client ABSOLUTE_INTIMATR_SPEED_EXE (--tcp LOOPBACK:PORT | --pipe NAME) (status | increase | decrease | toggle | reset | preset MULTIPLIER | hold MULTIPLIER DURATION_MS | release)\n\nscan and plan are read-only. probe-attach runs only the strictly allowlisted offline Wine test helper; it cannot attach a real game."
+            "Usage:\n  intimatr-bottles scan\n  intimatr-bottles plan (--all | --include-bottle GLOB | --include-program GLOB) [--exclude-bottle GLOB] [--exclude-program GLOB]\n  intimatr-bottles probe-attach --pid PID --prefix WINEPREFIX --helper PATH [--runner WINE]\n  intimatr-bottles profile-check --config TOML --bottle NAME --exe WINDOWS_PATH\n  intimatr-bottles processes --prefix INITIALIZED_WINEPREFIX\n  intimatr-bottles win-processes --prefix INITIALIZED_WINEPREFIX --helper WINE_PROCESS_LIST_EXE --runner EXPLICIT_WINE_BINARY\n  intimatr-bottles match-snapshot --bottle NAME --programs BOTTLES_JSON --windows WINE_PROCESS_JSON\n  intimatr-bottles live-match --bottle NAME --helper WINE_PROCESS_LIST_EXE --runner EXPLICIT_WINE_BINARY [--prefix WINEPREFIX] [--bottles-cli BOTTLES_CLI] [--pid WINDOWS_PID --exe EXACT_WINDOWS_PATH]\n  intimatr-bottles speed --prefix INITIALIZED_WINEPREFIX --runner ABSOLUTE_WINE --client ABSOLUTE_INTIMATR_SPEED_EXE (--tcp LOOPBACK:PORT | --pipe NAME) (status | increase | decrease | toggle | reset | preset MULTIPLIER | hold MULTIPLIER DURATION_MS | release)\n\nscan and plan are read-only. probe-attach runs only the strictly allowlisted offline Wine test helper; it cannot attach a real game."
         );
         return Ok(());
     }
@@ -666,6 +666,8 @@ struct LiveMatchOptions {
     helper: String,
     runner: String,
     bottles_cli: String,
+    selected_pid: Option<u32>,
+    selected_executable: Option<String>,
 }
 
 #[cfg(target_os = "linux")]
@@ -676,6 +678,8 @@ impl LiveMatchOptions {
         let mut helper = None;
         let mut runner = None;
         let mut bottles_cli = None;
+        let mut selected_pid = None;
+        let mut selected_executable = None;
         let mut iter = args.iter();
         while let Some(flag) = iter.next() {
             let value = iter
@@ -688,6 +692,16 @@ impl LiveMatchOptions {
                 "--helper" if helper.is_none() => helper = Some(value.clone()),
                 "--runner" if runner.is_none() => runner = Some(value.clone()),
                 "--bottles-cli" if bottles_cli.is_none() => bottles_cli = Some(value.clone()),
+                "--pid" if selected_pid.is_none() => {
+                    let pid: u32 = value.parse().map_err(|_| "invalid Windows PID")?;
+                    if pid == 0 {
+                        return Err("Windows PID must be positive".into());
+                    }
+                    selected_pid = Some(pid);
+                }
+                "--exe" if selected_executable.is_none() => {
+                    selected_executable = Some(value.clone());
+                }
                 _ => {
                     return Err(format!(
                         "duplicate or unsupported live-match option: {flag}"
@@ -698,6 +712,9 @@ impl LiveMatchOptions {
         let bottle: String = bottle.ok_or("missing --bottle")?;
         if bottle.trim().is_empty() {
             return Err("bottle name must not be empty".into());
+        }
+        if selected_pid.is_some() != selected_executable.is_some() {
+            return Err("--pid and --exe are required together for explicit candidate review".into());
         }
         let bottles_cli = bottles_cli.unwrap_or_else(|| "bottles-cli".to_owned());
         if std::path::Path::new(&bottles_cli)
@@ -713,6 +730,8 @@ impl LiveMatchOptions {
             runner: runner
                 .ok_or("missing --runner: select the explicit Wine binary for this bottle")?,
             bottles_cli,
+            selected_pid,
+            selected_executable,
         })
     }
 }
@@ -722,6 +741,7 @@ fn run_live_match(args: Vec<String>) -> Result<(), String> {
     use intimatr::{
         bottles::{BottleInventory, parse_bottle_names, parse_registered_programs},
         bottles_live_matches::match_registered_programs,
+        bottles_preflight::assess_explicit_candidate,
         bottles_prefix::verify_bottle_prefix,
         bottles_runner::{audit_recorded_runner, audit_runner_metadata},
     };
@@ -774,6 +794,11 @@ fn run_live_match(args: Vec<String>) -> Result<(), String> {
         },
         &snapshot,
     );
+    let selected_candidate = options
+        .selected_pid
+        .zip(options.selected_executable.as_deref())
+        .map(|(pid, exe)| assess_explicit_candidate(&preview, pid, exe))
+        .transpose()?;
     println!(
         "{}",
         serde_json::to_string_pretty(&serde_json::json!({
@@ -788,6 +813,7 @@ fn run_live_match(args: Vec<String>) -> Result<(), String> {
             "game_process_identity_verified": ownership.game_process_identity_verified,
             "windows_process_count": snapshot.processes.len(),
             "matches": preview.matches,
+            "selected_candidate": selected_candidate,
             "safe_to_attach": false,
             "attachment_attempted": false
         }))
@@ -831,6 +857,18 @@ mod live_match_tests {
                 "--bottle",
                 "Another",
             ]),
+            args(&[
+                "--bottle", "Games", "--helper", "helper.exe",
+                "--runner", "/usr/bin/wine", "--pid", "42",
+            ]),
+            args(&[
+                "--bottle", "Games", "--helper", "helper.exe",
+                "--runner", "/usr/bin/wine", "--exe", r"C:\Games\Game.exe",
+            ]),
+            args(&[
+                "--bottle", "Games", "--helper", "helper.exe",
+                "--runner", "/usr/bin/wine", "--pid", "0", "--exe", r"C:\Games\Game.exe",
+            ]),
         ] {
             assert!(LiveMatchOptions::parse(&invalid).is_err());
         }
@@ -870,5 +908,31 @@ mod live_match_tests {
         assert_eq!(parsed.prefix.as_deref(), Some("/tmp/native prefix"));
         assert_eq!(parsed.bottles_cli, "/tmp/bottles-cli");
         assert_eq!(parsed.runner, "/home/user/patch runner/wine");
+    }
+
+    #[test]
+    fn explicit_preflight_requires_pid_and_full_windows_executable() {
+        let parsed = LiveMatchOptions::parse(&args(&[
+            "--bottle", "Games",
+            "--helper", "/tmp/wine-process-list.exe",
+            "--runner", "/usr/bin/wine",
+            "--pid", "42",
+            "--exe", r"C:\Games\Game.exe",
+        ]))
+        .unwrap();
+        assert_eq!(parsed.selected_pid, Some(42));
+        assert_eq!(
+            parsed.selected_executable.as_deref(),
+            Some(r"C:\Games\Game.exe")
+        );
+        assert!(LiveMatchOptions::parse(&args(&[
+            "--bottle", "Games",
+            "--helper", "/tmp/wine-process-list.exe",
+            "--runner", "/usr/bin/wine",
+            "--pid", "42",
+            "--pid", "43",
+            "--exe", r"C:\Games\Game.exe",
+        ]))
+        .is_err());
     }
 }
