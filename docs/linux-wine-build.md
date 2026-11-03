@@ -308,3 +308,23 @@ bash scripts/verify-linux-release.sh dist/intimatr-linux-wine-x86_64-test-1.tar.
 ```
 
 The verifier checks file presence, archive and member checksums, version, the Linux ELF and Windows x86-64 PE signatures, and rejects symlink entries. The archive does **not** enable the experimental hook in arbitrary games, automatically enroll Bottles, claim a production-safe attach/unload, or verify the owner's installed Wine runner. Native Bottles field QA and owner acceptance remain required. This is a standalone CI/release *packaging* milestone only and does not earn the broader INT-1702 acceptance weight by itself.
+
+
+## 2026-11-02 — Single-result attachment readiness report for a selected PID
+
+The read-only `intimatr-bottles live-match` command now emits an `attachment_readiness` object when **both** `--pid` and `--exe` select one running Windows process. This combines the separate Bottles prefix ownership, native runner configuration, exact registered PID/path, and running-process / PE image architecture checks into a deterministic, machine-readable list of **blockers**.
+
+The command is the same as the existing explicit candidate preflight:
+
+```fish
+intimatr-bottles live-match --bottle Games \
+  --helper /absolute/path/to/wine-process-list.exe \
+  --runner /absolute/path/to/configured/wine \
+  --pid 42 --exe 'C:\\Games\\Example.exe'
+```
+
+In addition to `selected_candidate`, the JSON now has `attachment_readiness` with `candidate_status`, `snapshot_registered_identity_verified`, `snapshot_x64_dll_compatible`, `bottle_prefix_verified`, `configured_runner_verified`, `game_process_prefix_ownership_verified`, `status`, `blockers`, `safe_to_attach`, and `attachment_attempted`. The recorded process ID above is illustrative; it must be taken from a fresh process list, never hard-coded.
+
+Even when x64/PID/path match, the report intentionally blocks attachment until the selected runner is independently proven to be the bottle's configured runner, the **live** target process is tied to that prefix, a fresh apply-time identity check exists, protected/anti-cheat programs are excluded, and the production loader/lifecycle is implemented and tested. Bottles storage ownership alone is **not** live process ownership. No `apply` command or general-game helper is exposed by this change, and no DLL is injected by `live-match`.
+
+A portable four-case Rust test suite covers positive snapshot candidates, nonexistent PID / unverified architecture, a synthetic wrong bottle/x86 target, and the fact that even all supplied positive identity flags cannot grant attachment. The Wine CI suite checks the JSON against a genuinely running disposable fixture and rejects missing PID and wrong full-path candidates. This is INT-1403/1407 staged work; neither milestone's full acceptance is complete. **Expansion remains 16% (previous 16%, Δ +0 pp).**

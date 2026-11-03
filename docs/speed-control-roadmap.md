@@ -345,3 +345,7 @@ The Windows remote loader now treats a module basename as a collision for **pre-
 ### 🧱 Shared live x64 machine gate for fixture remote loading — 2026-11-02
 
 Refactored `IsWow64Process2` machine decoding into `windows_process_machine` for both the read-only Wine process inventory and the test-only remote loader. The helper now requires **positively verified live x86-64 architecture** on the already-open target handle before writing any remote memory; missing API/unknown machine and x86/ARM64 fail closed. Added deterministic native x64, WoW64 and unrecognized-machine tests. Full CI is pending; a real user's Wine runner/game remains untested. **INT-1406/1407 still open; verified expansion 16% (previous 16%, Δ +0 pp).**
+
+### 📋 Selected live process attachment-readiness blockers — 2026-11-02
+
+`intimatr-bottles live-match --pid PID --exe EXACT_WINDOWS_PATH` now emits a structured read-only `attachment_readiness` report alongside the selected candidate. The report combines existing prefix, runner, registered program, and architecture evidence, then exposes individual blockers for live process/prefix ownership, fresh apply-time identity, game protection, loader support, and hook lifecycle. Even synthetic all-positive identity evidence cannot set `safe_to_attach`. Unit fixtures plus isolated Wine positive/wrong-PID/wrong-path JSON assertions were added. Real offline game testing is still required for INT-1403/1407; **16/100 verified (previous 16, Δ +0 pp)**.
