@@ -33,16 +33,16 @@ fn random_order_reads_and_25000_reanchors_do_not_jump() {
         };
         let before = clock.sample(observed);
         assert!(before >= previous, "backward clock at iteration {i}");
-        if choice % 3 == 0 {
+        if choice.is_multiple_of(3) {
             let rate = RATES[(choice as usize / 3) % RATES.len()];
             assert_eq!(clock.set_multiplier(observed, rate).unwrap(), before);
-        } else if choice % 29 == 0 {
+        } else if choice.is_multiple_of(29) {
             let old = clock.clone();
             for invalid in [0.0, -1.0, f64::NAN, f64::INFINITY] {
                 assert!(clock.set_multiplier(observed, invalid).is_err());
                 assert_eq!(clock, old);
             }
-        } else if choice % 11 == 0 {
+        } else if choice.is_multiple_of(11) {
             assert_eq!(clock.reset(observed), before);
         }
         previous = clock.sample(observed);
@@ -72,10 +72,10 @@ fn all_four_timer_domains_preserve_wrap_epoch_and_monotonicity() {
             "QPC {i}"
         );
         assert!(before.tick_count64 >= prev.tick_count64, "tick64 {i}");
-        if n % 5 == 0 {
+        if n.is_multiple_of(5) {
             let rate = RATES[(n as usize / 5) % RATES.len()];
             assert_eq!(timers.set_multiplier(at, rate).unwrap(), before);
-        } else if n % 23 == 0 {
+        } else if n.is_multiple_of(23) {
             assert_eq!(timers.reset(at), before);
         }
         let now = timers.sample(at);
