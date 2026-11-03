@@ -324,9 +324,11 @@ fn readable_mapped_range(address: *const u8, length: usize) -> bool {
         && allowed
         && region.Protect & (PAGE_GUARD | PAGE_NOACCESS) == 0
         && start <= at
-        && at
-            .checked_add(length)
-            .is_some_and(|end| start.checked_add(region.RegionSize).is_some_and(|limit| end <= limit))
+        && at.checked_add(length).is_some_and(|end| {
+            start
+                .checked_add(region.RegionSize)
+                .is_some_and(|limit| end <= limit)
+        })
 }
 
 unsafe fn read_u16(image: *const u8, size: usize, offset: usize) -> Option<u16> {
