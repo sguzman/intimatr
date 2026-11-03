@@ -449,6 +449,51 @@ pub(crate) fn selected_game_select_rate(multiplier: f64) -> bool {
         && crate::experimental_timer_probe::remote_rate_milli() == (multiplier * 1000.0) as u32
 }
 
+/// Apply one configured shared speed-state action to the exact selected
+/// already-armed game timer session. No action activates hooks or proves that
+/// actual gameplay simulation timing has changed. Returns the independently
+/// observed installed virtual-clock rate, in thousandths.
+#[cfg(windows)]
+pub(crate) fn selected_game_step_action(selector: u32) -> u32 {
+    use crate::{
+        command::{Command, CommandResult},
+        speed_commands::SpeedRequest,
+    };
+    let request = match selector {
+        1 => SpeedRequest::Increase,
+        2 => SpeedRequest::Decrease,
+        3 => SpeedRequest::Toggle,
+        4 => SpeedRequest::Reset,
+        _ => return 0,
+    };
+    if shutdown_requested()
+        || lifecycle_state() != LifecycleState::Running
+        || crate::experimental_timer_probe::remote_hook_state() != 1
+    {
+        return 0;
+    }
+    let executor = CONTEXT.lock().ok().and_then(|guard| {
+        guard
+            .as_ref()
+            .map(|context| Arc::clone(&context.command_executor))
+    });
+    let Some(executor) = executor else {
+        return 0;
+    };
+    let Ok(result) = executor.execute(Command::Speed { request }) else {
+        return 0;
+    };
+    let CommandResult::Speed { status } = result.result else {
+        return 0;
+    };
+    let observed = crate::experimental_timer_probe::remote_rate_milli();
+    let expected = (status.preview_multiplier * 1000.0).round() as u32;
+    if !status.configured || observed != expected || !(100..=10_000).contains(&observed) {
+        return 0;
+    }
+    observed
+}
+
 /// Fixture-only bridge to the *same* command executor used by RPC/UI.
 /// It does not install a hook or assert that game time is accelerated.
 /// The experimental hook module additionally requires its allowlisted

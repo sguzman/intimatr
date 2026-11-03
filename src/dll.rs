@@ -169,6 +169,25 @@ pub extern "system" fn intimatr_remote_game_set_rate_milli(selector: *mut c_void
     }
 }
 
+/// Explicit bounded action in the same configured speed state machine as
+/// RPC/UI and numeric presets. Selector 1=increase, 2=decrease, 3=toggle,
+/// 4=reset. Return the target-observed virtual-clock rate in thousandths,
+/// or zero if the exact runtime/hook state cannot be verified. No pointers
+/// are dereferenced from the remote thread argument.
+#[unsafe(no_mangle)]
+pub extern "system" fn intimatr_remote_game_step_action(selector: *mut c_void) -> u32 {
+    let index = selector as usize;
+    if !(1..=4).contains(&index) {
+        return 0;
+    }
+    match std::panic::catch_unwind(AssertUnwindSafe(|| {
+        runtime::selected_game_step_action(index as u32)
+    })) {
+        Ok(result) => result,
+        Err(_) => 0,
+    }
+}
+
 /// Installed virtual-clock rate, in thousandths; zero means unavailable.
 #[unsafe(no_mangle)]
 pub extern "system" fn intimatr_remote_game_rate_milli(_parameter: *mut c_void) -> u32 {

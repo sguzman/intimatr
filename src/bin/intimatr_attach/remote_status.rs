@@ -26,6 +26,7 @@ const TIMER_IMPORT_COVERAGE_EXPORT: &std::ffi::CStr = c"intimatr_remote_timer_im
 const SET_PRESET_EXPORT: &std::ffi::CStr = c"intimatr_remote_game_preset";
 const SET_MILLI_RATE_EXPORT: &std::ffi::CStr = c"intimatr_remote_game_set_rate_milli";
 const READ_RATE_EXPORT: &std::ffi::CStr = c"intimatr_remote_game_rate_milli";
+const STEP_ACTION_EXPORT: &std::ffi::CStr = c"intimatr_remote_game_step_action";
 
 #[repr(C)]
 #[allow(dead_code)]
@@ -469,6 +470,45 @@ pub fn select_game_rate_milli(
         return Err("selected-game virtual clock did not confirm the requested multiplier".into());
     }
     Ok(observed)
+}
+
+/// Apply a named speed-state action in the already-running, explicitly
+/// armed timer session. Each operation returns the target's installed-clock
+/// rate, never a claim about in-game simulation speed.
+pub fn change_game_speed(
+    process: Handle,
+    pid: u32,
+    dll: &Path,
+    action: &str,
+) -> Result<u32, String> {
+    let selector = match action {
+        "increase" => 1,
+        "decrease" => 2,
+        "toggle" => 3,
+        "reset" => 4,
+        _ => return Err("unsupported selected-game speed action".into()),
+    };
+    if query_lifecycle_state(process, pid, dll)? != "running"
+        || query_timer_hook_state(process, pid, dll)? != "installed_four_timers"
+    {
+        return Err("cannot change game speed: exact target has no active four-timer IAT hooks".into());
+    }
+    let (base, image_size) = target_base(pid, dll)?;
+    let rva = export_rva(dll, STEP_ACTION_EXPORT)?;
+    if rva >= image_size {
+        return Err("target Intimatr DLL lacks bounded speed-action export".into());
+    }
+    let entry = base
+        .checked_add(rva)
+        .ok_or("remote Intimatr speed-action address overflow")?;
+    let applied = call_export_with_selector(process, entry, selector, 5_000)?;
+    if !(100..=10_000).contains(&applied) {
+        return Err("selected-game speed action was rejected by shared command executor".into());
+    }
+    if query_rate_milli(process, pid, dll)? != applied {
+        return Err("selected-game virtual clock did not confirm speed action".into());
+    }
+    Ok(applied)
 }
 
 /// Return only after the selected DLL reports Running from the actual target.
