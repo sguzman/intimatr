@@ -75,7 +75,11 @@ fn u64_at(bytes: &[u8], at: usize) -> u64 {
 
 impl Reader {
     fn read(&mut self, offset: u64, count: usize) -> Result<Vec<u8>, String> {
-        if count > 4096 || offset.checked_add(count as u64).is_none_or(|end| end > self.size) {
+        if count > 4096
+            || offset
+                .checked_add(count as u64)
+                .is_none_or(|end| end > self.size)
+        {
             return Err("PE read crosses its bounded file range".into());
         }
         self.file
@@ -160,7 +164,8 @@ pub fn inspect_pe_timer_imports(path: &Path) -> Result<TimerImportCoverage, Stri
     }
     let section_count = usize::from(u16_at(&coff, 6));
     let optional_size = usize::from(u16_at(&coff, 20));
-    if section_count == 0 || section_count > MAX_SECTIONS || !(128..=4096).contains(&optional_size) {
+    if section_count == 0 || section_count > MAX_SECTIONS || !(128..=4096).contains(&optional_size)
+    {
         return Err("PE has unsupported section or optional header count".into());
     }
     let optional = reader.read(pe_offset + 24, optional_size)?;
@@ -192,8 +197,12 @@ pub fn inspect_pe_timer_imports(path: &Path) -> Result<TimerImportCoverage, Stri
         .min(MAX_IMPORT_DESCRIPTORS);
     let mut terminated = false;
     for index in 0..count {
-        let offset = (index as u32).checked_mul(20).ok_or("PE import descriptor overflow")?;
-        let rva = import_rva.checked_add(offset).ok_or("PE import RVA overflow")?;
+        let offset = (index as u32)
+            .checked_mul(20)
+            .ok_or("PE import descriptor overflow")?;
+        let rva = import_rva
+            .checked_add(offset)
+            .ok_or("PE import RVA overflow")?;
         let desc = reader.bytes_at_rva(rva, 20)?;
         if desc.iter().all(|byte| *byte == 0) {
             terminated = true;
@@ -208,9 +217,15 @@ pub fn inspect_pe_timer_imports(path: &Path) -> Result<TimerImportCoverage, Stri
         let dll = reader.cstr_at_rva(name_rva)?;
         // Exact names from supported system DLLs; not a runtime address test.
         let dll = String::from_utf8_lossy(&dll).to_ascii_lowercase();
-        let timer_dll = matches!(dll.as_str(), "kernel32.dll" | "kernelbase.dll" | "winmm.dll")
-            || dll.starts_with("api-ms-win-core-");
-        let thunk_rva = if original_thunk == 0 { first_thunk } else { original_thunk };
+        let timer_dll = matches!(
+            dll.as_str(),
+            "kernel32.dll" | "kernelbase.dll" | "winmm.dll"
+        ) || dll.starts_with("api-ms-win-core-");
+        let thunk_rva = if original_thunk == 0 {
+            first_thunk
+        } else {
+            original_thunk
+        };
         let mut thunk_terminated = false;
         for thunk_index in 0..MAX_IMPORT_THUNKS {
             let rva = thunk_rva
@@ -228,8 +243,11 @@ pub fn inspect_pe_timer_imports(path: &Path) -> Result<TimerImportCoverage, Stri
                 return Err("PE import thunk has an invalid name RVA".into());
             }
             if timer_dll {
-                let name = reader.cstr_at_rva((thunk as u32).checked_add(2)
-                    .ok_or("PE import name RVA overflow")?)?;
+                let name = reader.cstr_at_rva(
+                    (thunk as u32)
+                        .checked_add(2)
+                        .ok_or("PE import name RVA overflow")?,
+                )?;
                 coverage.record(&name);
             }
         }
@@ -326,7 +344,9 @@ mod tests {
         });
         let mut invalid = fixture();
         invalid[0x498..0x49c].copy_from_slice(&0xffff_ffff_u32.to_le_bytes());
-        with_file(&invalid, |path| assert!(inspect_pe_timer_imports(path).is_err()));
+        with_file(&invalid, |path| {
+            assert!(inspect_pe_timer_imports(path).is_err())
+        });
     }
 
     #[test]

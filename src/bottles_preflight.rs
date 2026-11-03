@@ -6,8 +6,7 @@
 use serde::Serialize;
 
 use crate::{
-    bottles_live_matches::ReadOnlyProcessMatchPlan,
-    pe_timer_imports::TimerImportCoverage,
+    bottles_live_matches::ReadOnlyProcessMatchPlan, pe_timer_imports::TimerImportCoverage,
     speed_policy::game_path_key,
 };
 

@@ -8,10 +8,8 @@
 use serde::Serialize;
 
 use crate::{
-    bottles_prefix::BottlePrefixIdentity,
-    bottles_preflight::CandidatePreflight,
-    bottles_runner::RunnerAudit,
-    pe_timer_imports::TimerImportCoverage,
+    bottles_prefix::BottlePrefixIdentity, bottles_preflight::CandidatePreflight,
+    bottles_runner::RunnerAudit, pe_timer_imports::TimerImportCoverage,
 };
 
 #[derive(Debug, Clone, Serialize)]
@@ -279,10 +277,16 @@ mod tests {
         });
         let report = review_attachment_readiness(&candidate, &prefix, &runner);
         assert_eq!(
-            report.timer_import_coverage.map(|value| value.all_four_static_names),
+            report
+                .timer_import_coverage
+                .map(|value| value.all_four_static_names),
             Some(true)
         );
-        assert!(!report.blockers.contains(&"experimental_four_timer_static_imports_unverified"));
+        assert!(
+            !report
+                .blockers
+                .contains(&"experimental_four_timer_static_imports_unverified")
+        );
         assert!(!report.safe_to_attach);
         assert!(!report.attachment_attempted);
     }

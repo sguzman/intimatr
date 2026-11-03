@@ -6,8 +6,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    bottles::BottleInventory, pe_timer_imports::TimerImportCoverage,
-    speed_policy::game_path_key,
+    bottles::BottleInventory, pe_timer_imports::TimerImportCoverage, speed_policy::game_path_key,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
