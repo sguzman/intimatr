@@ -331,6 +331,36 @@ jobs:
           )' target/wine-attach/wrong-path-preflight.json > /dev/null
           unset INTIMATR_MOCK_PROGRAMS_JSON
           echo "Verified explicit Windows PID/full-image preflight against isolated Wine fixture"
+          # A same-named executable in a DIFFERENT directory is not the
+          # owned fixture beside wine-attach-helper.exe, even when it is
+          # genuinely running under the same Wine prefix.
+          mkdir -p target/wine-attach/decoy
+          cp target/wine-attach/wine-attach-target.exe target/wine-attach/decoy/
+          xvfb-run -a wine target/wine-attach/decoy/wine-attach-target.exe > target/wine-attach/decoy/stdout 2> target/wine-attach/decoy/stderr &
+          decoy_launcher=$!
+          trap 'kill "$launcher_pid" "$decoy_launcher" 2>/dev/null || true' EXIT
+          for i in $(seq 1 100); do
+            if test -s target/wine-attach/decoy/attach-target.pid; then
+              break
+            fi
+            sleep 0.1
+          done
+          test -s target/wine-attach/decoy/attach-target.pid
+          decoy_pid="$(cat target/wine-attach/decoy/attach-target.pid)"
+          test "$decoy_pid" != "$windows_pid"
+          if target/release/intimatr-bottles probe-attach \
+            --pid "$decoy_pid" \
+            --prefix "$WINEPREFIX" \
+            --helper target/wine-attach/wine-attach-helper.exe \
+            --runner wine > target/wine-attach/decoy-attach.stdout 2> target/wine-attach/decoy-attach.stderr; then
+            echo "ERROR: unrelated same-basename Wine process received an attach" >&2
+            exit 1
+          fi
+          grep -q "target is not the helper's owned Wine fixture" target/wine-attach/decoy-attach.stderr
+          kill "$decoy_launcher" 2>/dev/null || true
+          wait "$decoy_launcher" || true
+          trap 'kill "$launcher_pid" 2>/dev/null || true' EXIT
+          echo "Wine fixture-only loader rejected a distinct same-named process"
           # Two distinct Linux invocations launch separate Windows helpers
           # against the same already-running fixture. Exactly one may load.
           target/release/intimatr-bottles probe-attach \
