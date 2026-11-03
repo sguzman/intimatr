@@ -414,6 +414,48 @@ mod tests {
         assert!(executor.watched_keys().unwrap().is_empty());
     }
 
+    #[cfg(windows)]
+    #[test]
+    fn selected_game_session_initializes_safely_and_rearms_at_normal_speed() {
+        let executor = SpeedPreviewExecutor::disabled(stub());
+        assert!(
+            executor
+                .execute(Command::Speed {
+                    request: SpeedRequest::SelectPreset { multiplier: 2.0 }
+                })
+                .is_err()
+        );
+        executor.arm_selected_game_session().unwrap();
+        assert!(executor.watched_keys().unwrap().is_empty());
+        let initial = report(
+            executor
+                .execute(Command::Speed {
+                    request: SpeedRequest::Status,
+                })
+                .unwrap(),
+        );
+        assert!(initial.configured);
+        assert_eq!(initial.preview_multiplier, 1.0);
+        let modified = report(
+            executor
+                .execute(Command::Speed {
+                    request: SpeedRequest::SelectPreset { multiplier: 2.0 },
+                })
+                .unwrap(),
+        );
+        assert_eq!(modified.preview_multiplier, 2.0);
+        executor.arm_selected_game_session().unwrap();
+        let reset = report(
+            executor
+                .execute(Command::Speed {
+                    request: SpeedRequest::Status,
+                })
+                .unwrap(),
+        );
+        assert_eq!(reset.preview_multiplier, 1.0);
+        assert!(!reset.clock_applied_to_game);
+    }
+
     #[test]
     fn actions_share_state_across_frontends_without_claiming_hook_installation() {
         let executor = configured(stub());

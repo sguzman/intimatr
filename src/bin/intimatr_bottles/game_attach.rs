@@ -548,6 +548,50 @@ mod tests {
     }
 
     #[test]
+    fn preset_commands_require_separate_opt_in_and_bounded_values() {
+        let mut args = args(&[
+            "--attach-helper",
+            "/tmp/wine-game-attach-helper.exe",
+            "--bottle",
+            "Games",
+            "--pid",
+            "42",
+            "--exe",
+            r"C:\Games\Game.exe",
+            "--created-100ns",
+            "133700000000000001",
+            "--offline-single-player",
+            "--preset",
+            "half",
+        ]);
+        assert!(
+            run_game_rate(args.clone())
+                .unwrap_err()
+                .contains("requires explicit --experimental-four-timers")
+        );
+        args.push("--experimental-four-timers".into());
+        let parsed = GameAttachOptions::parse(&args).unwrap();
+        assert_eq!(parsed.rate_preset.as_deref(), Some("half"));
+        assert!(parsed.experimental_four_timers);
+        assert!(
+            run_game_timer_activation(args.clone())
+                .unwrap_err()
+                .contains("--preset is only valid")
+        );
+        args.extend(["--preset".into(), "normal".into()]);
+        assert!(GameAttachOptions::parse(&args).is_err());
+        args.truncate(args.len() - 2);
+        let mut invalid = args.clone();
+        let preset = invalid.iter_mut().find(|value| *value == "half").unwrap();
+        *preset = "unbounded".into();
+        assert!(
+            GameAttachOptions::parse(&invalid)
+                .unwrap_err()
+                .contains("half, normal or double")
+        );
+    }
+
+    #[test]
     fn retains_exact_selected_candidate_flags_without_implicit_selection() {
         let parsed = GameAttachOptions::parse(&args(&[
             "--attach-helper",
