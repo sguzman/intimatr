@@ -219,6 +219,33 @@ fn classify(code: u32) -> Result<bool, String> {
     }
 }
 
+/// Read the exact selected Intimatr module's lifecycle without altering it.
+/// Absence is handled separately by the caller before executing this export.
+pub fn query_lifecycle_state(process: Handle, pid: u32, dll: &Path) -> Result<&'static str, String> {
+    let (base, image_size) = target_base(pid, dll)?;
+    let rva = export_rva(dll, STATUS_EXPORT)?;
+    if rva >= image_size {
+        return Err("target Intimatr module does not contain the lifecycle query export".into());
+    }
+    let entry = base
+        .checked_add(rva)
+        .ok_or("remote Intimatr lifecycle entry overflow")?;
+    lifecycle_label(call_export(process, entry, 2_000)?)
+}
+
+fn lifecycle_label(code: u32) -> Result<&'static str, String> {
+    match code {
+        0 => Ok("detached"),
+        1 => Ok("attached"),
+        2 => Ok("bootstrapping"),
+        3 => Ok("running"),
+        4 => Ok("stopping"),
+        5 => Ok("stopped"),
+        6 => Ok("failed"),
+        _ => Err(format!("unknown Intimatr lifecycle code {code}")),
+    }
+}
+
 /// Return only after the selected DLL reports Running from the actual target.
 /// Absence of this proof means loaded but not runtime-verified; caller must
 /// never advertise speed functionality or automatic cleanup.
@@ -277,5 +304,22 @@ mod tests {
         for code in [4, 5, 6, 7, u32::MAX] {
             assert!(classify(code).is_err());
         }
+    }
+
+    #[test]
+    fn lifecycle_status_preserves_stopped_and_failed_without_claiming_running() {
+        for (code, name) in [
+            (0, "detached"),
+            (1, "attached"),
+            (2, "bootstrapping"),
+            (3, "running"),
+            (4, "stopping"),
+            (5, "stopped"),
+            (6, "failed"),
+        ] {
+            assert_eq!(lifecycle_label(code).unwrap(), name);
+        }
+        assert!(lifecycle_label(7).is_err());
+        assert!(lifecycle_label(u32::MAX).is_err());
     }
 }

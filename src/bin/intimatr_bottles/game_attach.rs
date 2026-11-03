@@ -74,15 +74,26 @@ impl GameAttachOptions {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum GameAction {
+    Attach,
+    Stop,
+    Status,
+}
+
 pub(super) fn run_game_attach(args: Vec<String>) -> Result<(), String> {
-    run_game_action(args, false)
+    run_game_action(args, GameAction::Attach)
 }
 
 pub(super) fn run_game_stop(args: Vec<String>) -> Result<(), String> {
-    run_game_action(args, true)
+    run_game_action(args, GameAction::Stop)
 }
 
-fn run_game_action(args: Vec<String>, stop_only: bool) -> Result<(), String> {
+pub(super) fn run_game_status(args: Vec<String>) -> Result<(), String> {
+    run_game_action(args, GameAction::Status)
+}
+
+fn run_game_action(args: Vec<String>, action: GameAction) -> Result<(), String> {
     let options = GameAttachOptions::parse(&args)?;
     let attach_helper = fs::canonicalize(&options.attach_helper)
         .map_err(|error| format!("cannot find game attach helper: {error}"))?;
@@ -149,8 +160,14 @@ fn run_game_action(args: Vec<String>, stop_only: bool) -> Result<(), String> {
         .arg("--offline-single-player")
         .env("WINEPREFIX", &selected.prefix)
         .env("WINEDEBUG", "-all");
-    if stop_only {
-        command.arg("--shutdown-only");
+    match action {
+        GameAction::Attach => {}
+        GameAction::Stop => {
+            command.arg("--shutdown-only");
+        }
+        GameAction::Status => {
+            command.arg("--status-only");
+        }
     }
     let output = command
         .output()
@@ -165,19 +182,56 @@ fn run_game_action(args: Vec<String>, stop_only: bool) -> Result<(), String> {
                 .collect::<String>()
         ));
     }
-    // A module-list match alone cannot prove a Running or Stopped state.
-    let expected_marker = if stop_only {
-        "INTIMATR_REMOTE_RUNTIME_STOPPED=1"
+    // For status, the target-side lifecycle export is queried through the
+    // same exact-identity helper; an absent module is a distinct valid state.
+    // Never equate module presence with a Running speed engine.
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let runtime_state = if action == GameAction::Status {
+        let mut states = stdout
+            .lines()
+            .filter_map(|line| line.strip_prefix("INTIMATR_REMOTE_RUNTIME_STATE="));
+        let state = states
+            .next()
+            .ok_or("game status helper did not return an authoritative runtime state")?;
+        if states.next().is_some()
+            || !matches!(
+                state,
+                "absent" | "detached" | "attached" | "bootstrapping"
+                    | "running" | "stopping" | "stopped" | "failed"
+            )
+        {
+            return Err("game status helper returned invalid or duplicate runtime states".into());
+        }
+        Some(state)
     } else {
-        "INTIMATR_REMOTE_RUNTIME_RUNNING=1"
+        let expected_marker = if action == GameAction::Stop {
+            "INTIMATR_REMOTE_RUNTIME_STOPPED=1"
+        } else {
+            "INTIMATR_REMOTE_RUNTIME_RUNNING=1"
+        };
+        if !stdout.lines().any(|line| line == expected_marker) {
+            return Err("game helper returned without independent target runtime state proof".into());
+        }
+        None
     };
-    if !String::from_utf8_lossy(&output.stdout)
-        .lines()
-        .any(|line| line == expected_marker)
-    {
-        return Err("game helper returned without independent target runtime state proof".into());
-    }
-    let result = if stop_only {
+    let result = if action == GameAction::Status {
+        let state = runtime_state.ok_or("missing selected target status")?;
+        serde_json::json!({
+            "operation": "explicit_offline_single_player_game_status",
+            "selected_bottle": candidate.selected_bottle,
+            "selected_windows_pid": candidate.selected_windows_pid,
+            "selected_executable_path": candidate.selected_executable_path,
+            "verified_process_creation_time_100ns": creation,
+            "verified_wine_prefix": selected.prefix,
+            "verified_wine_runner": selected.runner,
+            "intimatr_module_loaded": state != "absent",
+            "runtime_state": state,
+            "runtime_running_verified": state == "running",
+            "runtime_stopped_verified": state == "stopped",
+            "speed_controls_verified": false,
+            "offline_single_player_acknowledged": true
+        })
+    } else if action == GameAction::Stop {
         serde_json::json!({
             "operation": "explicit_offline_single_player_game_shutdown",
             "selected_bottle": candidate.selected_bottle,

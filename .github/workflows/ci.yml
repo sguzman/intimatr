@@ -631,6 +631,14 @@ jobs:
             exit 1
           fi
           grep -q 'creation-time identity mismatch' target/wine-attach/game-bad-generation.stderr
+          # An unattached target has no Intimatr module; status must not
+          # turn inspection into an implicit attachment.
+          XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles status-game "${game_args[@]}" --offline-single-player >target/wine-attach/game-before.json
+          jq -e '.operation == "explicit_offline_single_player_game_status"
+            and .intimatr_module_loaded == false
+            and .runtime_state == "absent"
+            and .runtime_running_verified == false
+            and .speed_controls_verified == false' target/wine-attach/game-before.json > /dev/null
           XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles attach-game "${game_args[@]}" --offline-single-player >target/wine-attach/game-attach.json
           jq -e --arg created "$game_created" '.operation == "explicit_offline_single_player_game_attachment"
             and .intimatr_module_loaded == true
@@ -646,6 +654,12 @@ jobs:
             sleep 0.1
           done
           test -s target/wine-attach/game-fixture/attach-verified.flag
+          XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles status-game "${game_args[@]}" --offline-single-player >target/wine-attach/game-running.json
+          jq -e '.intimatr_module_loaded == true
+            and .runtime_state == "running"
+            and .runtime_running_verified == true
+            and .runtime_stopped_verified == false
+            and .speed_controls_verified == false' target/wine-attach/game-running.json > /dev/null
           # The same process must refuse duplicate game helper attachment.
           if XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles attach-game "${game_args[@]}" --offline-single-player >target/wine-attach/game-duplicate.stdout 2>target/wine-attach/game-duplicate.stderr; then
             echo "ERROR: second game attach succeeded" >&2
@@ -662,6 +676,12 @@ jobs:
               and .verified_process_creation_time_100ns == $created
               and .shutdown_attempted == true
               and .speed_controls_verified == false' target/wine-attach/game-stop.json > /dev/null
+          XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles status-game "${game_args[@]}" --offline-single-player >target/wine-attach/game-stopped-status.json
+          jq -e '.intimatr_module_loaded == true
+            and .runtime_state == "stopped"
+            and .runtime_running_verified == false
+            and .runtime_stopped_verified == true
+            and .speed_controls_verified == false' target/wine-attach/game-stopped-status.json > /dev/null
           # Repeated stop is idempotent; never free a still-referenced DLL.
           XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles stop-game "${game_args[@]}" --offline-single-player > target/wine-attach/game-stopped-again.json
           jq -e '.runtime_stopped_verified == true and .intimatr_module_unloaded == false' target/wine-attach/game-stopped-again.json > /dev/null
