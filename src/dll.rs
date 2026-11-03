@@ -96,6 +96,15 @@ pub extern "system" fn intimatr_lifecycle_state() -> u32 {
     runtime::lifecycle_state().as_u8() as u32
 }
 
+/// Side-effect-free lifecycle query for an explicitly selected remote game.
+/// This export has the exact LPTHREAD_START_ROUTINE ABI so a bounded helper
+/// thread can return the atomic state without pointer arguments or probing
+/// arbitrary DLL exports. It never installs timing hooks or changes speed.
+#[unsafe(no_mangle)]
+pub extern "system" fn intimatr_remote_lifecycle_query(_parameter: *mut c_void) -> u32 {
+    runtime::lifecycle_state().as_u8() as u32
+}
+
 #[unsafe(no_mangle)]
 pub extern "system" fn intimatr_request_shutdown() -> BOOL {
     let result = std::panic::catch_unwind(AssertUnwindSafe(runtime::shutdown));

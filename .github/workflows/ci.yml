@@ -634,6 +634,7 @@ jobs:
           XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles attach-game "${game_args[@]}" --offline-single-player >target/wine-attach/game-attach.json
           jq -e --arg created "$game_created" '.operation == "explicit_offline_single_player_game_attachment"
             and .intimatr_module_loaded == true
+            and .runtime_running_verified == true
             and .verified_process_creation_time_100ns == $created
             and .speed_controls_verified == false
             and .attachment_attempted == true

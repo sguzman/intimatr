@@ -152,6 +152,16 @@ pub(super) fn run_game_attach(args: Vec<String>) -> Result<(), String> {
                 .collect::<String>()
         ));
     }
+    // The game helper must independently query the injected DLL's Running
+    // lifecycle state. A module-list match alone cannot imply runtime success.
+    if !String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .any(|line| line == "INTIMATR_REMOTE_RUNTIME_RUNNING=1")
+    {
+        return Err(
+            "game helper returned without independent target runtime Running proof".into(),
+        );
+    }
     let result = serde_json::json!({
         "operation": "explicit_offline_single_player_game_attachment",
         "selected_bottle": candidate.selected_bottle,
@@ -161,6 +171,7 @@ pub(super) fn run_game_attach(args: Vec<String>) -> Result<(), String> {
         "verified_wine_prefix": selected.prefix,
         "verified_wine_runner": selected.runner,
         "intimatr_module_loaded": true,
+        "runtime_running_verified": true,
         "speed_controls_verified": false,
         "attachment_attempted": true,
         "offline_single_player_acknowledged": true

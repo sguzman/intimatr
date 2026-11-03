@@ -1,4 +1,8 @@
 #[cfg(windows)]
+#[path = "remote_status.rs"]
+mod remote_status;
+
+#[cfg(windows)]
 pub mod helper {
     use intimatr::{
         speed_policy::game_path_key, windows_process_identity::process_creation_time_100ns,
@@ -617,6 +621,12 @@ pub mod helper {
                         "remote loader exited without the expected owned Intimatr DLL in target"
                             .into(),
                     );
+                }
+                if matches!(target, AttachTarget::SelectedOfflineGame { .. }) {
+                    // Asynchronous DLL bootstrap may fail *after* LoadLibrary
+                    // returns. Confirm the actual target runtime separately.
+                    super::remote_status::wait_until_running(process.0, pid, &dll)?;
+                    println!("INTIMATR_REMOTE_RUNTIME_RUNNING=1");
                 }
                 println!("Wine helper confirmed the exact Intimatr DLL in Windows PID {pid}");
                 Ok(())
