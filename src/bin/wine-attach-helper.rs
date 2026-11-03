@@ -32,6 +32,7 @@ mod helper {
     const WAIT_OBJECT_0: u32 = 0;
     const WAIT_ABANDONED: u32 = 0x80;
     const WAIT_TIMEOUT: u32 = 258;
+    const ERROR_NO_MORE_FILES: u32 = 18;
 
     #[repr(C)]
     #[allow(dead_code)]
@@ -54,6 +55,7 @@ mod helper {
         fn CreateMutexW(attributes: *const c_void, initial_owner: i32, name: *const u16) -> Handle;
         fn ReleaseMutex(mutex: Handle) -> i32;
         fn CloseHandle(handle: Handle) -> i32;
+        fn GetLastError() -> u32;
         fn QueryFullProcessImageNameW(
             handle: Handle,
             flags: u32,
@@ -176,6 +178,18 @@ mod helper {
         same_owned_fixture_image(Path::new(&image), helper_image)
     }
 
+    /// Module32NextW returns zero both at the normal end of a snapshot
+    /// and on errors. Only ERROR_NO_MORE_FILES proves an exhaustive scan.
+    fn complete_module_scan(error: u32) -> Result<(), String> {
+        if error == ERROR_NO_MORE_FILES {
+            Ok(())
+        } else {
+            Err(format!(
+                "target module enumeration incomplete (Windows error {error})"
+            ))
+        }
+    }
+
     /// Fail closed when the target module list cannot be inspected.
     /// In particular, never issue a second remote LoadLibrary for a target
     /// already carrying Intimatr. The caller holds the fixture-only named
@@ -201,6 +215,10 @@ mod helper {
                 return Ok(true);
             }
             if unsafe { Module32NextW(snapshot.0, &mut entry) } == 0 {
+                // Capture GetLastError immediately after Module32NextW.
+                // Any other error is an incomplete scan, not proof that
+                // Intimatr is absent.
+                complete_module_scan(unsafe { GetLastError() })?;
                 break;
             }
         }
@@ -394,13 +412,21 @@ mod helper {
 
     #[cfg(test)]
     mod tests {
-        use super::same_owned_fixture_image;
+        use super::{ERROR_NO_MORE_FILES, complete_module_scan, same_owned_fixture_image};
         use std::{
             fs,
             sync::atomic::{AtomicUsize, Ordering},
         };
 
         static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
+
+        #[test]
+        fn incomplete_module_enumeration_is_not_proof_of_absence() {
+            assert!(complete_module_scan(ERROR_NO_MORE_FILES).is_ok());
+            for code in [0, 5, 6, 24, 299, 998] {
+                assert!(complete_module_scan(code).is_err());
+            }
+        }
 
         #[test]
         fn same_basename_outside_owned_fixture_directory_is_rejected() {
