@@ -28,6 +28,7 @@ pub mod lifecycle;
 pub mod logging;
 pub mod memory;
 pub mod pe_image;
+pub mod pe_timer_imports;
 pub mod platform;
 pub mod rpc;
 pub mod runtime;
