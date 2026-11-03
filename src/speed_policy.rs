@@ -85,7 +85,9 @@ fn bottle_key(name: &str) -> Result<String, SpeedProfileError> {
     Ok(name.to_ascii_lowercase())
 }
 
-pub(crate) fn game_path_key(path: &str) -> Result<String, SpeedProfileError> {
+/// Canonical, drive-qualified Windows executable identity shared by the
+/// native Bottles manager and its Windows attach helper.
+pub fn game_path_key(path: &str) -> Result<String, SpeedProfileError> {
     let text = path.trim();
     let mut chars = text.chars();
     let drive = chars
