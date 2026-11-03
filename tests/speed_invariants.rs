@@ -1,10 +1,8 @@
 //! Seeded, deterministic invariant checks. Pure model only: no process hooks.
+use intimatr::{speed::VirtualClock, speed_config::SharedSpeedConfig, speed_timers::WindowsTimers};
 use std::{
     sync::{Arc, Mutex},
     thread,
-};
-use intimatr::{
-    speed::VirtualClock, speed_config::SharedSpeedConfig, speed_timers::WindowsTimers,
 };
 
 #[derive(Clone, Copy)]
@@ -69,7 +67,10 @@ fn all_four_timer_domains_preserve_wrap_epoch_and_monotonicity() {
             real
         };
         let before = timers.sample(at);
-        assert!(before.performance_counter >= prev.performance_counter, "QPC {i}");
+        assert!(
+            before.performance_counter >= prev.performance_counter,
+            "QPC {i}"
+        );
         assert!(before.tick_count64 >= prev.tick_count64, "tick64 {i}");
         if n % 5 == 0 {
             let rate = RATES[(n as usize / 5) % RATES.len()];
@@ -124,10 +125,9 @@ fn six_serialized_reader_threads_preserve_clock_order_under_rate_updates() {
 
 #[test]
 fn invalid_configurations_cannot_replace_the_last_valid_profile() {
-    let valid = SharedSpeedConfig::parse(
-        "version = 1\n[speed]\nenabled = true\nsteps = [0.5, 1.0, 2.0]\n",
-    )
-    .unwrap();
+    let valid =
+        SharedSpeedConfig::parse("version = 1\n[speed]\nenabled = true\nsteps = [0.5, 1.0, 2.0]\n")
+            .unwrap();
     let original = valid.clone();
     for entry in [
         "steps = [1.0, 1.0]",
