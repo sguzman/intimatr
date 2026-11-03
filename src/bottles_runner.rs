@@ -97,6 +97,28 @@ pub fn audit_runner_metadata(input: &str, bottle: &str) -> Result<RunnerAudit, S
     })
 }
 
+/// Require a user-selected absolute Wine binary instead of PATH lookup.
+/// Executability is not proof that the binary belongs to the selected bottle.
+pub fn validate_explicit_wine_runner_arg(value: &str) -> Result<(), String> {
+    if value.trim().is_empty() || !Path::new(value).is_absolute() {
+        return Err("Wine runner must be an absolute executable path, not a PATH command".into());
+    }
+    Ok(())
+}
+
+/// Resolve symlinks and require a regular executable before any Wine spawn.
+pub fn resolve_explicit_wine_binary(value: &str) -> Result<PathBuf, String> {
+    validate_explicit_wine_runner_arg(value)?;
+    let resolved = fs::canonicalize(value)
+        .map_err(|error| format!("cannot resolve explicit Wine runner: {error}"))?;
+    let metadata = fs::metadata(&resolved)
+        .map_err(|error| format!("cannot inspect explicit Wine runner: {error}"))?;
+    if !metadata.is_file() || metadata.permissions().mode() & 0o111 == 0 {
+        return Err("explicit Wine runner must be an executable regular file".into());
+    }
+    Ok(resolved)
+}
+
 /// For a specific explicit executable, compare a *recorded* external path.
 /// Wine runners may also be selected using a global external-runner mapping,
 /// which the per-bottle CLI output does not expose: never infer that map.
@@ -218,6 +240,38 @@ mod tests {
             assert!(audit_runner_metadata(input, "B").is_err());
         }
         assert!(audit_runner_metadata(r#"{"A":{}}"#, "B").is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn explicit_wine_binary_rejects_path_lookup_and_nonexecutables() {
+        use std::{os::unix::fs::symlink, sync::atomic::{AtomicUsize, Ordering}};
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
+        let root = std::env::temp_dir().join(format!(
+            "intimatr-explicit-wine-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        fs::create_dir_all(&root).unwrap();
+        let binary = root.join("patched wine");
+        fs::write(&binary, "test wine").unwrap();
+        for invalid in ["", "wine", "wine64", "./wine", "../wine", "bin/wine"] {
+            assert!(validate_explicit_wine_runner_arg(invalid).is_err());
+            assert!(resolve_explicit_wine_binary(invalid).is_err());
+        }
+        assert!(resolve_explicit_wine_binary(binary.to_str().unwrap()).is_err());
+        let mut permissions = fs::metadata(&binary).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&binary, permissions).unwrap();
+        let alias = root.join("alias");
+        symlink(&binary, &alias).unwrap();
+        assert_eq!(
+            resolve_explicit_wine_binary(alias.to_str().unwrap()).unwrap(),
+            fs::canonicalize(&binary).unwrap()
+        );
+        assert!(resolve_explicit_wine_binary(root.to_str().unwrap()).is_err());
+        assert!(resolve_explicit_wine_binary(root.join("missing").to_str().unwrap()).is_err());
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[cfg(unix)]

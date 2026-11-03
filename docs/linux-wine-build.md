@@ -159,7 +159,7 @@ A Linux CI fixture spawns a harmless same-user process with an isolated `WINEPRE
 The Windows PE helper [wine-process-list.rs](../src/bin/wine-process-list.rs) uses the Win32 ToolHelp **process snapshot API** to enumerate Windows PIDs and reported image names in its own Wine process namespace. Where permissions allow, it also queries the complete Windows image path. The Linux CLI runs that *read-only* helper explicitly under the selected initialized `WINEPREFIX`:
 
 ```fish
-intimatr-bottles win-processes --prefix /path/to/your/prefix --helper /path/to/wine-process-list.exe --runner wine
+intimatr-bottles win-processes --prefix /path/to/your/prefix --helper /path/to/wine-process-list.exe --runner /absolute/path/to/wine
 ```
 
 Output is bounded JSON with `windows_pid`, `reported_executable`, `full_image_path`, `image_query_verified`, and `safe_to_attach: false`. A missing full image path is reported as unknown, not reconstructed from the executable basename. The Linux CLI validates the helper's exact filename, process-list JSON shape and `attachment_attempted: false` marker before displaying it. The helper **does not inject, load Intimatr, or change processes**.
@@ -178,7 +178,7 @@ Once a matching native Linux CLI and read-only Wine process-list helper have bee
 
 ```fish
 intimatr-bottles processes --prefix /absolute/prefix/path
-intimatr-bottles win-processes --prefix /absolute/prefix/path --helper /absolute/wine-process-list.exe --runner wine
+intimatr-bottles win-processes --prefix /absolute/prefix/path --helper /absolute/wine-process-list.exe --runner /absolute/path/to/wine
 ```
 
 The first command lists same-user **Linux** PIDs with the requested environment prefix but leaves Windows PIDs unknown. The second starts an intentionally read-only Windows PE helper in that prefix and lists **Windows** PIDs, image names and queryable complete Windows paths. One does not establish a mapping to the other. To compare a saved Windows PID report with Bottles' registered programs in a *single selected bottle*, first save the native `bottles-cli --json programs -b 'Bottle Name'` JSON to a file, then run:
@@ -349,3 +349,11 @@ The native `intimatr-bottles` binary retains its existing subcommands but no lon
 - `live_match.rs`: scoped native Bottles inventory, runner and prefix audit, live Windows process matching, and attachment-readiness reporting.
 
 These modules use ordinary Rust module boundaries, not source-code includes or a generated monolithic file. The extraction preserves command flags and JSON contracts, including `safe_to_attach=false` for all live-game reviews. Module-only Rust tests moved with their code. The structure change does **not** constitute a verified game attach. Strict Linux/Windows formatting, Clippy, unit and Wine integration CI results were pending at this checkpoint; expansion stays **16/100 (previous 16, Δ +0 pp)**.
+
+## 2026-11-03 — Pin Wine by absolute executable path
+
+The Linux `win-processes`, `live-match`, and fixture-only `probe-attach` commands now require `--runner` to point to an **absolute, existing, executable file**. A bare `--runner wine` or `--runner wine64` is rejected even if it resolves on `PATH`, avoiding accidental substitution of the host's Wine for a patched Bottles runner. Existing symlink aliases canonicalize to their target file; missing, directory and non-executable paths fail before Wine is launched. Absolute paths containing spaces are supported.
+
+`live-match` separately emits `runner_binary` and `runner_binary_verified=true` to report the resolved file. This is **not** the same as `runner_verified` on the Bottles audit: an executable's existence does not establish that the game/bottle actually used it. The CLI has no general game loader, and this guard does not authorize attachment.
+
+For disposable CI tests, the absolute system Wine is obtained from `command -v wine`. For an actual Bottles game, supply the executable belonging to its selected patched runner rather than relying on `PATH`. CI for this hardening is pending; expansion stays **16/100 (previous 16, Δ +0 pp)**.

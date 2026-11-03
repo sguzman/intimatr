@@ -179,8 +179,8 @@ jobs:
           test -s target/wine-namespace/b/attach-target.pid
           pid_a="$(cat target/wine-namespace/a/attach-target.pid)"
           pid_b="$(cat target/wine-namespace/b/attach-target.pid)"
-          target/release/intimatr-bottles win-processes --prefix "$prefix_a" --helper target/wine-namespace/wine-process-list.exe --runner wine > target/wine-namespace/a.json
-          target/release/intimatr-bottles win-processes --prefix "$prefix_b" --helper target/wine-namespace/wine-process-list.exe --runner wine > target/wine-namespace/b.json
+          target/release/intimatr-bottles win-processes --prefix "$prefix_a" --helper target/wine-namespace/wine-process-list.exe --runner "$(command -v wine)" > target/wine-namespace/a.json
+          target/release/intimatr-bottles win-processes --prefix "$prefix_b" --helper target/wine-namespace/wine-process-list.exe --runner "$(command -v wine)" > target/wine-namespace/b.json
           # Full image paths distinguish identical basenames across prefixes;
           # numerical Windows PIDs can collide between independent sessions.
           image_a="$(jq -r --argjson pid "$pid_a" '[.processes[] | select(.windows_pid == $pid) | .full_image_path // empty] | first // empty' target/wine-namespace/a.json)"
@@ -219,7 +219,7 @@ jobs:
           target/release/intimatr-bottles win-processes \
             --prefix "$WINEPREFIX" \
             --helper target/wine-attach/wine-process-list.exe \
-            --runner wine > target/wine-attach/windows-pids.json
+            --runner "$(command -v wine)" > target/wine-attach/windows-pids.json
           grep -q "\"windows_pid\": $windows_pid" target/wine-attach/windows-pids.json
           # The target itself is a Linux-cross-built x86-64 PE executable.
           # A file-header match does not prove that generic Wine games are
@@ -268,7 +268,7 @@ jobs:
           target/release/intimatr-bottles live-match \
             --bottle Fixture \
             --helper target/wine-attach/wine-process-list.exe \
-            --runner wine \
+            --runner "$(command -v wine)" \
             --bottles-cli target/wine-attach/mocks/bottles-cli > target/wine-attach/live-match.json
           grep -q "\"windows_pid\": $windows_pid" target/wine-attach/live-match.json
           grep -q '"operation": "read_only_live_bottles_wine_match"' target/wine-attach/live-match.json
@@ -283,6 +283,17 @@ jobs:
             exit 1
           fi
           grep -q 'missing --runner' target/wine-attach/missing-runner.stderr
+          # Explicit Wine selection cannot silently fall back to PATH lookup.
+          if target/release/intimatr-bottles live-match \
+            --bottle Fixture \
+            --helper target/wine-attach/wine-process-list.exe \
+            --runner wine \
+            --bottles-cli target/wine-attach/mocks/bottles-cli 2> target/wine-attach/relative-runner.stderr; then
+            echo "ERROR: unpinned PATH Wine runner was accepted" >&2
+            exit 1
+          fi
+          grep -q 'absolute executable path' target/wine-attach/relative-runner.stderr
+          grep -q '"runner_binary_verified": true' target/wine-attach/live-match.json
           grep -q '"runner_verified": false' target/wine-attach/live-match.json
           grep -q '"configured_runner_name": "test-wine"' target/wine-attach/live-match.json
           grep -q '"bottle_architecture": "win64"' target/wine-attach/live-match.json
@@ -298,7 +309,7 @@ jobs:
             --bottle Fixture \
             --prefix "$RUNNER_TEMP/Other" \
             --helper target/wine-attach/wine-process-list.exe \
-            --runner wine \
+            --runner "$(command -v wine)" \
             --bottles-cli target/wine-attach/mocks/bottles-cli 2> target/wine-attach/wrong-prefix.stderr; then
             echo "ERROR: mismatched bottle and prefix were accepted" >&2
             exit 1
@@ -309,7 +320,7 @@ jobs:
             --bottle Missing \
             --prefix "$WINEPREFIX" \
             --helper target/wine-attach/wine-process-list.exe \
-            --runner wine \
+            --runner "$(command -v wine)" \
             --bottles-cli target/wine-attach/mocks/bottles-cli 2> target/wine-attach/missing-bottle.stderr; then
             echo "ERROR: a nonexistent bottle was accepted" >&2
             exit 1
@@ -330,7 +341,7 @@ jobs:
           target/release/intimatr-bottles live-match \
             --bottle Fixture \
             --helper target/wine-attach/wine-process-list.exe \
-            --runner wine \
+            --runner "$(command -v wine)" \
             --bottles-cli target/wine-attach/mocks/bottles-cli \
             --pid "$windows_pid" --exe "$observed_path" > target/wine-attach/selected-preflight.json
           jq -e --argjson pid "$windows_pid" '.selected_candidate | select(
@@ -365,7 +376,7 @@ jobs:
           target/release/intimatr-bottles live-match \
             --bottle Fixture \
             --helper target/wine-attach/wine-process-list.exe \
-            --runner wine \
+            --runner "$(command -v wine)" \
             --bottles-cli target/wine-attach/mocks/bottles-cli \
             --pid 4294967295 --exe "$observed_path" > target/wine-attach/missing-pid-preflight.json
           jq -e '.selected_candidate | select(
@@ -378,7 +389,7 @@ jobs:
           target/release/intimatr-bottles live-match \
             --bottle Fixture \
             --helper target/wine-attach/wine-process-list.exe \
-            --runner wine \
+            --runner "$(command -v wine)" \
             --bottles-cli target/wine-attach/mocks/bottles-cli \
             --pid "$windows_pid" --exe 'C:\\Different\\Wrong.exe' > target/wine-attach/wrong-path-preflight.json
           jq -e '.selected_candidate | select(
@@ -423,7 +434,7 @@ jobs:
             --pid "$decoy_pid" \
             --prefix "$WINEPREFIX" \
             --helper target/wine-attach/wine-attach-helper.exe \
-            --runner wine > target/wine-attach/decoy-attach.stdout 2> target/wine-attach/decoy-attach.stderr; then
+            --runner "$(command -v wine)" > target/wine-attach/decoy-attach.stdout 2> target/wine-attach/decoy-attach.stderr; then
             echo "ERROR: unrelated same-basename Wine process received an attach" >&2
             exit 1
           fi
@@ -449,13 +460,13 @@ jobs:
             --pid "$windows_pid" \
             --prefix "$WINEPREFIX" \
             --helper target/wine-attach/wine-attach-helper.exe \
-            --runner wine > target/wine-attach/race-1.stdout 2> target/wine-attach/race-1.stderr &
+            --runner "$(command -v wine)" > target/wine-attach/race-1.stdout 2> target/wine-attach/race-1.stderr &
           contender_one=$!
           target/release/intimatr-bottles probe-attach \
             --pid "$windows_pid" \
             --prefix "$WINEPREFIX" \
             --helper target/wine-attach/wine-attach-helper.exe \
-            --runner wine > target/wine-attach/race-2.stdout 2> target/wine-attach/race-2.stderr &
+            --runner "$(command -v wine)" > target/wine-attach/race-2.stdout 2> target/wine-attach/race-2.stderr &
           contender_two=$!
           if wait "$contender_one"; then success_one=1; else success_one=0; fi
           if wait "$contender_two"; then success_two=1; else success_two=0; fi
@@ -483,7 +494,7 @@ jobs:
             --pid "$windows_pid" \
             --prefix "$WINEPREFIX" \
             --helper target/wine-attach/wine-attach-helper.exe \
-            --runner wine > target/wine-attach/duplicate.stdout 2> target/wine-attach/duplicate.stderr; then
+            --runner "$(command -v wine)" > target/wine-attach/duplicate.stdout 2> target/wine-attach/duplicate.stderr; then
             echo "ERROR: duplicate attach was unexpectedly accepted" >&2
             exit 1
           fi

@@ -71,12 +71,14 @@ impl LiveMatchOptions {
         {
             return Err("expected a native bottles-cli executable".into());
         }
+        let runner =
+            runner.ok_or("missing --runner: select the explicit Wine binary for this bottle")?;
+        intimatr::bottles_runner::validate_explicit_wine_runner_arg(&runner)?;
         Ok(Self {
             bottle,
             prefix,
             helper: helper.ok_or("missing --helper")?,
-            runner: runner
-                .ok_or("missing --runner: select the explicit Wine binary for this bottle")?,
+            runner,
             bottles_cli,
             selected_pid,
             selected_executable,
@@ -92,7 +94,9 @@ pub(super) fn run_live_match(args: Vec<String>) -> Result<(), String> {
         bottles_live_matches::match_registered_programs,
         bottles_prefix::verify_bottle_prefix,
         bottles_preflight::assess_explicit_candidate,
-        bottles_runner::{audit_recorded_runner, audit_runner_metadata},
+        bottles_runner::{
+            audit_recorded_runner, audit_runner_metadata, resolve_explicit_wine_binary,
+        },
     };
 
     let options = LiveMatchOptions::parse(&args)?;
@@ -124,8 +128,9 @@ pub(super) fn run_live_match(args: Vec<String>) -> Result<(), String> {
         });
     let ownership =
         verify_bottle_prefix(&configured_bottles_root, &options.bottle, &selected_prefix)?;
+    let verified_runner = resolve_explicit_wine_binary(&options.runner)?;
     let mut runner_audit = audit_runner_metadata(&bottle_list_json, &options.bottle)?;
-    audit_recorded_runner(&mut runner_audit, std::path::Path::new(&options.runner))?;
+    audit_recorded_runner(&mut runner_audit, &verified_runner)?;
     let programs = parse_registered_programs(&bottles_json_with_command(
         &options.bottles_cli,
         &["programs", "-b", &options.bottle],
@@ -134,7 +139,7 @@ pub(super) fn run_live_match(args: Vec<String>) -> Result<(), String> {
     let (prefix, snapshot) = query_windows_process_snapshot(&WindowsProcessesOptions {
         prefix: selected_prefix.to_string_lossy().into_owned(),
         helper: options.helper,
-        runner: options.runner,
+        runner: verified_runner.to_string_lossy().into_owned(),
     })?;
     let preview = match_registered_programs(
         &BottleInventory {
@@ -161,6 +166,8 @@ pub(super) fn run_live_match(args: Vec<String>) -> Result<(), String> {
             "bottle_prefix_association_verified": ownership.bottle_prefix_association_verified,
             "configured_bottles_root": ownership.canonical_bottles_root,
             "runner_verified": runner_audit.runner_path_verified,
+            "runner_binary": verified_runner,
+            "runner_binary_verified": true,
             "runner_audit": runner_audit,
             "game_process_identity_verified": ownership.game_process_identity_verified,
             "windows_process_count": snapshot.processes.len(),
@@ -190,6 +197,7 @@ mod live_match_tests {
             args(&["--bottle", "Games", "--helper", "wine-process-list.exe"]),
             args(&["--bottle", "Games", "--prefix", "/tmp"]),
             args(&["--helper", "wine-process-list.exe"]),
+            args(&["--bottle", "Games", "--helper", "helper.exe", "--runner", "wine"]),
             args(&[
                 "--bottle",
                 "Games",

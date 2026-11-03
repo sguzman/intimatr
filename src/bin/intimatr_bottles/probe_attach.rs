@@ -37,12 +37,13 @@ impl ProbeAttachOptions {
                 _ => return Err(format!("duplicate or unsupported option {flag}")),
             }
         }
+        let runner = runner.ok_or("missing --runner: select explicit Wine binary for this prefix")?;
+        intimatr::bottles_runner::validate_explicit_wine_runner_arg(&runner)?;
         Ok(Self {
             pid: pid.ok_or("missing --pid")?,
             prefix: prefix.ok_or("missing --prefix")?,
             helper: helper.ok_or("missing --helper")?,
-            runner: runner
-                .ok_or("missing --runner: select explicit Wine binary for this prefix")?,
+            runner,
         })
     }
 }
@@ -77,7 +78,8 @@ pub(super) fn run_probe_attach(args: Vec<String>) -> Result<(), String> {
     }
     // The helper itself checks the Windows target image and refuses every PID
     // whose executable is not our disposable wine-attach-target.exe fixture.
-    let result = Command::new(&opts.runner)
+    let verified_runner = intimatr::bottles_runner::resolve_explicit_wine_binary(&opts.runner)?;
+    let result = Command::new(&verified_runner)
         .arg(&helper)
         .arg(opts.pid.to_string())
         .env("WINEPREFIX", &prefix)
@@ -133,6 +135,7 @@ mod probe_tests {
                 "--pid", "garbage", "--prefix", "/tmp", "--helper", "test.exe",
             ]),
             args(&["--pid", "3", "--prefix", "/tmp"]),
+            args(&["--pid", "3", "--prefix", "/tmp", "--helper", "test.exe", "--runner", "wine"]),
             args(&[
                 "--pid", "3", "--prefix", "/tmp", "--helper", "test.exe", "--pid", "4",
             ]),

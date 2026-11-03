@@ -45,7 +45,7 @@ fn run() -> Result<(), String> {
     let action = args.next().unwrap_or_default();
     if action == "--help" || action == "-h" {
         println!(
-            "Usage:\n  intimatr-bottles scan\n  intimatr-bottles plan (--all | --include-bottle GLOB | --include-program GLOB) [--exclude-bottle GLOB] [--exclude-program GLOB]\n  intimatr-bottles probe-attach --pid PID --prefix WINEPREFIX --helper PATH --runner EXPLICIT_WINE_BINARY\n  intimatr-bottles profile-check --config TOML --bottle NAME --exe WINDOWS_PATH\n  intimatr-bottles processes --prefix INITIALIZED_WINEPREFIX\n  intimatr-bottles win-processes --prefix INITIALIZED_WINEPREFIX --helper WINE_PROCESS_LIST_EXE --runner EXPLICIT_WINE_BINARY\n  intimatr-bottles match-snapshot --bottle NAME --programs BOTTLES_JSON --windows WINE_PROCESS_JSON\n  intimatr-bottles live-match --bottle NAME --helper WINE_PROCESS_LIST_EXE --runner EXPLICIT_WINE_BINARY [--prefix WINEPREFIX] [--bottles-cli BOTTLES_CLI] [--pid WINDOWS_PID --exe EXACT_WINDOWS_PATH]\n  intimatr-bottles speed --prefix INITIALIZED_WINEPREFIX --runner ABSOLUTE_WINE --client ABSOLUTE_INTIMATR_SPEED_EXE (--tcp LOOPBACK:PORT | --pipe NAME) (status | increase | decrease | toggle | reset | preset MULTIPLIER | hold MULTIPLIER DURATION_MS | release)\n\nscan and plan are read-only. probe-attach runs only the strictly allowlisted offline Wine test helper; it cannot attach a real game."
+            "Usage:\n  intimatr-bottles scan\n  intimatr-bottles plan (--all | --include-bottle GLOB | --include-program GLOB) [--exclude-bottle GLOB] [--exclude-program GLOB]\n  intimatr-bottles probe-attach --pid PID --prefix WINEPREFIX --helper PATH --runner ABSOLUTE_WINE_BINARY\n  intimatr-bottles profile-check --config TOML --bottle NAME --exe WINDOWS_PATH\n  intimatr-bottles processes --prefix INITIALIZED_WINEPREFIX\n  intimatr-bottles win-processes --prefix INITIALIZED_WINEPREFIX --helper WINE_PROCESS_LIST_EXE --runner ABSOLUTE_WINE_BINARY\n  intimatr-bottles match-snapshot --bottle NAME --programs BOTTLES_JSON --windows WINE_PROCESS_JSON\n  intimatr-bottles live-match --bottle NAME --helper WINE_PROCESS_LIST_EXE --runner ABSOLUTE_WINE_BINARY [--prefix WINEPREFIX] [--bottles-cli BOTTLES_CLI] [--pid WINDOWS_PID --exe EXACT_WINDOWS_PATH]\n  intimatr-bottles speed --prefix INITIALIZED_WINEPREFIX --runner ABSOLUTE_WINE --client ABSOLUTE_INTIMATR_SPEED_EXE (--tcp LOOPBACK:PORT | --pipe NAME) (status | increase | decrease | toggle | reset | preset MULTIPLIER | hold MULTIPLIER DURATION_MS | release)\n\nscan and plan are read-only. probe-attach runs only the strictly allowlisted offline Wine test helper; it cannot attach a real game."
         );
         return Ok(());
     }
@@ -225,11 +225,13 @@ impl WindowsProcessesOptions {
                 _ => return Err(format!("unsupported or repeated option {flag}")),
             }
         }
+        let runner =
+            runner.ok_or("missing --runner: use the Wine binary selected for this prefix")?;
+        intimatr::bottles_runner::validate_explicit_wine_runner_arg(&runner)?;
         Ok(Self {
             prefix: prefix.ok_or("missing --prefix")?,
             helper: helper.ok_or("missing --helper")?,
-            runner: runner
-                .ok_or("missing --runner: use the Wine binary selected for this prefix")?,
+            runner,
         })
     }
 }
@@ -272,7 +274,8 @@ fn query_windows_process_snapshot(
     {
         return Err("expected exactly wine-process-list.exe".into());
     }
-    let result = Command::new(&opts.runner)
+    let verified_runner = intimatr::bottles_runner::resolve_explicit_wine_binary(&opts.runner)?;
+    let result = Command::new(&verified_runner)
         .arg(helper)
         .env("WINEPREFIX", &prefix)
         .env("WINEDEBUG", "-all")
@@ -313,6 +316,7 @@ mod windows_processes_tests {
             args(&["--prefix", "/tmp"]),
             args(&["--helper", "wine-process-list.exe"]),
             args(&["--prefix", "/tmp", "--helper", "wine-process-list.exe"]),
+            args(&["--prefix", "/tmp", "--helper", "test.exe", "--runner", "wine"]),
             args(&[
                 "--prefix",
                 "/tmp",

@@ -357,3 +357,7 @@ Read-only candidate assessment and readiness now distinguish `pid_observed_in_se
 ### 🧱 Linux controller modularity checkpoint — 2026-11-02
 
 Moved fixture-only attach, read-only profile-check, snapshot-match and live-match into independent `src/bin/intimatr_bottles/` command modules with their tests, preserving the CLI dispatcher and shared inventory/probe helpers. This is a responsibility-boundary refactor, not a line-count quota. It carries **no additional verified expansion points** while INT-1403/1407 require real-game proof. CI pending for modularized revision; **16/100 (previous 16, Δ +0 pp)**.
+
+### 🔐 Explicit absolute runner for Wine probes and fixture-only loading — 2026-11-03
+
+The Linux Wine PID probe, read-only Bottles live matcher, and disposable-fixture attach now refuse `--runner wine` / other relative commands. They require an existing executable absolute path and resolve symlinks before launch, without conflating file presence with Bottles runner ownership. Added unit coverage for relative/nonexistent/directory/nonexecutable runner and symlink alias, plus Wine CI relative-runner refusal. Full native Bottles runner QA remains open; **16/100 (previous 16, Δ +0 pp)**.
