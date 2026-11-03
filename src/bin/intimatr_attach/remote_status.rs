@@ -247,9 +247,9 @@ mod tests {
     #[test]
     fn bootstrap_status_is_not_module_presence() {
         for code in 0..=2 {
-            assert_eq!(classify(code).unwrap(), false);
+            assert!(!classify(code).unwrap());
         }
-        assert_eq!(classify(3).unwrap(), true);
+        assert!(classify(3).unwrap());
         for code in [4, 5, 6, 7, u32::MAX] {
             assert!(classify(code).is_err());
         }
