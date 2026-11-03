@@ -573,6 +573,7 @@ jobs:
             --runner "$(command -v wine)"
             --bottles-cli target/wine-attach/mocks/bottles-cli
             --pid "$game_pid" --exe "$game_image"
+            --created-100ns "$game_created"
           )
           # No accidental remote load without the explicit acknowledgement.
           if XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles attach-game "${game_args[@]}" >target/wine-attach/game-missing-consent.stdout 2>target/wine-attach/game-missing-consent.stderr; then
@@ -588,11 +589,27 @@ jobs:
             --runner "$(command -v wine)" \
             --bottles-cli target/wine-attach/mocks/bottles-cli \
             --pid "$game_pid" --exe 'C:\\Games\\Wrong.exe' \
+            --created-100ns "$game_created" \
             --offline-single-player >target/wine-attach/game-wrong-path.stdout 2>target/wine-attach/game-wrong-path.stderr; then
             echo "ERROR: incorrect game image was attached" >&2
             exit 1
           fi
           grep -q 'candidate PID/image/architecture was not verified' target/wine-attach/game-wrong-path.stderr
+          # The operator's previously selected process generation must also
+          # match today's fresh snapshot; PID+path alone is insufficient.
+          if XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles attach-game \
+            --bottle Fixture \
+            --helper target/wine-attach/wine-process-list.exe \
+            --attach-helper "$(pwd)/target/wine-attach/wine-game-attach-helper.exe" \
+            --runner "$(command -v wine)" \
+            --bottles-cli target/wine-attach/mocks/bottles-cli \
+            --pid "$game_pid" --exe "$game_image" \
+            --created-100ns "$((game_created + 1))" --offline-single-player \
+            >target/wine-attach/game-stale-selection.stdout 2>target/wine-attach/game-stale-selection.stderr; then
+            echo "ERROR: stale operator-selected game identity was accepted" >&2
+            exit 1
+          fi
+          grep -q 'selected process creation time differs' target/wine-attach/game-stale-selection.stderr
           # The same PID and identical image with a wrong process generation
           # must be refused by the Windows helper before remote DLL loading.
           bad_created="$((game_created + 1))"

@@ -394,3 +394,16 @@ The read-only `wine-process-list.exe` now captures the Windows `GetProcessTimes`
 `attach-game` refuses a game when this creation identity is missing. It forwards the exact snapshot creation time to the dedicated Windows game helper as `--created-100ns`, which opens the chosen PID and rechecks creation time on the held process HANDLE both before and after acquiring the existing attach mutex. Thus a recycled PID with the same executable path cannot silently pass. The fixture-only loader remains unchanged and does not require this game-only argument. A Linux/Wine regression supplies a deliberately incorrect generation for the still-running disposable target and requires refusal before the positive attachment.
 
 This addresses a distinct PID reuse hazard but **does not** demonstrate gameplay speed control, completeness of protection checks, or safe production hook shutdown. The read-only readiness report continues to set `safe_to_attach=false`. Native Bottles real-game QA remains outstanding; expansion **16/100 (previous 16, Δ +0 pp)** until full roadmap acceptance.
+
+### Explicit selected-process generation (2026-11-03)
+
+For a mutable `attach-game` request, the user must supply **three** selectors taken from `live-match`: `--pid`, `--exe`, and `--created-100ns` (the decimal string in `selected_candidate.process_creation_time_100ns`). The controller obtains a new Wine snapshot and refuses if the selected creation timestamp differs, even when the Windows PID and executable path match. The helper independently compares the same creation stamp on its held Windows handle before writing memory. This closes both the operator-selection-to-snapshot and snapshot-to-load PID-reuse windows as far as the exposed Windows creation identity supports. Never guess the stamp or turn it into a floating-point JSON number.
+
+Example additional flag for the previously documented `attach-game` command:
+
+```fish
+  --pid WINDOWS_PID --exe 'C:\Games\Offline.exe' \
+  --created-100ns 'FILETIME_FROM_LIVE_MATCH' --offline-single-player
+```
+
+The previous two-selector example is now intentionally rejected by `attach-game`. This does not alter the read-only `live-match` command or the fixture-only loader. Real-game speed and shutdown proof remain unfinished. **Verified expansion 16/100 (previous 16, Δ +0 pp).**

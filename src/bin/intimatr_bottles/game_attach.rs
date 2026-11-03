@@ -10,12 +10,14 @@ use super::live_match::inspect_live_selection;
 struct GameAttachOptions {
     live_args: Vec<String>,
     attach_helper: String,
+    expected_creation_time_100ns: String,
 }
 
 impl GameAttachOptions {
     fn parse(args: &[String]) -> Result<Self, String> {
         let mut live_args = Vec::new();
         let mut attach_helper = None;
+        let mut expected_creation_time_100ns = None;
         let mut consent = false;
         let mut iter = args.iter();
         while let Some(arg) = iter.next() {
@@ -34,6 +36,17 @@ impl GameAttachOptions {
                     attach_helper = Some(path.clone());
                 }
                 "--attach-helper" => return Err("duplicate --attach-helper".into()),
+                "--created-100ns" if expected_creation_time_100ns.is_none() => {
+                    let value = iter.next().ok_or("missing --created-100ns value")?;
+                    let parsed = value
+                        .parse::<u64>()
+                        .map_err(|_| "invalid selected process creation time")?;
+                    if parsed == 0 || parsed.to_string() != *value {
+                        return Err("selected process creation time must be a canonical positive FILETIME".into());
+                    }
+                    expected_creation_time_100ns = Some(value.clone());
+                }
+                "--created-100ns" => return Err("duplicate --created-100ns".into()),
                 _ => live_args.push(arg.clone()),
             }
         }
@@ -41,6 +54,8 @@ impl GameAttachOptions {
             return Err("explicit --offline-single-player acknowledgment is required".into());
         }
         let attach_helper = attach_helper.ok_or("missing --attach-helper")?;
+        let expected_creation_time_100ns = expected_creation_time_100ns
+            .ok_or("attach-game requires --created-100ns from the selected live-match report")?;
         if !live_args.iter().any(|arg| arg == "--pid")
             || !live_args.iter().any(|arg| arg == "--exe")
         {
@@ -51,6 +66,7 @@ impl GameAttachOptions {
         Ok(Self {
             live_args,
             attach_helper,
+            expected_creation_time_100ns,
         })
     }
 }
@@ -92,6 +108,9 @@ pub(super) fn run_game_attach(args: Vec<String>) -> Result<(), String> {
         .process_creation_time_100ns
         .as_deref()
         .ok_or("cannot verify selected game process creation time in Wine snapshot")?;
+    if creation != options.expected_creation_time_100ns {
+        return Err("selected process creation time differs from the fresh Wine snapshot".into());
+    }
     if !candidate.registered_identity_verified_at_snapshot
         || !candidate.pid_observed_in_selected_wineserver_snapshot
         || !candidate.image_observed_in_selected_wineserver_snapshot
@@ -187,6 +206,31 @@ mod tests {
     }
 
     #[test]
+    fn refuses_missing_duplicate_and_malformed_process_generation_selectors() {
+        let base = [
+            "--attach-helper", "/tmp/wine-game-attach-helper.exe",
+            "--bottle", "Games", "--pid", "42",
+            "--exe", r"C:\Games\Game.exe",
+        ];
+        for invalid in ["0", "-1", "1.5", "0001", "18446744073709551616"] {
+            let mut values = args(&base);
+            values.extend(args(&["--created-100ns", invalid, "--offline-single-player"]));
+            assert!(GameAttachOptions::parse(&values).is_err());
+        }
+        let mut missing = args(&base);
+        missing.push("--offline-single-player".into());
+        assert!(GameAttachOptions::parse(&missing).is_err());
+
+        let mut duplicated = args(&base);
+        duplicated.extend(args(&[
+            "--created-100ns", "133700000000000001",
+            "--created-100ns", "133700000000000001",
+            "--offline-single-player",
+        ]));
+        assert!(GameAttachOptions::parse(&duplicated).is_err());
+    }
+
+    #[test]
     fn retains_exact_selected_candidate_flags_without_implicit_selection() {
         let parsed = GameAttachOptions::parse(&args(&[
             "--attach-helper",
@@ -197,10 +241,13 @@ mod tests {
             "42",
             "--exe",
             r"C:\Games\Game.exe",
+            "--created-100ns",
+            "133700000000000001",
             "--offline-single-player",
         ]))
         .unwrap();
         assert_eq!(parsed.attach_helper, "/tmp/wine-game-attach-helper.exe");
+        assert_eq!(parsed.expected_creation_time_100ns, "133700000000000001");
         assert_eq!(
             parsed.live_args,
             args(&[
