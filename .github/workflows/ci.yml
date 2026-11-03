@@ -185,18 +185,13 @@ jobs:
             .windows_pid == $pid and .pe_image_verified == true
             and .pe_image_architecture == "x86_64"
           )' target/wine-attach/windows-pids.json > /dev/null
-          # The IsWow64Process2 API is optional across Wine runners.
-          # Assert a verified result is consistent with the known x64
-          # fixture, but retain explicit unknowns when unsupported.
+          # The x64 fixture remote loader now requires verified live process
+          # machine evidence. A Wine runner without IsWow64Process2 must fail
+          # closed, rather than silently accept an assumed target bitness.
           jq -e --argjson pid "$windows_pid" '.processes[] | select(
-            .windows_pid == $pid and (
-              if .process_architecture_verified then
-                .process_architecture == "x86_64"
-                and .process_architecture_source == "is_wow64_process2"
-              else
-                .process_architecture == null and .process_architecture_source == null
-              end
-            )
+            .windows_pid == $pid and .process_architecture_verified == true
+            and .process_architecture == "x86_64"
+            and .process_architecture_source == "is_wow64_process2"
           )' target/wine-attach/windows-pids.json > /dev/null
           echo "Wine live-process machine query: $(jq -r --argjson pid "$windows_pid" '.processes[] | select(.windows_pid == $pid) | (.process_architecture // "unavailable")' target/wine-attach/windows-pids.json)"
           grep -q '"attachment_attempted": false' target/wine-attach/windows-pids.json
