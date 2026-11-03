@@ -18,6 +18,7 @@ use std::{
 };
 
 use crate::{
+    lifecycle::LifecycleState,
     speed_config::SpeedSettings,
     speed_hook_lifecycle::CallbackTracker,
     speed_session::{SpeedAction, SpeedSession},
@@ -505,6 +506,14 @@ fn enable_probe_with_fault(fail_after: Option<usize>) -> bool {
     let Ok(mut guard) = hooks().lock() else {
         return false;
     };
+    // Check while holding the hook lock: shutdown requests the gate before
+    // acquiring this same lock for restoration. Re-activation after a
+    // completed or in-progress shutdown must never resurrect IAT callbacks.
+    if crate::runtime::shutdown_requested()
+        || crate::runtime::lifecycle_state() != LifecycleState::Running
+    {
+        return false;
+    }
     if let Some(active) = guard.as_ref() {
         return fully_installed_hook_set(&active.slots);
     }

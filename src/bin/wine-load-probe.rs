@@ -714,7 +714,15 @@ mod windows_probe {
         if unsafe { state() } != 5 {
             return Err("Intimatr did not reach Stopped after shutdown".into());
         }
-        println!("Intimatr stopped cleanly before unload");
+        // The callback code deliberately stays mapped: stopping the runtime
+        // must nevertheless permanently close experimental hook activation.
+        if unsafe { hook_enable() } != 0
+            || unsafe { hook_count() } != 0
+            || unsafe { cleanup_pending() } != 0
+        {
+            return Err("stopped Intimatr runtime allowed timer hook reactivation".into());
+        }
+        println!("Intimatr stopped cleanly and refused timer hook reactivation");
         Ok(())
     }
 }

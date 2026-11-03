@@ -56,6 +56,10 @@ pub fn shutdown_requested() -> bool {
 }
 
 pub fn shutdown() -> Result<(), RuntimeError> {
+    // Close the activation gate before restoring imports. Otherwise a
+    // concurrent enable can acquire the hook mutex after restoration but
+    // before begin_shutdown marks the lifecycle as Stopping.
+    LIFECYCLE.request_shutdown();
     // Never report Stopped while this DLL still owns a live executable IAT
     // callback. Do this outside the loader lock and before lifecycle teardown
     // so a failed restore can be retried without falsely completing shutdown.
