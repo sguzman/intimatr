@@ -177,7 +177,8 @@ pub fn inspect_pe_timer_imports(path: &Path) -> Result<TimerImportCoverage, Stri
     let import_size = u32_at(&optional, 124);
     let section_offset = pe_offset + 24 + optional_size as u64;
     let section_bytes = reader.read(section_offset, section_count * 40)?;
-    for section in section_bytes.chunks_exact(40) {
+    for index in 0..section_count {
+        let section = &section_bytes[index * 40..(index + 1) * 40];
         reader.sections.push(Section {
             virtual_size: u32_at(section, 8),
             rva: u32_at(section, 12),
