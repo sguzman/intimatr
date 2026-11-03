@@ -609,6 +609,12 @@ mod windows_probe {
         let module_pinned: BoolFn = unsafe {
             std::mem::transmute(resolve(&module, c"intimatr_timer_probe_module_pinned")?)
         };
+        let cleanup_pending: BoolFn = unsafe {
+            std::mem::transmute(resolve(&module, c"intimatr_timer_probe_cleanup_pending")?)
+        };
+        if unsafe { cleanup_pending() } != 0 {
+            return Err("fresh fixture reports unexpected pending hook cleanup".into());
+        }
         let set_rate: RateFn =
             unsafe { std::mem::transmute(resolve(&module, c"intimatr_timer_probe_rate")?) };
         let fail_after: unsafe extern "system" fn(u32) -> i32 =
@@ -625,11 +631,17 @@ mod windows_probe {
                 ));
             }
         }
+        if unsafe { cleanup_pending() } != 0 {
+            return Err("failed install retained unclean IAT or page protection state".into());
+        }
         println!("Wine timer import rollback verified after 0/1/2/3 attempted hooks");
         if unsafe { hook_enable() } == 0 {
             return Err("fixture's QueryPerformanceCounter import was not hooked".into());
         }
         let count = unsafe { hook_count() };
+        if unsafe { cleanup_pending() } == 0 {
+            return Err("installed fixture hooks do not report pending cleanup".into());
+        }
         if unsafe { module_pinned() } == 0 {
             return Err("hooked DLL was not pinned in memory before IAT activation".into());
         }
@@ -668,6 +680,9 @@ mod windows_probe {
         if unsafe { shared_rate(2.0) } != 0 {
             return Err("shared command reactivated restored timer hooks".into());
         }
+        if unsafe { cleanup_pending() } != 0 {
+            return Err("clean hook disable retained pending protection or callback state".into());
+        }
         if unsafe { module_pinned() } == 0 {
             return Err("timer module pin disappeared after hook deactivation".into());
         }
@@ -681,6 +696,9 @@ mod windows_probe {
         if unsafe { hook_enable() } == 0 || unsafe { hook_count() } < 4 {
             return Err("cannot reinstall fixture timer imports for shutdown test".into());
         }
+        if unsafe { cleanup_pending() } == 0 {
+            return Err("reinstalled hooks do not report cleanup obligations".into());
+        }
         if unsafe { shutdown() } == 0 {
             return Err("Intimatr exported shutdown returned failure".into());
         }
@@ -688,6 +706,9 @@ mod windows_probe {
             return Err(
                 "DLL reported Stopped with experimental timer hooks still installed".into(),
             );
+        }
+        if unsafe { cleanup_pending() } != 0 {
+            return Err("DLL reported Stopped with pending IAT cleanup obligations".into());
         }
         println!("DLL shutdown restored still-installed timer hooks");
         if unsafe { state() } != 5 {
