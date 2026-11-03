@@ -819,7 +819,7 @@ fn run_live_match(args: Vec<String>) -> Result<(), String> {
     let attachment_readiness = selected_candidate
         .as_ref()
         .map(|candidate| review_attachment_readiness(candidate, &ownership, &runner_audit));
-    println!
+    println!(
         "{}",
         serde_json::to_string_pretty(&serde_json::json!({
             "operation": "read_only_live_bottles_wine_match",
