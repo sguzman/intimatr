@@ -198,12 +198,12 @@ fn inspect_program(
 ) -> serde_json::Value {
     let (resolved, inspection) =
         match resolve_registered_file(prefix, &program.path, include_mapped_drives) {
-        Ok(file) => {
-            let result = inspect_pe_timer_imports(&file);
-            (Some(file), result)
-        }
-        Err(error) => (None, Err(error)),
-    };
+            Ok(file) => {
+                let result = inspect_pe_timer_imports(&file);
+                (Some(file), result)
+            }
+            Err(error) => (None, Err(error)),
+        };
     serde_json::json!({
         "registered_name": program.name,
         "registered_executable": program.executable,
@@ -372,7 +372,6 @@ mod tests {
         }
     }
 
-
     #[cfg(unix)]
     #[test]
     fn mapped_external_drive_needs_opt_in_and_verified_symlink() {
@@ -384,9 +383,11 @@ mod tests {
         fs::create_dir_all(f.0.join("dosdevices")).unwrap();
         symlink(&external, f.0.join("dosdevices/d:")).unwrap();
 
-        assert!(resolve_registered_file(&f.0, r"D:\Game.exe", false)
-            .unwrap_err()
-            .contains("--include-mapped-drives"));
+        assert!(
+            resolve_registered_file(&f.0, r"D:\Game.exe", false)
+                .unwrap_err()
+                .contains("--include-mapped-drives")
+        );
         assert_eq!(
             resolve_registered_file(&f.0, r"d:\game.EXE", true).unwrap(),
             fs::canonicalize(external.join("Game.exe")).unwrap()
@@ -398,9 +399,11 @@ mod tests {
         let escaped = external.join("Outside.exe");
         let outside = f.0.join("drive_c/Games/Game.exe");
         symlink(&outside, &escaped).unwrap();
-        assert!(resolve_registered_file(&f.0, r"D:\Outside.exe", true)
-            .unwrap_err()
-            .contains("outside selected mapped drive"));
+        assert!(
+            resolve_registered_file(&f.0, r"D:\Outside.exe", true)
+                .unwrap_err()
+                .contains("outside selected mapped drive")
+        );
 
         fs::remove_dir_all(&external).unwrap();
     }
@@ -410,9 +413,11 @@ mod tests {
     fn rejects_non_symlinked_external_drive_mapping() {
         let f = Fixture::new();
         fs::create_dir_all(f.0.join("dosdevices/d:")).unwrap();
-        assert!(resolve_registered_file(&f.0, r"D:\Game.exe", true)
-            .unwrap_err()
-            .contains("not a symlink"));
+        assert!(
+            resolve_registered_file(&f.0, r"D:\Game.exe", true)
+                .unwrap_err()
+                .contains("not a symlink")
+        );
     }
 
     #[cfg(unix)]
