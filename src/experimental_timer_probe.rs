@@ -25,6 +25,8 @@ use crate::{
 };
 
 const PAGE_READWRITE: u32 = 0x04;
+const GET_MODULE_HANDLE_EX_FLAG_PIN: u32 = 0x01;
+const GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS: u32 = 0x04;
 const MAX_IMAGE_SIZE: usize = 512 * 1024 * 1024;
 const MAX_DESCRIPTORS: usize = 256;
 const MAX_THUNKS: usize = 8192;
@@ -33,6 +35,7 @@ const MAX_THUNKS: usize = 8192;
 unsafe extern "system" {
     fn GetModuleHandleW(name: *const u16) -> *mut c_void;
     fn GetProcAddress(module: *mut c_void, name: *const u8) -> *const c_void;
+    fn GetModuleHandleExW(flags: u32, name: *const u16, result: *mut *mut c_void) -> i32;
     fn QueryPerformanceCounter(value: *mut i64) -> i32;
     fn QueryPerformanceFrequency(value: *mut i64) -> i32;
     fn GetTickCount64() -> u64;
@@ -61,6 +64,9 @@ struct ProbeHooks {
 
 static HOOKS: OnceLock<Mutex<Option<ProbeHooks>>> = OnceLock::new();
 static ACTIVE_CALLBACKS: CallbackTracker = CallbackTracker::new();
+// A PIN is intentionally irreversible until process exit. It prevents a
+// previously-fetched IAT function pointer from calling unmapped DLL code.
+static MODULE_PINNED: AtomicBool = AtomicBool::new(false);
 
 // Published only while owning HOOKS. Contended API reads return the last
 // scaled sample rather than a raw counter that could jump backwards at 2x.
@@ -376,6 +382,30 @@ fn restore_slots(slots: &mut [HookSlot]) -> bool {
 
 /// The experimental IAT backend is available only to these disposable,
 /// offline test executables. No production process gets hook eligibility.
+/// Win32 process-lifetime code ownership is required before the first IAT
+/// pointer can refer to this DLL. An unsuccessful pin refuses installation.
+/// This does not enable arbitrary game hooking: fixture allowlisting remains.
+fn pin_timer_module() -> bool {
+    if MODULE_PINNED.load(Ordering::Acquire) {
+        return true;
+    }
+    let mut module = ptr::null_mut();
+    let address = intercepted_qpc as *const () as *const u16;
+    let pinned = unsafe {
+        GetModuleHandleExW(
+            GET_MODULE_HANDLE_EX_FLAG_PIN | GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS,
+            address,
+            &mut module,
+        )
+    } != 0;
+    if pinned && !module.is_null() {
+        MODULE_PINNED.store(true, Ordering::Release);
+        true
+    } else {
+        false
+    }
+}
+
 fn is_allowlisted_probe_process() -> bool {
     std::env::current_exe().ok().is_some_and(|executable| {
         executable.file_name().is_some_and(|name| {
@@ -426,6 +456,12 @@ fn enable_probe_with_fault(fail_after: Option<usize>) -> bool {
     let Some(now) = native_qpc() else {
         return false;
     };
+    // Keep callback code mapped through process exit, even if another thread
+    // fetched an import pointer before the restore barrier. No IAT mutation
+    // is allowed unless this irreversible protection succeeds first.
+    if !pin_timer_module() {
+        return false;
+    }
     // Sample before hooking; the tracked timeline is continuous.
     let baseline = session.sample(now);
     publish(baseline);
@@ -518,6 +554,10 @@ pub(crate) fn apply_fixture_command(action: SpeedAction) -> Result<(), &'static 
     Ok(())
 }
 
+pub fn probe_module_pinned() -> bool {
+    MODULE_PINNED.load(Ordering::Acquire)
+}
+
 pub fn probe_hook_count() -> u32 {
     hooks()
         .lock()
@@ -577,6 +617,11 @@ pub extern "system" fn intimatr_timer_probe_enable() -> i32 {
 pub extern "system" fn intimatr_timer_probe_rate(multiplier: f64) -> i32 {
     i32::from(set_probe_rate(multiplier))
 }
+#[unsafe(no_mangle)]
+pub extern "system" fn intimatr_timer_probe_module_pinned() -> i32 {
+    i32::from(probe_module_pinned())
+}
+
 #[unsafe(no_mangle)]
 pub extern "system" fn intimatr_timer_probe_hook_count() -> u32 {
     probe_hook_count()
