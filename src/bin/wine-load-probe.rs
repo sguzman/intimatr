@@ -490,10 +490,7 @@ mod windows_probe {
 
     /// A read-only RPC status query must not restart a temporary rate.
     /// The IAT clock itself must expire the lease when callbacks are read.
-    fn exercise_rpc_hold_expiry(
-        directory: &Path,
-        module: &LoadedModule,
-    ) -> Result<(), String> {
+    fn exercise_rpc_hold_expiry(directory: &Path, module: &LoadedModule) -> Result<(), String> {
         fn call(client: &Path, request: &[&str]) -> Result<serde_json::Value, String> {
             let output = std::process::Command::new(client)
                 .args(request)
@@ -523,8 +520,11 @@ mod windows_probe {
         if hold["preview_multiplier"] != 2.0 {
             return Err(format!("timed hold did not activate: {hold}"));
         }
-        if unsafe { read_installed_rate(ptr::null_mut()) } != 2000 {
-            return Err("installed timer status did not observe active 2x hold".into());
+        let installed_during_hold = unsafe { read_installed_rate(std::ptr::null_mut()) };
+        if installed_during_hold != 2000 {
+            return Err(format!(
+                "installed timer status did not observe active hold: {installed_during_hold}"
+            ));
         }
         let read_only = call(&client, &["--tcp", "127.0.0.1:31379", "status"])?;
         if read_only["preview_multiplier"] != 2.0 {
@@ -537,7 +537,7 @@ mod windows_probe {
         // Read the authoritative installed IAT rate *before* calling any
         // imported clock again. This probes the idle-deadline status path,
         // not just expiry incidentally triggered by a game timer read.
-        let installed_after_idle = unsafe { read_installed_rate(ptr::null_mut()) };
+        let installed_after_idle = unsafe { read_installed_rate(std::ptr::null_mut()) };
         if installed_after_idle != 1000 {
             return Err(format!(
                 "idle installed-clock status failed to expire hold: {installed_after_idle}"
