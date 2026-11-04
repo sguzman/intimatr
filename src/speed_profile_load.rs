@@ -104,16 +104,16 @@ pub fn wrap_explicit_preview_from_env(
             }
             Err(error) => {
                 warn!(error = %error, "shared speed preview disabled after initialization error");
-                Arc::new(SpeedPreviewExecutor::disabled(inner))
+                Arc::new(SpeedPreviewExecutor::blocked_explicit_profile(inner))
             }
         },
         Ok(None) => {
             info!("shared speed profile has enabled=false; speed commands remain disabled");
-            Arc::new(SpeedPreviewExecutor::disabled(inner))
+            Arc::new(SpeedPreviewExecutor::blocked_explicit_profile(inner))
         }
         Err(error) => {
             warn!(error = %error, "shared speed preview disabled after profile rejection");
-            Arc::new(SpeedPreviewExecutor::disabled(inner))
+            Arc::new(SpeedPreviewExecutor::blocked_explicit_profile(inner))
         }
     }
 }
