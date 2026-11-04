@@ -1,0 +1,28 @@
+# Initial launch-time Eastward pilot. Starts at 1x; no timer hooks are
+# armed automatically. Avoid enabling debugger, memory writes, or RPC until
+# normal game startup and rollback have been tested locally.
+[target]
+executable = "Eastward.exe"
+
+[logging]
+filter = "intimatr=info"
+directory = "logs"
+file_name = "intimatr.log"
+console = false
+
+[ui]
+enabled = false
+
+[debugger]
+enabled = false
+ui_enabled = false
+
+[rpc]
+enabled = false
+
+[policy]
+allow_memory_read = false
+allow_memory_write = false
+allow_code_patch = false
+allow_debugger = false
+allow_remote_shutdown = false
