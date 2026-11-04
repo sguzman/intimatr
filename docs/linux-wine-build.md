@@ -523,6 +523,16 @@ intimatr-bottles profile-path \
 
 This read-only command requires the bottle in native `bottles-cli` inventory, verifies its configured prefix and plain `drive_c`, rejects symlinks, parent traversal and files outside that C: drive, and validates the profile against the DLL loader. It reports `windows_profile_path` (for example `C:\\NEW-launch-speed.toml`) for the selected file. For a non-default native Bottles CLI location, `--bottles-cli /absolute/path/to/bottles-cli` is supported. It does not select a runner, edit a launch entry or change an existing process environment; the resulting path must still be passed explicitly at **game startup**. Non-C: mapped drives are deliberately unsupported in this first path check. Wine CI verifies C: translation, an outside-file refusal and a symlink refusal before starting its disposable selected-game fixture.
 
+### Read-only Bottles environment forwarding preflight
+
+Before attempting a game launch, inspect the selected native bottle's reported host-variable inheritance policy:
+
+```sh
+intimatr-bottles profile-env --bottle 'Your Bottle'
+```
+
+The optional `--bottles-cli /absolute/path/to/bottles-cli` is supported. The JSON report distinguishes a permitted unrestricted environment, an explicit `INTIMATR_SPEED_PROFILE` inheritance allowlist, and an explanatory policy blocker. It does **not** execute `bottles-cli run`, launch Wine, modify the bottle or establish that a game received the profile. The real native-Bottles installation and actual propagation still require field verification.
+
 ### Explicit registered-program launch with a resolved profile
 
 For a **user-initiated offline single-player game**, the native host CLI now accepts:
