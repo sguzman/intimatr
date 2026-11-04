@@ -682,7 +682,7 @@ jobs:
           cp target/wine-attach/wine-attach-target.exe target/wine-attach/game-fixture/
           cp config/wine-attach-target.exe.toml target/wine-attach/game-fixture/config/
           # Explicit Windows-visible, launch-time profile for this disposable
-          # process. Its 1.75x step is intentionally absent from built-ins.
+          # process. Its 1.75x and 1.001x steps are absent from built-ins.
           # Initial 2x must *not* accelerate the game before explicit arming;
           # the timer session is always initialized to the safe 1x baseline.
           mkdir -p "$WINEPREFIX/drive_c"
@@ -691,7 +691,7 @@ jobs:
           [speed]
           enabled = true
           initial_multiplier = 2.0
-          steps = [0.25, 0.5, 0.75, 1.0, 1.5, 1.75, 2.0, 3.0, 5.0, 10.0]
+          steps = [0.25, 0.5, 0.75, 1.0, 1.001, 1.5, 1.75, 2.0, 3.0, 5.0, 10.0]
           GAME_SPEED_PROFILE
           INTIMATR_SPEED_PROFILE='C:\intimatr-ci-speed.toml' INTIMATR_TEST_HOOK_STATUS_GATE=1 INTIMATR_TEST_REMOTE_STOP_WITH_HOOKS=1 INTIMATR_TEST_EXTERNAL_TIMER_ARM=1 INTIMATR_TEST_EXTERNAL_RATE_COMMANDS=1 xvfb-run -a wine target/wine-attach/game-fixture/wine-attach-target.exe >target/wine-attach/game-fixture/stdout 2>target/wine-attach/game-fixture/stderr &
           game_launcher=$!
@@ -861,7 +861,7 @@ jobs:
             and (.main_image_timer_imports_observed | length) == 4
             and .speed_controls_verified == false' target/wine-attach/game-hooked.json > /dev/null
           touch target/wine-attach/game-fixture/attach-hooks-inspected.flag
-          for preset in half onehalf custom double normal; do
+          for preset in half onehalf custom thousandth double normal; do
             for i in $(seq 1 200); do
               if test -s "target/wine-attach/game-fixture/attach-rate-$preset-ready.flag"; then
                 break
@@ -870,11 +870,14 @@ jobs:
             done
             test -s "target/wine-attach/game-fixture/attach-rate-$preset-ready.flag"
             expected_rate=1.0
-            if test "$preset" = onehalf || test "$preset" = custom; then
+            if test "$preset" = onehalf || test "$preset" = custom || test "$preset" = thousandth; then
               # Numeric commands must use the same configured profile in
               # both the preview executor and the live IAT timer session.
+              # The 1.001x case detects binary-float truncation in the
+              # remote 1001-thousandth confirmation.
               expected_rate=1.5
               if test "$preset" = custom; then expected_rate=1.75; fi
+              if test "$preset" = thousandth; then expected_rate=1.001; fi
               XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles set-game-speed "${game_args[@]}" --offline-single-player --experimental-four-timers --multiplier "$expected_rate" >"target/wine-attach/game-rate-$preset.json"
             else
               XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles set-game-speed "${game_args[@]}" --offline-single-player --experimental-four-timers --preset "$preset" >"target/wine-attach/game-rate-$preset.json"
@@ -931,7 +934,7 @@ jobs:
           # Shared configured step/toggle/reset actions use the same exact
           # running process identity and the installed four-timer clock.
           # Start at 1x after the prior named/numeric rate loop.
-          for spec in 'increase:1.5' 'increase:1.75' 'increase:2.0' 'decrease:1.75' 'decrease:1.5' 'toggle:1.0' 'toggle:1.5' 'reset:1.0'; do
+          for spec in 'increase:1.001' 'increase:1.5' 'increase:1.75' 'increase:2.0' 'decrease:1.75' 'decrease:1.5' 'decrease:1.001' 'toggle:1.0' 'toggle:1.001' 'reset:1.0'; do
             step_action="${spec%%:*}"
             step_rate="${spec##*:}"
             XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles step-game-speed "${game_args[@]}" --offline-single-player --experimental-four-timers --action "$step_action" >"target/wine-attach/game-step-$step_action-$step_rate.json"
