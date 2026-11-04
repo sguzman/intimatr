@@ -186,13 +186,14 @@ mod target {
                 (0.5, "half"),
                 (1.5, "onehalf"),
                 (1.75, "custom"),
+                (1.001, "thousandth"),
                 (2.0, "double"),
                 (1.0, "normal"),
             ] {
-                // The 1.75x step exists only in the explicit selected-game
-                // profile. The ordinary attach fixture intentionally uses
-                // the built-in step list and must keep rejecting that rate.
-                if label == "custom"
+                // Non-default 1.75x and 1.001x steps exist only in the
+                // explicit selected-game profile. The ordinary attach fixture
+                // must never try to select either via its built-in steps.
+                if matches!(label, "custom" | "thousandth")
                     && std::env::var_os("INTIMATR_TEST_EXTERNAL_RATE_COMMANDS").is_none()
                 {
                     continue;
