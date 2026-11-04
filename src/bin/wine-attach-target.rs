@@ -285,8 +285,7 @@ mod target {
                             // until the separately selected status/arm/stop
                             // commands have independently inspected it.
                             if std::env::var_os("INTIMATR_TEST_REJECTED_PROFILE_ONLY").is_some() {
-                                type ProfileStateFn =
-                                    unsafe extern "system" fn(*mut c_void) -> u32;
+                                type ProfileStateFn = unsafe extern "system" fn(*mut c_void) -> u32;
                                 let check: ProfileStateFn = unsafe {
                                     std::mem::transmute(resolve(
                                         module,
@@ -295,7 +294,7 @@ mod target {
                                 };
                                 if unsafe { check(std::ptr::null_mut()) } != 2 {
                                     return Err(
-                                        "disabled launch profile was not rejected by target".into()
+                                        "disabled launch profile was not rejected by target".into(),
                                     );
                                 }
                                 std::fs::write(
@@ -315,7 +314,7 @@ mod target {
                                     thread::sleep(Duration::from_millis(25));
                                 }
                                 return Err(
-                                    "rejected-profile test coordinator did not stop target".into()
+                                    "rejected-profile test coordinator did not stop target".into(),
                                 );
                             }
                             // Allow the remote helper to finish its load thread
