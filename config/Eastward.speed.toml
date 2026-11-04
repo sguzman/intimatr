@@ -1,0 +1,17 @@
+# Explicit offline Eastward pilot: 1x until a focused hotkey changes it.
+# Requires INTIMATR_SPEED_PROFILE and separate INTIMATR_EXPERIMENTAL_STARTUP_TIMERS=1.
+version = 1
+
+[speed]
+enabled = true
+initial_multiplier = 1.0
+startup_duration_ms = 0
+min_multiplier = 0.5
+max_multiplier = 3.0
+steps = [0.5, 1.0, 1.5, 2.0, 3.0]
+
+[hotkeys]
+increase = "Ctrl+F8"
+decrease = "Ctrl+F7"
+toggle = "Ctrl+F9"
+reset = "Ctrl+F11"

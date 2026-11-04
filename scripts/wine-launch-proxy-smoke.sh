@@ -103,3 +103,20 @@ test ! -e "$fixture/intimatr.dll"
 test ! -e "$fixture/config/Eastward.exe.toml"
 test ! -e "$fixture/intimatr-launch-deployment.json"
 echo "Reversible native Eastward-shaped deployment verified without modifying a real game"
+
+# Assemble a flat pilot artifact only after the fixture smoke succeeds.
+"$manager" profile-check --config config/Eastward.speed.toml \
+  --bottle Eastward --exe 'C:\Program Files\Eastward\Eastward.exe' >"$dir/pilot-policy-check.json"
+jq -e '.operation == "read_only_profile_resolution"' "$dir/pilot-policy-check.json" >/dev/null
+mkdir -p "$dir/pilot-bundle"
+cp target/release/intimatr-bottles "$dir/pilot-bundle/intimatr-bottles"
+cp "$dir/steam_api64-eastward-preview.dll" "$dir/pilot-bundle/steam_api64.dll"
+cp "$dir/intimatr.dll" "$dir/pilot-bundle/intimatr.dll"
+cp config/Eastward.exe.toml "$dir/pilot-bundle/Eastward.exe.toml"
+cp config/Eastward.speed.toml "$dir/pilot-bundle/Eastward.speed.toml"
+(
+  cd "$dir/pilot-bundle"
+  sha256sum intimatr-bottles steam_api64.dll intimatr.dll Eastward.exe.toml Eastward.speed.toml >SHA256SUMS
+  sha256sum -c SHA256SUMS
+)
+echo "Flat local QA pilot bundle verified; no real Bottles game was installed"

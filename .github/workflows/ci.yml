@@ -185,14 +185,11 @@ jobs:
         shell: bash
         run: bash scripts/wine-launch-proxy-smoke.sh
 
-      - name: Publish Eastward launch-time pilot binaries (not an installer)
+      - name: Publish single Eastward launch pilot bundle (not installed)
         uses: actions/upload-artifact@v7
         with:
-          name: intimatr-eastward-startup-proxy-${{ github.sha }}
-          path: |
-            target/wine-launch-proxy/steam_api64-eastward-preview.dll
-            target/wine-launch-proxy/intimatr.dll
-            config/Eastward.exe.toml
+          name: intimatr-eastward-launch-pilot-${{ github.sha }}
+          path: target/wine-launch-proxy/pilot-bundle/
           if-no-files-found: error
 
       - name: Exercise native Linux speed manager against hooked Wine fixture
