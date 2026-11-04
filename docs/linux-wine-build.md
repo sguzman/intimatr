@@ -553,17 +553,37 @@ DLL's bootstrap, through the existing identity-gated Windows helper:
 - `unavailable`: no owned DLL is present, the runtime is not Running or its profile state cannot be queried
 
 `explicit_speed_profile_accepted_in_target=true` is only set for an
-`accepted` profile in a Running target. It does not establish **which**
-absolute profile path was read, prove the exact file was delivered by
-genuine Bottles, imply automatic DLL loading or claim that gameplay speed
-changed. `profile_path_identity_verified=false` remains explicit until
-there is an independent exact-profile identity proof. This query reads
-a bounded state value from the owned DLL, not arbitrary target process
-memory or its environment, and does not install or modify hooks.
+`accepted` profile in a Running target. For an accepted profile,
+`target_speed_profile_sha256` is calculated from the **exact UTF-8 bytes
+successfully parsed during the target DLL's bootstrap** and retained in
+memory. It is unavailable when speed is unconfigured or the runtime is
+not Running. The read-only Windows helper retrieves eight 32-bit digest
+words from the exact owned DLL, never from a generic process scan.
+
+To compare those accepted bytes with a particular existing profile file,
+use the same `status-game` selection arguments as before plus
+`--profile /absolute/linux/path/inside/selected/bottle/drive_c/speed.toml`.
+The optional comparison path must be inside the **verified selected
+bottle's C: drive**, and must be a valid enabled global-only profile.
+`profile_contents_match_verified=true` means both hashes matched.
+`comparison_profile_windows_path` reports the independently verified
+C: translation; a mismatch returns `false`, not a game mutation.
+`--profile` is rejected on attach, stop and speed-changing commands.
+
+**Content equality is not path or source authentication.** A digest match
+does not independently establish which filesystem pathname the game
+originally opened, whether native Bottles forwarded its environment, or
+whether the running process is protected against tampering. The digest
+reflects loaded bytes; later changes to the file cannot change the
+target's recorded hash. `profile_path_identity_verified=false` remains
+explicit. Neither the digest query nor status comparison installs timing
+hooks, implies automatic DLL loading, or verifies gameplay acceleration.
 
 The isolated Wine fixture asserts acceptance after explicit attachment,
-absence in an unconfigured attached fixture, and unavailability before
-attachment and after shutdown. These checks are not native-Bottles field QA.
+absence in an unconfigured attached fixture, unavailability before
+attachment and after shutdown, and digest agreement/disagreement for a
+matching file and a copy with identical settings but different comments.
+These checks are not native-Bottles field QA.
 
 ### Explicitly configured speed steps in the selected-game timer session
 

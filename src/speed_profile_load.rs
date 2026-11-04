@@ -15,6 +15,7 @@ use crate::{
     speed_commands::SpeedPreviewExecutor,
     speed_config::{SharedSpeedConfig, SpeedProfileError, SpeedSettings},
     speed_hotkeys::SpeedHotkeyConfig,
+    speed_profile_fingerprint::sha256_words,
 };
 
 pub const SPEED_PROFILE_ENV: &str = "INTIMATR_SPEED_PROFILE";
@@ -24,6 +25,9 @@ const MAX_PROFILE_BYTES: u64 = 1_048_576;
 pub struct PreviewProfile {
     pub settings: SpeedSettings,
     pub hotkeys: SpeedHotkeyConfig,
+    /// Exact bytes consumed by this parse, retained at bootstrap so later
+    /// file edits cannot masquerade as what the target originally accepted.
+    pub sha256: [u32; 8],
 }
 
 #[derive(Debug, Error)]
@@ -60,6 +64,7 @@ pub fn parse_preview_profile(
     Ok(Some(PreviewProfile {
         settings: global.speed,
         hotkeys: global.hotkeys,
+        sha256: sha256_words(content.as_bytes()),
     }))
 }
 
@@ -90,11 +95,12 @@ pub fn wrap_explicit_preview_from_env(
         return Arc::new(SpeedPreviewExecutor::disabled(inner));
     };
     match load_preview_profile(Path::new(&path)) {
-        Ok(Some(profile)) => match SpeedPreviewExecutor::with_profile(
+        Ok(Some(profile)) => match SpeedPreviewExecutor::with_profile_and_sha256(
             Arc::clone(&inner),
             &profile.settings,
             &profile.hotkeys,
             "explicit-shared-profile",
+            profile.sha256,
         ) {
             Ok(executor) => {
                 info!(
@@ -131,6 +137,17 @@ mod tests {
                 .is_none()
         );
         assert!(parse_preview_profile("version = 2").is_err());
+    }
+
+    #[test]
+    fn retained_profile_digest_reflects_original_accepted_bytes() {
+        let first = "version = 1\n[speed]\nenabled = true\n";
+        let second = "version = 1\n[speed]\nenabled = true\n# different comment\n";
+        let a = parse_preview_profile(first).unwrap().unwrap();
+        let b = parse_preview_profile(second).unwrap().unwrap();
+        assert_eq!(a.settings, b.settings);
+        assert_ne!(a.sha256, b.sha256);
+        assert_eq!(a.sha256, sha256_words(first.as_bytes()));
     }
 
     #[test]

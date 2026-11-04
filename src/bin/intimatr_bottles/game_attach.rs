@@ -16,6 +16,7 @@ struct GameAttachOptions {
     rate_preset: Option<String>,
     rate_milli: Option<u32>,
     step_action: Option<String>,
+    comparison_profile: Option<String>,
 }
 
 impl GameAttachOptions {
@@ -28,6 +29,7 @@ impl GameAttachOptions {
         let mut rate_preset = None;
         let mut rate_milli = None;
         let mut step_action = None;
+        let mut comparison_profile = None;
         let mut iter = args.iter();
         while let Some(arg) = iter.next() {
             match arg.as_str() {
@@ -64,6 +66,14 @@ impl GameAttachOptions {
                 "--experimental-four-timers" => {
                     return Err("duplicate experimental-four-timers acknowledgment".into());
                 }
+                "--profile" if comparison_profile.is_none() => {
+                    let path = iter.next().ok_or("missing --profile path")?;
+                    if !Path::new(path).is_absolute() {
+                        return Err("comparison profile must be an absolute Linux file path".into());
+                    }
+                    comparison_profile = Some(path.clone());
+                }
+                "--profile" => return Err("duplicate --profile".into()),
                 "--attach-helper" if attach_helper.is_none() => {
                     let path = iter.next().ok_or("missing --attach-helper path")?;
                     if !Path::new(path).is_absolute() {
@@ -118,6 +128,7 @@ impl GameAttachOptions {
             rate_preset,
             rate_milli,
             step_action,
+            comparison_profile,
         })
     }
 }
@@ -256,6 +267,9 @@ fn run_game_action(args: Vec<String>, action: GameAction) -> Result<(), String> 
     if action != GameAction::Step && options.step_action.is_some() {
         return Err("--action is only valid for step-game-speed".into());
     }
+    if action != GameAction::Status && options.comparison_profile.is_some() {
+        return Err("--profile is only valid for read-only status-game".into());
+    }
     let attach_helper = fs::canonicalize(&options.attach_helper)
         .map_err(|error| format!("cannot find game attach helper: {error}"))?;
     if !attach_helper.is_file()
@@ -307,6 +321,24 @@ fn run_game_action(args: Vec<String>, action: GameAction) -> Result<(), String> 
     }
 
     validate_static_timer_imports(action, candidate.timer_import_coverage)?;
+
+    // Optional status-only comparison against one caller-specified file.
+    // Verify its C: path under the same freshly selected bottle prefix.
+    // The digest comes from the bytes this read validated, not a later
+    // filesystem read. Never infer a Windows path from Z:.
+    let expected_profile = if let Some(profile_path) = options.comparison_profile.as_deref() {
+        let path = Path::new(profile_path);
+        let windows_path = super::profile_check::verified_profile_c_path(&selected.prefix, path)?;
+        let profile = intimatr::speed_profile_load::load_preview_profile(path)
+            .map_err(|error| format!("cannot read comparison speed profile: {error}"))?
+            .ok_or("comparison profile must contain enabled speed settings")?;
+        Some((
+            intimatr::speed_profile_fingerprint::sha256_hex(&profile.sha256),
+            windows_path,
+        ))
+    } else {
+        None
+    };
 
     // The Windows helper opens a HANDLE to the selected PID and checks the
     // image and live architecture again under its per-target mutex before
@@ -470,6 +502,27 @@ fn run_game_action(args: Vec<String>, action: GameAction) -> Result<(), String> 
         {
             return Err("invalid or contradictory target speed-profile state".into());
         }
+        let mut hashes = stdout
+            .lines()
+            .filter_map(|line| line.strip_prefix("INTIMATR_REMOTE_SPEED_PROFILE_SHA256="));
+        let sha256_text = hashes
+            .next()
+            .ok_or("game status helper did not report target profile digest")?;
+        if hashes.next().is_some()
+            || (profile_state == "accepted"
+                && (sha256_text.len() != 64
+                    || !sha256_text
+                        .bytes()
+                        .all(|digit| digit.is_ascii_digit() || (b'a'..=b'f').contains(&digit))))
+            || (profile_state != "accepted" && sha256_text != "unavailable")
+        {
+            return Err("invalid or contradictory target profile SHA-256 evidence".into());
+        }
+        let target_profile_sha256 = (profile_state == "accepted").then_some(sha256_text);
+        let profile_contents_match_verified = target_profile_sha256.is_some()
+            && expected_profile
+                .as_ref()
+                .is_some_and(|(expected, _)| Some(expected.as_str()) == target_profile_sha256);
         let mut inventory = stdout
             .lines()
             .filter_map(|line| line.strip_prefix("INTIMATR_REMOTE_TIMER_IMPORT_MASK="));
@@ -535,6 +588,9 @@ fn run_game_action(args: Vec<String>, action: GameAction) -> Result<(), String> 
             "runtime_stopped_verified": state == "stopped",
             "target_speed_profile_state": profile_state,
             "explicit_speed_profile_accepted_in_target": state == "running" && profile_state == "accepted",
+            "target_speed_profile_sha256": target_profile_sha256,
+            "comparison_profile_windows_path": expected_profile.as_ref().map(|(_, path)| path),
+            "profile_contents_match_verified": profile_contents_match_verified,
             "profile_path_identity_verified": false,
             "timer_hook_state": hook_state,
             "timer_hooks_installed_verified": state == "running" && hook_state == "installed_four_timers",
@@ -675,6 +731,36 @@ mod tests {
 
     fn args(parts: &[&str]) -> Vec<String> {
         parts.iter().map(|part| (*part).to_owned()).collect()
+    }
+
+    #[test]
+    fn comparison_profile_is_explicit_and_status_only() {
+        let base = args(&[
+            "--attach-helper", "/tmp/wine-game-attach-helper.exe",
+            "--created-100ns", "133700000000000001",
+            "--pid", "42", "--exe", r"C:\Games\Game.exe",
+            "--offline-single-player",
+        ]);
+        let with_file = [base.clone(), args(&["--profile", "/tmp/speed.toml"])].concat();
+        assert_eq!(
+            GameAttachOptions::parse(&with_file)
+                .unwrap()
+                .comparison_profile
+                .as_deref(),
+            Some("/tmp/speed.toml")
+        );
+        assert!(
+            run_game_action(with_file, GameAction::Attach)
+                .unwrap_err()
+                .contains("only valid for read-only status-game")
+        );
+        for invalid in [
+            [base.clone(), args(&["--profile", "speed.toml"])].concat(),
+            [base.clone(), args(&["--profile"])].concat(),
+            [base, args(&["--profile", "/tmp/a", "--profile", "/tmp/b"])].concat(),
+        ] {
+            assert!(GameAttachOptions::parse(&invalid).is_err());
+        }
     }
 
     #[test]

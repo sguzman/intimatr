@@ -195,7 +195,7 @@ impl ProfilePathOptions {
 /// Require literal, unambiguous C: components underneath the verified prefix.
 /// Symlinks and parent traversal cannot be used to claim a Windows path.
 #[cfg(target_os = "linux")]
-fn verified_profile_c_path(
+pub(super) fn verified_profile_c_path(
     prefix: &std::path::Path,
     file: &std::path::Path,
 ) -> Result<String, String> {

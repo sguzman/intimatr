@@ -731,9 +731,9 @@ pub mod helper {
         let _guard = acquire_attach_mutex(pid)?;
         validate_target_image(process.0, &executable, target)?;
         validate_target_generation(process.0, target)?;
-        let (state, hook_state, rate_milli, import_mask, profile_state) =
+        let (state, hook_state, rate_milli, import_mask, profile_state, profile_sha256) =
             match target_intimatr_module(pid, &dll)? {
-                IntimatrModulePresence::Absent => ("absent", "none", 0, None, "unavailable"),
+                IntimatrModulePresence::Absent => ("absent", "none", 0, None, "unavailable", None),
                 IntimatrModulePresence::Expected => {
                     let state = super::remote_status::query_lifecycle_state(process.0, pid, &dll)?;
                     let hooks = super::remote_status::query_timer_hook_state(process.0, pid, &dll)?;
@@ -742,6 +742,11 @@ pub mod helper {
                         super::remote_status::query_timer_import_coverage(process.0, pid, &dll)?;
                     let profile =
                         super::remote_status::query_explicit_profile_state(process.0, pid, &dll)?;
+                    let digest =
+                        super::remote_status::query_explicit_profile_sha256(process.0, pid, &dll)?;
+                    if (profile == "accepted") != digest.is_some() {
+                        return Err("target accepted profile and SHA-256 evidence disagree".into());
+                    }
                     if (hooks == "installed_four_timers") != (rate != 0)
                         || (hooks == "installed_four_timers" && coverage != Some(15))
                     {
@@ -749,7 +754,7 @@ pub mod helper {
                             "target timer hook state, imports and clock rate disagree".into()
                         );
                     }
-                    (state, hooks, rate, coverage, profile)
+                    (state, hooks, rate, coverage, profile, digest)
                 }
                 IntimatrModulePresence::UnexpectedPath => {
                     return Err("cannot query status of a different Intimatr DLL".into());
@@ -759,6 +764,13 @@ pub mod helper {
         println!("INTIMATR_REMOTE_TIMER_HOOK_STATE={hook_state}");
         println!("INTIMATR_REMOTE_GAME_RATE_MILLI={rate_milli}");
         println!("INTIMATR_REMOTE_SPEED_PROFILE_STATE={profile_state}");
+        println!(
+            "INTIMATR_REMOTE_SPEED_PROFILE_SHA256={}",
+            profile_sha256.as_ref().map_or_else(
+                || "unavailable".to_owned(),
+                intimatr::speed_profile_fingerprint::sha256_hex,
+            )
+        );
         println!(
             "INTIMATR_REMOTE_TIMER_IMPORT_MASK={}",
             import_mask.map_or_else(|| "unknown".to_owned(), |mask| mask.to_string())

@@ -122,6 +122,16 @@ pub extern "system" fn intimatr_remote_speed_profile_state(_parameter: *mut c_vo
     runtime::remote_explicit_speed_profile_state()
 }
 
+/// A read-only 32-bit SHA-256 digest word from the actual profile bytes
+/// accepted by this DLL at bootstrap. Selector 0..7 is an integer in the
+/// remote thread argument, not a pointer; this does not authenticate paths.
+#[unsafe(no_mangle)]
+pub extern "system" fn intimatr_remote_speed_profile_sha256_word(
+    selector: *mut c_void,
+) -> u32 {
+    runtime::remote_speed_profile_sha256_word(selector as usize)
+}
+
 /// Read-only main-image timer import capability report. Return a four-bit
 /// coverage mask or u32::MAX when the PE inventory cannot be trusted.
 /// Presence does not establish that the game actually uses these clocks.

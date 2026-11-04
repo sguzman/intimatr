@@ -413,6 +413,27 @@ pub(crate) fn remote_explicit_speed_profile_state() -> u32 {
         .unwrap_or(3)
 }
 
+/// A single SHA-256 word from the profile accepted at target bootstrap.
+/// A zero return without accepted profile state is NOT digest evidence.
+/// Selector is an integer 0..7, never a dereferenceable pointer.
+#[cfg(windows)]
+pub(crate) fn remote_speed_profile_sha256_word(selector: usize) -> u32 {
+    if selector >= 8 || lifecycle_state() != LifecycleState::Running {
+        return 0;
+    }
+    CONTEXT
+        .lock()
+        .ok()
+        .and_then(|guard| {
+            guard.as_ref().and_then(|context| {
+                context
+                    .speed_preview_executor
+                    .explicit_profile_sha256_word(selector)
+            })
+        })
+        .unwrap_or(0)
+}
+
 /// Require a Running runtime and atomically installed IAT before enabling
 /// the one shared speed executor. Roll back imports if command setup fails.
 #[cfg(windows)]

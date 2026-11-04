@@ -170,6 +170,7 @@ pub struct SpeedPreviewExecutor {
     /// separately opted-in fixture/default game path.
     blocked_by_explicit_profile: bool,
     explicit_profile_configured: bool,
+    explicit_profile_sha256: Option<[u32; 8]>,
 }
 
 impl SpeedPreviewExecutor {
@@ -181,6 +182,7 @@ impl SpeedPreviewExecutor {
             session: Mutex::new(None),
             blocked_by_explicit_profile: false,
             explicit_profile_configured: false,
+            explicit_profile_sha256: None,
         }
     }
 
@@ -193,6 +195,7 @@ impl SpeedPreviewExecutor {
             session: Mutex::new(None),
             blocked_by_explicit_profile: true,
             explicit_profile_configured: false,
+            explicit_profile_sha256: None,
         }
     }
 
@@ -232,7 +235,31 @@ impl SpeedPreviewExecutor {
             })),
             blocked_by_explicit_profile: false,
             explicit_profile_configured: true,
+            explicit_profile_sha256: None,
         })
+    }
+
+    /// Retain the hash from the exact bytes accepted by the DLL loader.
+    /// Ordinary synthetic/default speed sessions have no such evidence.
+    pub(crate) fn with_profile_and_sha256(
+        inner: Arc<dyn CommandExecutor>,
+        settings: &SpeedSettings,
+        hotkeys: &SpeedHotkeyConfig,
+        label: &str,
+        sha256: [u32; 8],
+    ) -> Result<Self, SpeedPreviewError> {
+        let mut executor = Self::with_profile(inner, settings, hotkeys, label)?;
+        executor.explicit_profile_sha256 = Some(sha256);
+        Ok(executor)
+    }
+
+    /// Only the target-owned accepted profile has a digest. This read is
+    /// immutable and does not depend on any later session/clock changes.
+    pub(crate) fn explicit_profile_sha256_word(&self, index: usize) -> Option<u32> {
+        self.explicit_profile_sha256
+            .as_ref()
+            .and_then(|digest| digest.get(index))
+            .copied()
     }
 
     /// Snapshot the validated profile that will govern an expressly armed
@@ -523,6 +550,26 @@ mod tests {
             CommandResult::Pong
         ));
         assert!(executor.watched_keys().unwrap().is_empty());
+    }
+
+    #[test]
+    fn exact_loader_digest_is_immutable_and_not_invented_by_default_state() {
+        let digest = [0x12345678, 1, 2, 3, 4, 5, 6, 0xaabbccdd];
+        let settings = SpeedSettings {
+            enabled: true,
+            ..SpeedSettings::default()
+        };
+        let loaded = SpeedPreviewExecutor::with_profile_and_sha256(
+            stub(), &settings, &SpeedHotkeyConfig::default(), "loaded", digest,
+        )
+        .unwrap();
+        assert_eq!(loaded.explicit_profile_sha256_word(0), Some(0x12345678));
+        assert_eq!(loaded.explicit_profile_sha256_word(7), Some(0xaabbccdd));
+        assert_eq!(loaded.explicit_profile_sha256_word(8), None);
+        assert_eq!(
+            SpeedPreviewExecutor::disabled(stub()).explicit_profile_sha256_word(0),
+            None
+        );
     }
 
     #[test]

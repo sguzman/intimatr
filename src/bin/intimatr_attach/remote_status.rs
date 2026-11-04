@@ -22,6 +22,7 @@ const STATUS_EXPORT: &std::ffi::CStr = c"intimatr_remote_lifecycle_query";
 const SHUTDOWN_EXPORT: &std::ffi::CStr = c"intimatr_remote_shutdown";
 const HOOK_STATUS_EXPORT: &std::ffi::CStr = c"intimatr_remote_timer_hook_state";
 const PROFILE_STATE_EXPORT: &std::ffi::CStr = c"intimatr_remote_speed_profile_state";
+const PROFILE_SHA256_EXPORT: &std::ffi::CStr = c"intimatr_remote_speed_profile_sha256_word";
 const ARM_TIMER_EXPORT: &std::ffi::CStr = c"intimatr_remote_arm_four_timers";
 const TIMER_IMPORT_COVERAGE_EXPORT: &std::ffi::CStr = c"intimatr_remote_timer_import_coverage";
 const SET_PRESET_EXPORT: &std::ffi::CStr = c"intimatr_remote_game_preset";
@@ -289,6 +290,35 @@ pub fn query_explicit_profile_state(
         3 => Ok("unavailable"),
         code => Err(format!("invalid target profile-state code {code}")),
     }
+}
+
+/// Obtain eight 32-bit words from the same immutable accepted profile.
+/// Reading the target's *own* export preserves the exact-DLL identity gate;
+/// no target memory scan or environment inspection is performed.
+pub fn query_explicit_profile_sha256(
+    process: Handle,
+    pid: u32,
+    dll: &Path,
+) -> Result<Option<[u32; 8]>, String> {
+    if query_explicit_profile_state(process, pid, dll)? != "accepted" {
+        return Ok(None);
+    }
+    let (base, image_size) = target_base(pid, dll)?;
+    let rva = export_rva(dll, PROFILE_SHA256_EXPORT)?;
+    if rva >= image_size {
+        return Err("target Intimatr DLL lacks bounded profile SHA-256 export".into());
+    }
+    let entry = base
+        .checked_add(rva)
+        .ok_or("remote Intimatr profile SHA-256 address overflow")?;
+    let mut words = [0_u32; 8];
+    for (index, word) in words.iter_mut().enumerate() {
+        *word = call_export_with_selector(process, entry, index, 2_000)?;
+    }
+    if query_explicit_profile_state(process, pid, dll)? != "accepted" {
+        return Err("target profile state changed during digest inspection".into());
+    }
+    Ok(Some(words))
 }
 
 /// Inspect only the exact owned module and its side-effect-free hook status.
