@@ -265,7 +265,11 @@ mod target {
             .encode_utf16()
             .chain(std::iter::once(0))
             .collect();
-        for _ in 0..800 {
+        // The selected-game Wine CI path performs several independent
+        // identity and rejection preflights before the authorized attach.
+        // Keep this disposable target alive for up to 60 seconds on slow
+        // runners; it remains a bounded fixture-only wait.
+        for _ in 0..3_000 {
             let module = unsafe { GetModuleHandleW(wide.as_ptr()) };
             if !module.is_null() {
                 let state =
