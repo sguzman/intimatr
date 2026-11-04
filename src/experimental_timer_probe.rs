@@ -785,21 +785,28 @@ pub fn remote_hook_state() -> u32 {
 
 /// Actual IAT virtual-clock session rate in thousandths of 1x. Zero
 /// denotes an unavailable or incomplete hook set, never game FPS.
+/// Sampling real QPC here is essential: an idle game might make no timer
+/// callbacks while a bounded hold expires. Status must report the expired
+/// effective rate rather than a stale, previously selected multiplier.
 pub fn remote_rate_milli() -> u32 {
     if crate::runtime::shutdown_requested()
         || crate::runtime::lifecycle_state() != LifecycleState::Running
     {
         return 0;
     }
-    let Ok(guard) = hooks().lock() else {
+    let Ok(mut guard) = hooks().lock() else {
         return 0;
     };
-    let Some(active) = guard.as_ref() else {
+    let Some(active) = guard.as_mut() else {
         return 0;
     };
     if !fully_installed_hook_set(&active.slots) || !MODULE_PINNED.load(Ordering::Acquire) {
         return 0;
     }
+    let Some(real_qpc) = native_qpc() else {
+        return 0;
+    };
+    publish(active.session.sample(real_qpc));
     (active.session.multiplier() * 1000.0).round() as u32
 }
 
