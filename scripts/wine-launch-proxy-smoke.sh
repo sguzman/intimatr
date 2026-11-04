@@ -49,3 +49,41 @@ grep -q 'DLL Name: intimatr.dll' "$dir/eastward-proxy-headers.txt"
 grep -q 'steam_api64_intimatr_original.GetHSteamPipe' "$dir/eastward-proxy-headers.txt"
 grep -q 'steam_api64_intimatr_original.g_pSteamClientGameServer' "$dir/eastward-proxy-headers.txt"
 echo "Eastward 1209-export proxy compiled and linked from text manifest; real game not modified"
+
+# Exercise native Rust install/status/remove on a disposable Eastward-shaped
+# directory, not a real game/bottle. Prove original bytes survive a round trip.
+fixture="$dir/managed-fixture/Eastward/drive_c/Program Files/Eastward"
+mkdir -p "$fixture"
+printf 'Name: Eastward\n' >"$dir/managed-fixture/Eastward/bottle.yml"
+printf 'fixture executable\n' >"$fixture/Eastward.exe"
+cp "$dir/steam_api64_intimatr_original.dll" "$fixture/steam_api64.dll"
+manager="target/release/intimatr-bottles"
+"$manager" launch-proxy status --game-dir "$fixture" >"$dir/deploy-before.json"
+jq -e '.status == "not_installed" and .launcher_changed == false and .game_process_touched == false' "$dir/deploy-before.json" >/dev/null
+"$manager" launch-proxy install --game-dir "$fixture" \
+  --proxy "$dir/steam_api64-eastward-preview.dll" \
+  --dll "$dir/intimatr.dll" \
+  --config "$(pwd)/config/Eastward.exe.toml" \
+  --offline-single-player --game-closed >"$dir/deploy-installed.json"
+jq -e '.status == "installed" and .original_preserved == true and .timer_hooks_activated == false' "$dir/deploy-installed.json" >/dev/null
+cmp "$fixture/steam_api64.dll" "$dir/steam_api64-eastward-preview.dll"
+cmp "$fixture/steam_api64_intimatr_original.dll" "$dir/steam_api64_intimatr_original.dll"
+if "$manager" launch-proxy install --game-dir "$fixture" \
+  --proxy "$dir/steam_api64-eastward-preview.dll" \
+  --dll "$dir/intimatr.dll" \
+  --config "$(pwd)/config/Eastward.exe.toml" \
+  --offline-single-player --game-closed >"$dir/deploy-duplicate.stdout" 2>"$dir/deploy-duplicate.stderr"; then
+  echo "ERROR: duplicate proxy installation was accepted" >&2
+  exit 1
+fi
+"$manager" launch-proxy status --game-dir "$fixture" >"$dir/deploy-status.json"
+jq -e '.status == "installed"' "$dir/deploy-status.json" >/dev/null
+"$manager" launch-proxy remove --game-dir "$fixture" \
+  --offline-single-player --game-closed >"$dir/deploy-removed.json"
+jq -e '.status == "not_installed" and .launcher_changed == true' "$dir/deploy-removed.json" >/dev/null
+cmp "$fixture/steam_api64.dll" "$dir/steam_api64_intimatr_original.dll"
+test ! -e "$fixture/steam_api64_intimatr_original.dll"
+test ! -e "$fixture/intimatr.dll"
+test ! -e "$fixture/config/Eastward.exe.toml"
+test ! -e "$fixture/intimatr-launch-deployment.json"
+echo "Reversible native Eastward-shaped deployment verified without modifying a real game"
