@@ -225,7 +225,8 @@ pub(super) fn run_profile_launch(args: Vec<String>) -> Result<(), String> {
     if options.experimental_four_timers {
         command.env("INTIMATR_EXPERIMENTAL_STARTUP_TIMERS", "1");
     }
-    let output = command.output()
+    let output = command
+        .output()
         .map_err(|error| format!("cannot invoke native Bottles run: {error}"))?;
     if !output.status.success() {
         return Err(format!(
@@ -301,8 +302,16 @@ mod tests {
             "Offline Game"
         );
         let opted_in = [allowed.clone(), args(&["--experimental-four-timers"])].concat();
-        assert!(ProfileLaunchOptions::parse(&opted_in).unwrap().experimental_four_timers);
-        assert!(!ProfileLaunchOptions::parse(&allowed).unwrap().experimental_four_timers);
+        assert!(
+            ProfileLaunchOptions::parse(&opted_in)
+                .unwrap()
+                .experimental_four_timers
+        );
+        assert!(
+            !ProfileLaunchOptions::parse(&allowed)
+                .unwrap()
+                .experimental_four_timers
+        );
         for invalid in [
             base.clone(),
             [base.clone(), args(&["--launch"])].concat(),

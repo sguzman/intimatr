@@ -64,9 +64,9 @@ pub(super) fn verify_named_bottle_environment(
             }
         }
         if occurrences != 1 {
-            return Err(
-                format!("restricted bottle must allowlist {variable} exactly once before launch"),
-            );
+            return Err(format!(
+                "restricted bottle must allowlist {variable} exactly once before launch"
+            ));
         }
         Ok("restricted_explicitly_allowlisted")
     } else {
@@ -257,7 +257,8 @@ mod tests {
             "Environment_Variables": {"intimatr_experimental_startup_timers": "0"}
         }));
         assert!(super::verify_named_bottle_environment(&shadowed, "Selected", FLAG).is_err());
-        let program = r#"[{"name":"Eastward","environment":{"INTIMATR_EXPERIMENTAL_STARTUP_TIMERS":"0"}}]"#;
+        let program =
+            r#"[{"name":"Eastward","environment":{"INTIMATR_EXPERIMENTAL_STARTUP_TIMERS":"0"}}]"#;
         assert!(super::verify_named_program_environment(program, "Eastward", FLAG).is_err());
     }
 
