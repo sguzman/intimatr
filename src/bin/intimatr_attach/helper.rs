@@ -533,13 +533,11 @@ pub mod helper {
                 match args.next().as_deref() {
                     None => {}
                     Some("--require-profile-sha256") => {
-                        let digest = args
-                            .next()
-                            .ok_or("missing required profile fingerprint")?;
+                        let digest = args.next().ok_or("missing required profile fingerprint")?;
                         if digest.len() != 64
-                            || !digest.bytes().all(|ch| {
-                                ch.is_ascii_digit() || (b'a'..=b'f').contains(&ch)
-                            })
+                            || !digest
+                                .bytes()
+                                .all(|ch| ch.is_ascii_digit() || (b'a'..=b'f').contains(&ch))
                             || args.next().is_some()
                         {
                             return Err("invalid required profile SHA-256 fingerprint".into());
@@ -642,14 +640,10 @@ pub mod helper {
         }
         if let Some(expected_sha256) = required_profile_sha256 {
             let observed = super::remote_status::query_explicit_profile_sha256(
-                process.0,
-                pid,
-                &dll,
+                process.0, pid, &dll,
             )?
             .ok_or("required speed profile was not accepted in target; activation not attempted")?;
-            if intimatr::speed_profile_fingerprint::sha256_hex(&observed)
-                != expected_sha256
-            {
+            if intimatr::speed_profile_fingerprint::sha256_hex(&observed) != expected_sha256 {
                 return Err(
                     "required speed profile contents differ in target; activation not attempted"
                         .into(),

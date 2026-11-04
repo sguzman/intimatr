@@ -79,7 +79,9 @@ impl GameAttachOptions {
                 "--require-profile" if required_profile.is_none() => {
                     let path = iter.next().ok_or("missing --require-profile path")?;
                     if !Path::new(path).is_absolute() {
-                        return Err("required launch profile must be an absolute Linux file path".into());
+                        return Err(
+                            "required launch profile must be an absolute Linux file path".into(),
+                        );
                     }
                     required_profile = Some(path.clone());
                 }
@@ -819,7 +821,11 @@ mod tests {
             "--offline-single-player",
             "--experimental-four-timers",
         ]);
-        let valid = [base.clone(), args(&["--require-profile", "/tmp/speed.toml"])].concat();
+        let valid = [
+            base.clone(),
+            args(&["--require-profile", "/tmp/speed.toml"]),
+        ]
+        .concat();
         assert_eq!(
             GameAttachOptions::parse(&valid)
                 .unwrap()
@@ -827,12 +833,11 @@ mod tests {
                 .as_deref(),
             Some("/tmp/speed.toml")
         );
-        assert!(run_game_action(
-            valid,
-            GameAction::Status,
-        )
-        .unwrap_err()
-        .contains("only valid for arm-game-timers"));
+        assert!(
+            run_game_action(valid, GameAction::Status,)
+                .unwrap_err()
+                .contains("only valid for arm-game-timers")
+        );
         for invalid in [
             [base.clone(), args(&["--require-profile", "relative.toml"])].concat(),
             [base.clone(), args(&["--require-profile"])].concat(),
