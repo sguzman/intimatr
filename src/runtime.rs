@@ -404,9 +404,11 @@ pub(crate) fn remote_explicit_speed_profile_state() -> u32 {
         .lock()
         .ok()
         .and_then(|guard| {
-            guard
-                .as_ref()
-                .map(|context| context.speed_preview_executor.explicit_launch_profile_state())
+            guard.as_ref().map(|context| {
+                context
+                    .speed_preview_executor
+                    .explicit_launch_profile_state()
+            })
         })
         .unwrap_or(3)
 }

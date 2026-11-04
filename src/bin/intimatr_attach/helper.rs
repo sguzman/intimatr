@@ -745,7 +745,9 @@ pub mod helper {
                     if (hooks == "installed_four_timers") != (rate != 0)
                         || (hooks == "installed_four_timers" && coverage != Some(15))
                     {
-                        return Err("target timer hook state, imports and clock rate disagree".into());
+                        return Err(
+                            "target timer hook state, imports and clock rate disagree".into()
+                        );
                     }
                     (state, hooks, rate, coverage, profile)
                 }
