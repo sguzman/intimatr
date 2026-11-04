@@ -317,9 +317,11 @@ enabled = true
             assert!(!export.speed.enabled);
             assert!(export.bottles.is_empty() && export.games.is_empty());
             let serialized = toml::to_string(&export).unwrap();
-            assert!(crate::speed_profile_load::parse_preview_profile(&serialized)
-                .unwrap()
-                .is_none());
+            assert!(
+                crate::speed_profile_load::parse_preview_profile(&serialized)
+                    .unwrap()
+                    .is_none()
+            );
         }
     }
 
