@@ -800,6 +800,41 @@ jobs:
             exit 1
           fi
           test ! -e "$INTIMATR_MOCK_LAUNCH_RECEIPT"
+          # A syntactically valid DLL profile from another speed policy
+          # must not be substituted for this selected exact game's rules.
+          cat >"$WINEPREFIX/drive_c/intimatr-ci-wrong-speed.toml" <<'WRONG_GAME_PROFILE'
+          version = 1
+          [speed]
+          enabled = true
+          initial_multiplier = 1.5
+          WRONG_GAME_PROFILE
+          if target/release/intimatr-bottles profile-launch \
+              --config "$(pwd)/target/wine-attach/host-speed-rules.toml" \
+              --bottle Fixture --exe "$game_fixture_windows" \
+              --program 'Selected standalone offline test fixture' \
+              --profile "$WINEPREFIX/drive_c/intimatr-ci-wrong-speed.toml" \
+              --bottles-cli target/wine-attach/mocks/bottles-cli \
+              --offline-single-player --launch \
+              >target/wine-attach/launch-wrong-profile.stdout 2>target/wine-attach/launch-wrong-profile.stderr; then
+            echo "ERROR: profile-launch accepted an unrelated valid game profile" >&2
+            exit 1
+          fi
+          grep -q 'launch profile differs from the selected game policy' target/wine-attach/launch-wrong-profile.stderr
+          test ! -e "$INTIMATR_MOCK_LAUNCH_RECEIPT"
+          # An ambiguous native registered-program name must fail closed
+          # even if both entries happen to reference the selected image.
+          jq -n --arg path "$game_fixture_windows" '[
+            {"name":"Selected standalone offline test fixture","executable":"wine-attach-target.exe","path":$path},
+            {"name":"Selected standalone offline test fixture","executable":"wine-attach-target.exe","path":$path}
+          ]' >target/wine-attach/mocks/duplicate-launch-programs.json
+          if INTIMATR_MOCK_PROGRAMS_JSON="$(pwd)/target/wine-attach/mocks/duplicate-launch-programs.json" \
+              target/release/intimatr-bottles profile-launch "${launch_args[@]}" \
+              >target/wine-attach/launch-duplicate-name.stdout 2>target/wine-attach/launch-duplicate-name.stderr; then
+            echo "ERROR: profile-launch accepted an ambiguous registered program" >&2
+            exit 1
+          fi
+          grep -q 'selected program name is absent or ambiguous' target/wine-attach/launch-duplicate-name.stderr
+          test ! -e "$INTIMATR_MOCK_LAUNCH_RECEIPT"
           target/release/intimatr-bottles profile-launch "${launch_args[@]}" \
             >target/wine-attach/profile-launch-report.json
           jq -e '.operation == "explicit_registered_bottles_profile_launch"
