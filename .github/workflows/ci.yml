@@ -387,6 +387,30 @@ jobs:
               and (.static_pe_compatibility.static_timer_imports_missing | index("timeGetTime") != null))] | length) == 1
             and ([.programs[] | select(.registered_name == "Unavailable" or .registered_name == "Other Drive" or .registered_name == "Escaping Link") |
               select(.resolved_linux_file == null and .static_pe_compatibility.static_import_status == "static_import_inventory_unknown")] | length) == 3' target/wine-attach/bottle-compat.json > /dev/null
+          # One explicit all-bottles scan reuses the same safe file checks
+          # while keeping unknown imports separate from complete coverage.
+          target/release/intimatr-bottles bottle-compat \
+            --all --bottles-cli target/wine-attach/mocks/bottles-cli \
+            >target/wine-attach/bottle-compat-all.json
+          jq -e '.operation == "read_only_all_registered_bottles_static_pe_compatibility"
+            and .registered_bottle_count == 1
+            and .bottles_with_unresolved_inventory == 0
+            and .programs_with_all_four_static_names == 2
+            and .programs_with_incomplete_static_names == 1
+            and .programs_with_unknown_static_imports == 6
+            and .gameplay_speed_verified == false
+            and .process_attachment_attempted == false
+            and .timer_hook_installation_attempted == false
+            and .bottles[0].bottle == "Fixture"
+            and (.bottles[0].programs | length) == 9' \
+            target/wine-attach/bottle-compat-all.json > /dev/null
+          if target/release/intimatr-bottles bottle-compat \
+            --all --bottle Fixture --bottles-cli target/wine-attach/mocks/bottles-cli \
+            >target/wine-attach/bottle-compat-ambiguous.stdout 2>target/wine-attach/bottle-compat-ambiguous.stderr; then
+            echo "ERROR: combined all-and-selected bottle scan was accepted" >&2
+            exit 1
+          fi
+          grep -q 'exactly one --bottle NAME or --all' target/wine-attach/bottle-compat-ambiguous.stderr
           target/release/intimatr-bottles bottle-compat \
             --bottle Fixture \
             --bottles-cli target/wine-attach/mocks/bottles-cli \

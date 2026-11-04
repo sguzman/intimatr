@@ -19,7 +19,8 @@ const MAX_REGISTERED_PROGRAMS: usize = 1024;
 const MAX_DIRECTORY_ENTRIES: usize = 8192;
 
 struct Options {
-    bottle: String,
+    bottle: Option<String>,
+    all: bool,
     cli: String,
     include_mapped_drives: bool,
 }
@@ -27,9 +28,17 @@ struct Options {
 fn parse_options(args: &[String]) -> Result<Options, String> {
     let mut bottle = None;
     let mut cli = None;
+    let mut all = false;
     let mut include_mapped_drives = false;
     let mut iter = args.iter();
     while let Some(flag) = iter.next() {
+        if flag == "--all" {
+            if all {
+                return Err("duplicate --all selection".into());
+            }
+            all = true;
+            continue;
+        }
         if flag == "--include-mapped-drives" {
             if include_mapped_drives {
                 return Err("duplicate --include-mapped-drives acknowledgment".into());
@@ -51,9 +60,11 @@ fn parse_options(args: &[String]) -> Result<Options, String> {
             }
         }
     }
-    let bottle = bottle.ok_or("bottle-compat requires exactly one --bottle NAME")?;
-    if bottle.trim().is_empty() {
+    if bottle.as_deref().is_some_and(|name: &str| name.trim().is_empty()) {
         return Err("bottle-compat requires a nonempty bottle name".into());
+    }
+    if all == bottle.is_some() {
+        return Err("bottle-compat requires exactly one --bottle NAME or --all".into());
     }
     let cli = cli.unwrap_or_else(|| "bottles-cli".to_owned());
     if Path::new(&cli)
@@ -64,6 +75,7 @@ fn parse_options(args: &[String]) -> Result<Options, String> {
     }
     Ok(Options {
         bottle,
+        all,
         cli,
         include_mapped_drives,
     })
@@ -213,22 +225,18 @@ fn inspect_program(
     })
 }
 
-pub(super) fn run_bottle_compat(args: Vec<String>) -> Result<(), String> {
-    let options = parse_options(&args)?;
-    let names = parse_bottle_names(&bottles_json_with_command(
-        &options.cli,
-        &["list", "bottles"],
-    )?)
-    .map_err(|error| format!("invalid native Bottles inventory: {error}"))?;
-    if !names.contains(&options.bottle) {
-        return Err("selected bottle not found in native Bottles inventory".into());
-    }
-    let root = bottles_json_with_command(&options.cli, &["info", "bottles-path"])?;
-    let prefix = parse_bottles_root(&root)?.join(&options.bottle);
-    let ownership = verify_bottle_prefix(&root, &options.bottle, &prefix)?;
+/// Inspect only registered executable files within one verified bottle.
+fn inspect_selected_bottle(
+    root: &str,
+    cli: &str,
+    bottle: &str,
+    include_mapped_drives: bool,
+) -> Result<(PathBuf, Vec<serde_json::Value>), String> {
+    let prefix = parse_bottles_root(root)?.join(bottle);
+    let ownership = verify_bottle_prefix(root, bottle, &prefix)?;
     let programs = parse_registered_programs(&bottles_json_with_command(
-        &options.cli,
-        &["programs", "-b", &options.bottle],
+        cli,
+        &["programs", "-b", bottle],
     )?)
     .map_err(|error| format!("invalid registered Bottles programs: {error}"))?;
     if programs.len() > MAX_REGISTERED_PROGRAMS {
@@ -240,14 +248,108 @@ pub(super) fn run_bottle_compat(args: Vec<String>) -> Result<(), String> {
             inspect_program(
                 &ownership.canonical_bottle_prefix,
                 program,
-                options.include_mapped_drives,
+                include_mapped_drives,
             )
         })
         .collect::<Vec<_>>();
+    Ok((ownership.canonical_bottle_prefix, reviewed))
+}
+
+pub(super) fn run_bottle_compat(args: Vec<String>) -> Result<(), String> {
+    let options = parse_options(&args)?;
+    let names = parse_bottle_names(&bottles_json_with_command(
+        &options.cli,
+        &["list", "bottles"],
+    )?)
+    .map_err(|error| format!("invalid native Bottles inventory: {error}"))?;
+    if !options.all
+        && !names
+            .iter()
+            .any(|name| Some(name.as_str()) == options.bottle.as_deref())
+    {
+        return Err("selected bottle not found in native Bottles inventory".into());
+    }
+    let root = bottles_json_with_command(&options.cli, &["info", "bottles-path"])?;
+
+    if options.all {
+        if names.len() > 256 {
+            return Err("all-bottle compatibility scan exceeds 256 registered bottles".into());
+        }
+        let mut reports = Vec::new();
+        let mut four_static_names = 0_usize;
+        let mut incomplete_static_names = 0_usize;
+        let mut unknown_static_imports = 0_usize;
+        let mut uninspected_bottles = 0_usize;
+        for bottle in names {
+            match inspect_selected_bottle(
+                &root,
+                &options.cli,
+                &bottle,
+                options.include_mapped_drives,
+            ) {
+                Ok((prefix, programs)) => {
+                    for program in &programs {
+                        match program["static_pe_compatibility"]["static_import_status"].as_str() {
+                            Some("static_four_timer_names_present") => four_static_names += 1,
+                            Some("static_timer_imports_missing") => incomplete_static_names += 1,
+                            _ => unknown_static_imports += 1,
+                        }
+                    }
+                    reports.push(serde_json::json!({
+                        "bottle": bottle,
+                        "bottle_prefix_association_verified": true,
+                        "verified_bottle_prefix": prefix,
+                        "inspection_error": null,
+                        "programs": programs,
+                    }));
+                }
+                Err(error) => {
+                    uninspected_bottles += 1;
+                    reports.push(serde_json::json!({
+                        "bottle": bottle,
+                        "bottle_prefix_association_verified": false,
+                        "verified_bottle_prefix": null,
+                        "inspection_error": error,
+                        "programs": null,
+                    }));
+                }
+            }
+        }
+        let output = serde_json::json!({
+            "operation": "read_only_all_registered_bottles_static_pe_compatibility",
+            "registered_bottles_only": true,
+            "registered_bottle_count": reports.len(),
+            "bottles_with_unresolved_inventory": uninspected_bottles,
+            "programs_with_all_four_static_names": four_static_names,
+            "programs_with_incomplete_static_names": incomplete_static_names,
+            "programs_with_unknown_static_imports": unknown_static_imports,
+            "external_drive_inspection_opted_in": options.include_mapped_drives,
+            "wine_runner_verified": false,
+            "process_identity_verified": false,
+            "gameplay_speed_verified": false,
+            "process_attachment_attempted": false,
+            "timer_hook_installation_attempted": false,
+            "bottles": reports,
+        });
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&output)
+                .map_err(|error| format!("cannot serialize all-bottle scan: {error}"))?
+        );
+        return Ok(());
+    }
+
+    let bottle = options.bottle.as_deref().ok_or("missing selected bottle")?;
+    let (prefix, reviewed) = inspect_selected_bottle(
+        &root,
+        &options.cli,
+        bottle,
+        options.include_mapped_drives,
+    )?;
     let output = serde_json::json!({
         "operation": "read_only_registered_bottle_static_pe_compatibility",
-        "selected_bottle": options.bottle,
-        "verified_bottle_prefix": ownership.canonical_bottle_prefix,
+        "selected_bottle": bottle,
+        "verified_bottle_prefix": prefix,
         "bottle_prefix_association_verified": true,
         "registered_programs_only": true,
         "external_drive_inspection_opted_in": options.include_mapped_drives,
@@ -297,6 +399,8 @@ mod tests {
         for args in [
             vec![],
             vec!["--bottle".into(), "".into()],
+            vec!["--all".into(), "--all".into()],
+            vec!["--all".into(), "--bottle".into(), "Games".into()],
             vec![
                 "--bottle".into(),
                 "Games".into(),
@@ -318,6 +422,25 @@ mod tests {
         ] {
             assert!(parse_options(&args).is_err());
         }
+    }
+
+    #[test]
+    fn all_bottles_selection_is_explicit_and_exclusive() {
+        let all = parse_options(&["--all".to_owned()]).unwrap();
+        assert!(all.all);
+        assert!(all.bottle.is_none());
+        assert!(!all.include_mapped_drives);
+        assert!(parse_options(&[]).is_err());
+        assert!(parse_options(&["--all".to_owned(), "--all".to_owned()]).is_err());
+        assert!(parse_options(&[
+            "--all".to_owned(),
+            "--bottle".to_owned(),
+            "Games".to_owned(),
+        ])
+        .is_err());
+        let one = parse_options(&["--bottle".to_owned(), "Games".to_owned()]).unwrap();
+        assert_eq!(one.bottle.as_deref(), Some("Games"));
+        assert!(!one.all);
     }
 
     #[test]
