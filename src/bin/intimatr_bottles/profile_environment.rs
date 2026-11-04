@@ -67,9 +67,80 @@ pub(super) fn verify_profile_environment(
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
+struct ProfileEnvironmentOptions {
+    bottle: String,
+    bottles_cli: String,
+}
+
+impl ProfileEnvironmentOptions {
+    fn parse(args: &[String]) -> Result<Self, String> {
+        let mut bottle = None;
+        let mut bottles_cli = None;
+        let mut iter = args.iter();
+        while let Some(flag) = iter.next() {
+            let value = iter
+                .next()
+                .filter(|value| !value.is_empty() && !value.starts_with("--"))
+                .ok_or_else(|| format!("missing value after {flag}"))?;
+            match flag.as_str() {
+                "--bottle" if bottle.is_none() => bottle = Some(value.clone()),
+                "--bottles-cli" if bottles_cli.is_none() => bottles_cli = Some(value.clone()),
+                _ => return Err(format!("duplicate or unexpected profile-env flag: {flag}")),
+            }
+        }
+        let bottle: String = bottle.ok_or("missing --bottle")?;
+        if bottle.trim().is_empty() {
+            return Err("selected bottle name must not be empty".into());
+        }
+        let bottles_cli = bottles_cli.unwrap_or_else(|| "bottles-cli".to_owned());
+        if std::path::Path::new(&bottles_cli)
+            .file_name()
+            .is_none_or(|name| name != "bottles-cli")
+        {
+            return Err("expected a native bottles-cli executable".into());
+        }
+        Ok(Self {
+            bottle,
+            bottles_cli,
+        })
+    }
+}
+
+/// Read-only report for native field inspection, with blockers shown as data.
+pub(super) fn run_profile_env(args: Vec<String>) -> Result<(), String> {
+    let options = ProfileEnvironmentOptions::parse(&args)?;
+    let inventory = super::bottles_json_with_command(
+        &options.bottles_cli,
+        &["list", "bottles"],
+    )?;
+    let (mode, blocker) = match verify_profile_environment(&inventory, &options.bottle) {
+        Ok(mode) => (Some(mode), None),
+        Err(error) => (None, Some(error)),
+    };
+    let report = serde_json::json!({
+        "operation": "read_only_native_bottles_profile_environment_preflight",
+        "selected_bottle": options.bottle,
+        "reported_bottle_policy_accepts_profile_environment": mode.is_some(),
+        "reported_environment_mode": mode,
+        "blocker": blocker,
+        "bottles_run_invoked": false,
+        "profile_delivery_into_game_verified": false,
+        "game_process_started_verified": false,
+        "bottle_configuration_modified": false,
+        "attachment_attempted": false
+    });
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&report)
+            .map_err(|error| format!("cannot encode Bottles environment preflight: {error}"))?
+    );
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
-    use super::verify_profile_environment;
+    use super::{ProfileEnvironmentOptions, verify_profile_environment};
     use serde_json::{Value, json};
 
     fn inventory(value: Value) -> String {
@@ -142,6 +213,31 @@ mod tests {
                     .unwrap_err()
                     .contains("explicitly overrides")
             );
+        }
+    }
+
+    #[test]
+    fn read_only_cli_requires_explicit_bottle_and_native_command() {
+        let valid = [
+            "--bottle",
+            "My Games",
+            "--bottles-cli",
+            "/usr/bin/bottles-cli",
+        ]
+        .map(str::to_owned);
+        assert_eq!(
+            ProfileEnvironmentOptions::parse(&valid).unwrap().bottle,
+            "My Games"
+        );
+        for bad in [
+            vec![],
+            vec!["--bottle", ""],
+            vec!["--bottle", "Games", "--bottle", "Another"],
+            vec!["--bottle", "Games", "--bottles-cli", "/usr/bin/wine"],
+            vec!["--bottle", "Games", "--unknown", "value"],
+        ] {
+            let args: Vec<String> = bad.into_iter().map(str::to_owned).collect();
+            assert!(ProfileEnvironmentOptions::parse(&args).is_err());
         }
     }
 
