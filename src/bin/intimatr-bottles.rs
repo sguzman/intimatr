@@ -17,11 +17,11 @@ mod bottle_compat;
 #[path = "intimatr_bottles/game_attach.rs"]
 mod game_attach;
 #[cfg(target_os = "linux")]
-#[path = "intimatr_bottles/live_match.rs"]
-mod live_match;
-#[cfg(target_os = "linux")]
 #[path = "intimatr_bottles/launch_proxy_deploy.rs"]
 mod launch_proxy_deploy;
+#[cfg(target_os = "linux")]
+#[path = "intimatr_bottles/live_match.rs"]
+mod live_match;
 #[cfg(target_os = "linux")]
 #[path = "intimatr_bottles/pe_compat.rs"]
 mod pe_compat;

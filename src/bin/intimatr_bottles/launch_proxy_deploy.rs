@@ -62,11 +62,17 @@ fn present(path: &Path) -> Result<bool, String> {
 
 fn read_file(path: &Path) -> Result<Vec<u8>, String> {
     if !path.is_absolute() || !present(path)? {
-        return Err(format!("expected existing absolute regular file: {}", path.display()));
+        return Err(format!(
+            "expected existing absolute regular file: {}",
+            path.display()
+        ));
     }
     let metadata = fs::metadata(path).map_err(|e| e.to_string())?;
     if metadata.len() == 0 || metadata.len() > MAX_FILE {
-        return Err(format!("file exceeds size policy or is empty: {}", path.display()));
+        return Err(format!(
+            "file exceeds size policy or is empty: {}",
+            path.display()
+        ));
     }
     fs::read(path).map_err(|error| format!("cannot read {}: {error}", path.display()))
 }
@@ -97,18 +103,32 @@ fn verify_game_dir(raw: &Path) -> Result<PathBuf, String> {
     if !raw.is_absolute() {
         return Err("--game-dir requires an absolute Linux path".into());
     }
-    if fs::symlink_metadata(raw).map_err(|e| e.to_string())?.file_type().is_symlink() {
+    if fs::symlink_metadata(raw)
+        .map_err(|e| e.to_string())?
+        .file_type()
+        .is_symlink()
+    {
         return Err("game directory must not be a symlink".into());
     }
     let game = fs::canonicalize(raw).map_err(|e| e.to_string())?;
     if !game.is_dir()
         || game.file_name().is_none_or(|name| name != "Eastward")
-        || game.parent().and_then(Path::file_name).is_none_or(|name| name != "Program Files")
-        || game.parent().and_then(Path::parent).and_then(Path::file_name).is_none_or(|name| name != "drive_c")
+        || game
+            .parent()
+            .and_then(Path::file_name)
+            .is_none_or(|name| name != "Program Files")
+        || game
+            .parent()
+            .and_then(Path::parent)
+            .and_then(Path::file_name)
+            .is_none_or(|name| name != "drive_c")
     {
         return Err("expected Eastward in a bottle's drive_c/Program Files/Eastward".into());
     }
-    let prefix = game.parent().and_then(Path::parent).and_then(Path::parent)
+    let prefix = game
+        .parent()
+        .and_then(Path::parent)
+        .and_then(Path::parent)
         .ok_or("cannot resolve selected bottle prefix")?;
     if prefix.file_name().is_none_or(|name| name != "Eastward")
         || !prefix.join("bottle.yml").is_file()
@@ -125,9 +145,11 @@ fn check_pe64_dll(bytes: &[u8]) -> Result<(), String> {
         return Err("DLL source is not a DOS/PE image".into());
     }
     let offset = u32::from_le_bytes(bytes[0x3c..0x40].try_into().unwrap()) as usize;
-    let header = bytes.get(offset..offset.saturating_add(24))
+    let header = bytes
+        .get(offset..offset.saturating_add(24))
         .ok_or("DLL PE header extends beyond file")?;
-    if &header[..4] != b"PE\0\0" || header[4..6] != [0x64, 0x86]
+    if &header[..4] != b"PE\0\0"
+        || header[4..6] != [0x64, 0x86]
         || (u16::from_le_bytes(header[22..24].try_into().unwrap()) & 0x2000) == 0
     {
         return Err("expected 64-bit x86 Windows PE DLL".into());
@@ -144,8 +166,8 @@ fn load_state(game: &Path) -> Result<Deployment, String> {
     if bytes.len() > 4096 {
         return Err("deployment marker exceeds limit".into());
     }
-    let state: Deployment = serde_json::from_slice(&bytes)
-        .map_err(|e| format!("invalid deployment marker: {e}"))?;
+    let state: Deployment =
+        serde_json::from_slice(&bytes).map_err(|e| format!("invalid deployment marker: {e}"))?;
     if state.version != 1 {
         return Err("unrecognized deployment marker version".into());
     }
@@ -161,7 +183,10 @@ fn check_installed(game: &Path) -> Result<Deployment, String> {
         (game.join("config").join(CONFIG), &state.config_sha256),
     ] {
         if !same_file(&path, hash)? {
-            return Err(format!("installed file changed or missing; refusing mutation: {}", path.display()));
+            return Err(format!(
+                "installed file changed or missing; refusing mutation: {}",
+                path.display()
+            ));
         }
     }
     if fs::symlink_metadata(game.join(QUARANTINE)).is_ok() {
@@ -170,7 +195,12 @@ fn check_installed(game: &Path) -> Result<Deployment, String> {
     Ok(state)
 }
 
-fn print_report(operation: &'static str, game: &Path, status: &'static str, changed: bool) -> Result<(), String> {
+fn print_report(
+    operation: &'static str,
+    game: &Path,
+    status: &'static str,
+    changed: bool,
+) -> Result<(), String> {
     let json = serde_json::to_string_pretty(&Report {
         operation,
         game_directory: game.to_path_buf(),
@@ -179,7 +209,8 @@ fn print_report(operation: &'static str, game: &Path, status: &'static str, chan
         launcher_changed: changed,
         game_process_touched: false,
         timer_hooks_activated: false,
-    }).map_err(|e| e.to_string())?;
+    })
+    .map_err(|e| e.to_string())?;
     println!("{json}");
     Ok(())
 }
@@ -197,7 +228,12 @@ fn status(game: &Path) -> Result<(), String> {
     {
         return Err("unmanaged or incomplete deployment files found; no automatic cleanup".into());
     }
-    print_report("read_only_launch_proxy_status", game, "not_installed", false)
+    print_report(
+        "read_only_launch_proxy_status",
+        game,
+        "not_installed",
+        false,
+    )
 }
 
 fn install(game: &Path, proxy: &Path, runtime: &Path, config: &Path) -> Result<(), String> {
@@ -209,8 +245,8 @@ fn install(game: &Path, proxy: &Path, runtime: &Path, config: &Path) -> Result<(
     check_pe64_dll(&original)?;
     check_pe64_dll(&proxy_bytes)?;
     check_pe64_dll(&runtime_bytes)?;
-    let config_string = std::str::from_utf8(&config_bytes)
-        .map_err(|_| "launch config is not UTF-8")?;
+    let config_string =
+        std::str::from_utf8(&config_bytes).map_err(|_| "launch config is not UTF-8")?;
     let parsed = AppConfig::from_toml_str(config_string)
         .map_err(|e| format!("invalid launch configuration: {e}"))?;
     if parsed.target.executable != "Eastward.exe" {
@@ -226,12 +262,18 @@ fn install(game: &Path, proxy: &Path, runtime: &Path, config: &Path) -> Result<(
     };
     let cfg_dir = game.join("config");
     let created_config_dir = if cfg_dir.exists() {
-        if !cfg_dir.is_dir() || fs::symlink_metadata(&cfg_dir).map_err(|e| e.to_string())?.file_type().is_symlink() {
+        if !cfg_dir.is_dir()
+            || fs::symlink_metadata(&cfg_dir)
+                .map_err(|e| e.to_string())?
+                .file_type()
+                .is_symlink()
+        {
             return Err("refusing non-directory or symlinked config directory".into());
         }
         false
     } else {
-        fs::create_dir(&cfg_dir).map_err(|e| format!("cannot create game config directory: {e}"))?;
+        fs::create_dir(&cfg_dir)
+            .map_err(|e| format!("cannot create game config directory: {e}"))?;
         true
     };
     let staged_proxy = game.join("steam_api64.intimatr-stage.dll");
@@ -240,7 +282,12 @@ fn install(game: &Path, proxy: &Path, runtime: &Path, config: &Path) -> Result<(
     let staged_state = game.join("intimatr-launch-deployment.stage.json");
     let marker = state_path(game);
     let result = (|| -> Result<(), String> {
-        for path in [&staged_proxy, &staged_runtime, &staged_config, &staged_state] {
+        for path in [
+            &staged_proxy,
+            &staged_runtime,
+            &staged_config,
+            &staged_state,
+        ] {
             require_absent(path)?;
         }
         write_new(&staged_proxy, &proxy_bytes)?;
@@ -282,15 +329,24 @@ fn install(game: &Path, proxy: &Path, runtime: &Path, config: &Path) -> Result<(
         if created_config_dir {
             let _ = fs::remove_dir(&cfg_dir);
         }
-        return Err(format!("installation failed; attempted safe rollback: {error}"));
+        return Err(format!(
+            "installation failed; attempted safe rollback: {error}"
+        ));
     }
     check_installed(game)?;
-    print_report("explicit_offline_launch_proxy_install", game, "installed", true)
+    print_report(
+        "explicit_offline_launch_proxy_install",
+        game,
+        "installed",
+        true,
+    )
 }
 
 fn status_preflight(game: &Path) -> Result<(), String> {
     if present(&state_path(game))? || !present(&game.join(ORIGINAL))? {
-        return Err("installation requires a pristine original DLL and no deployment marker".into());
+        return Err(
+            "installation requires a pristine original DLL and no deployment marker".into(),
+        );
     }
     for path in [
         game.join(SAVED),
@@ -317,17 +373,33 @@ fn remove(game: &Path) -> Result<(), String> {
         .map_err(|e| format!("cannot quarantine installed proxy: {e}"))?;
     if let Err(error) = fs::rename(&saved, &original) {
         let _ = fs::rename(&quarantined, &original);
-        return Err(format!("cannot restore original Steam DLL; attempted rollback: {error}"));
+        return Err(format!(
+            "cannot restore original Steam DLL; attempted rollback: {error}"
+        ));
     }
     if !same_file(&original, &state.original_sha256)? {
         return Err("original DLL restoration verification failed; preserving evidence".into());
     }
     // The original is already restored before any auxiliary files are removed.
-    for path in [quarantined, game.join(RUNTIME), game.join("config").join(CONFIG), state_path(game)] {
-        fs::remove_file(&path)
-            .map_err(|e| format!("original restored, but cleanup incomplete at {}: {e}", path.display()))?;
+    for path in [
+        quarantined,
+        game.join(RUNTIME),
+        game.join("config").join(CONFIG),
+        state_path(game),
+    ] {
+        fs::remove_file(&path).map_err(|e| {
+            format!(
+                "original restored, but cleanup incomplete at {}: {e}",
+                path.display()
+            )
+        })?;
     }
-    print_report("explicit_offline_launch_proxy_remove", game, "not_installed", true)
+    print_report(
+        "explicit_offline_launch_proxy_remove",
+        game,
+        "not_installed",
+        true,
+    )
 }
 
 pub(super) fn run_launch_proxy(args: Vec<String>) -> Result<(), String> {
@@ -344,14 +416,20 @@ pub(super) fn run_launch_proxy(args: Vec<String>) -> Result<(), String> {
             "--offline-single-player" if !offline => offline = true,
             "--game-closed" if !closed => closed = true,
             _ => {
-                let value = iter.next().filter(|v| !v.is_empty() && !v.starts_with("--"))
+                let value = iter
+                    .next()
+                    .filter(|v| !v.is_empty() && !v.starts_with("--"))
                     .ok_or_else(|| format!("missing value after {arg}"))?;
                 match arg.as_str() {
                     "--game-dir" if game_dir.is_none() => game_dir = Some(value),
                     "--proxy" if proxy.is_none() => proxy = Some(value),
                     "--dll" if dll.is_none() => dll = Some(value),
                     "--config" if config.is_none() => config = Some(value),
-                    _ => return Err(format!("unexpected or repeated launch-proxy argument: {arg}")),
+                    _ => {
+                        return Err(format!(
+                            "unexpected or repeated launch-proxy argument: {arg}"
+                        ));
+                    }
                 }
             }
         }
@@ -386,7 +464,10 @@ mod tests {
     impl Fixture {
         fn new() -> Self {
             let num = ID.fetch_add(1, Ordering::Relaxed);
-            let root = std::env::temp_dir().join(format!("intimatr-launch-manager-{}-{num}", std::process::id()));
+            let root = std::env::temp_dir().join(format!(
+                "intimatr-launch-manager-{}-{num}",
+                std::process::id()
+            ));
             let game = root.join("Eastward/drive_c/Program Files/Eastward");
             let source = root.join("sources");
             fs::create_dir_all(&game).unwrap();
@@ -409,7 +490,12 @@ mod tests {
             bytes
         }
         fn install(&self) -> Result<(), String> {
-            install(&self.game, &self.source.join("proxy.dll"), &self.source.join("intimatr.dll"), &self.source.join(CONFIG))
+            install(
+                &self.game,
+                &self.source.join("proxy.dll"),
+                &self.source.join("intimatr.dll"),
+                &self.source.join(CONFIG),
+            )
         }
     }
 
@@ -447,7 +533,10 @@ mod tests {
         fs::write(fx.game.join(ORIGINAL), b"unrecognized replacement").unwrap();
         assert!(remove(&fx.game).is_err());
         assert_eq!(fs::read(fx.game.join(SAVED)).unwrap(), backup);
-        assert_eq!(fs::read(fx.game.join(ORIGINAL)).unwrap(), b"unrecognized replacement");
+        assert_eq!(
+            fs::read(fx.game.join(ORIGINAL)).unwrap(),
+            b"unrecognized replacement"
+        );
     }
 
     #[test]
