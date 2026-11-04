@@ -67,6 +67,44 @@ pub(super) fn verify_profile_environment(
     }
 }
 
+/// The registered program can add a second, higher-precedence environment
+/// layer after the bottle-wide inherited-variable filter. Never accept a
+/// per-program value that could shadow this explicitly selected launch file.
+pub(super) fn verify_registered_program_environment(
+    programs_json: &str,
+    program_name: &str,
+) -> Result<(), String> {
+    let value: Value = serde_json::from_str(programs_json)
+        .map_err(|error| format!("invalid native Bottles registered program environment: {error}"))?;
+    let programs = value
+        .as_array()
+        .ok_or("native Bottles programs must be an array")?;
+    let selected = programs
+        .iter()
+        .filter(|program| program.get("name").and_then(Value::as_str) == Some(program_name))
+        .collect::<Vec<_>>();
+    if selected.len() != 1 {
+        return Err("selected registered program environment identity is absent or ambiguous".into());
+    }
+    let program = selected[0]
+        .as_object()
+        .ok_or("selected registered program environment record is invalid")?;
+    match program.get("environment") {
+        None | Some(Value::Null) => Ok(()),
+        Some(Value::Object(environment)) => {
+            if environment
+                .keys()
+                .any(|name| name.eq_ignore_ascii_case(PROFILE_ENV))
+            {
+                Err("selected registered program overrides INTIMATR_SPEED_PROFILE".into())
+            } else {
+                Ok(())
+            }
+        }
+        Some(_) => Err("selected registered program environment must be an object".into()),
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 struct ProfileEnvironmentOptions {
     bottle: String,
@@ -140,7 +178,10 @@ pub(super) fn run_profile_env(args: Vec<String>) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{ProfileEnvironmentOptions, verify_profile_environment};
+    use super::{
+        ProfileEnvironmentOptions, verify_profile_environment,
+        verify_registered_program_environment,
+    };
     use serde_json::{Value, json};
 
     fn inventory(value: Value) -> String {
@@ -212,6 +253,33 @@ mod tests {
                 verify_profile_environment(&raw, "Selected")
                     .unwrap_err()
                     .contains("explicitly overrides")
+            );
+        }
+    }
+
+    #[test]
+    fn registered_game_environment_cannot_shadow_selected_profile() {
+        for good in [
+            r#"[{"name":"Game","path":"C:\\\\Games\\\\Game.exe"}]"#,
+            r#"[{"name":"Game","environment":null}]"#,
+            r#"[{"name":"Game","environment":{"OTHER":"ok"}}]"#,
+        ] {
+            assert!(
+                verify_registered_program_environment(good, "Game").is_ok(),
+                "{good}"
+            );
+        }
+        for bad in [
+            r#"[{"name":"Game","environment":{"INTIMATR_SPEED_PROFILE":"C:\\\\other.toml"}}]"#,
+            r#"[{"name":"Game","environment":{"intimatr_speed_profile":"C:\\\\other.toml"}}]"#,
+            r#"[{"name":"Game","environment":"INTIMATR_SPEED_PROFILE=x"}]"#,
+            r#"[{"name":"Game"},{"name":"Game"}]"#,
+            r#"[{"name":"Other"}]"#,
+            r#"{"Game":{}}"#,
+        ] {
+            assert!(
+                verify_registered_program_environment(bad, "Game").is_err(),
+                "{bad}"
             );
         }
     }
