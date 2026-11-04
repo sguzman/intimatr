@@ -62,7 +62,11 @@ impl ProfileLaunchOptions {
                 "--program" if program.is_none() => program = Some(value.clone()),
                 "--profile" if profile.is_none() => profile = Some(value.clone()),
                 "--bottles-cli" if bottles_cli.is_none() => bottles_cli = Some(value.clone()),
-                _ => return Err(format!("duplicate or unexpected profile-launch flag: {flag}")),
+                _ => {
+                    return Err(format!(
+                        "duplicate or unexpected profile-launch flag: {flag}"
+                    ));
+                }
             }
         }
         if !offline || !launch {
@@ -82,7 +86,8 @@ impl ProfileLaunchOptions {
         if bottle.trim().is_empty() || program.trim().is_empty() {
             return Err("bottle and registered program names must not be empty".into());
         }
-        game_path_key(&executable).map_err(|error| format!("invalid selected game identity: {error}"))?;
+        game_path_key(&executable)
+            .map_err(|error| format!("invalid selected game identity: {error}"))?;
         let bottles_cli = bottles_cli.unwrap_or_else(|| "bottles-cli".to_owned());
         if Path::new(&bottles_cli)
             .file_name()
@@ -129,11 +134,8 @@ pub(super) fn run_profile_launch(args: Vec<String>) -> Result<(), String> {
     use std::{fs::File, io::Read};
 
     let options = ProfileLaunchOptions::parse(&args)?;
-    let (prefix, windows_profile, enabled) = verify_bottle_profile_path(
-        &options.bottle,
-        &options.profile,
-        &options.bottles_cli,
-    )?;
+    let (prefix, windows_profile, enabled) =
+        verify_bottle_profile_path(&options.bottle, &options.profile, &options.bottles_cli)?;
     if !enabled {
         return Err("resolved speed profile is explicitly disabled; refusing launch".into());
     }
@@ -234,12 +236,18 @@ mod tests {
     #[test]
     fn launch_requires_both_consent_flags_and_exact_selection() {
         let base = args(&[
-            "--config", "/tmp/global.toml",
-            "--bottle", "Fixture",
-            "--exe", r"C:\Games\Game.exe",
-            "--program", "Offline Game",
-            "--profile", "/tmp/bottle/drive_c/speed.toml",
-            "--bottles-cli", "/tmp/bottles-cli",
+            "--config",
+            "/tmp/global.toml",
+            "--bottle",
+            "Fixture",
+            "--exe",
+            r"C:\Games\Game.exe",
+            "--program",
+            "Offline Game",
+            "--profile",
+            "/tmp/bottle/drive_c/speed.toml",
+            "--bottles-cli",
+            "/tmp/bottles-cli",
         ]);
         let mut allowed = base.clone();
         allowed.extend(args(&["--offline-single-player", "--launch"]));
@@ -267,21 +275,22 @@ mod tests {
             path: r"C:\Games\Game.exe".into(),
             arguments: String::new(),
         };
-        assert!(verify_registered_program(
-            &[program.clone()],
-            "Offline Game",
-            "c:/games/GAME.exe"
-        ).is_ok());
-        assert!(verify_registered_program(
-            &[program.clone()],
-            "Offline Game",
-            "C:/Other/Game.exe"
-        ).is_err());
+        assert!(
+            verify_registered_program(&[program.clone()], "Offline Game", "c:/games/GAME.exe")
+                .is_ok()
+        );
+        assert!(
+            verify_registered_program(&[program.clone()], "Offline Game", "C:/Other/Game.exe")
+                .is_err()
+        );
         assert!(verify_registered_program(&[program.clone()], "Another", &program.path).is_err());
-        assert!(verify_registered_program(
-            &[program.clone(), program.clone()],
-            "Offline Game",
-            &program.path
-        ).is_err());
+        assert!(
+            verify_registered_program(
+                &[program.clone(), program.clone()],
+                "Offline Game",
+                &program.path
+            )
+            .is_err()
+        );
     }
 }

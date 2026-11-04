@@ -288,11 +288,8 @@ pub(super) fn verify_bottle_profile_path(
 #[cfg(target_os = "linux")]
 pub(super) fn run_profile_path(args: Vec<String>) -> Result<(), String> {
     let options = ProfilePathOptions::parse(&args)?;
-    let (prefix, windows_path, enabled) = verify_bottle_profile_path(
-        &options.bottle,
-        &options.profile,
-        &options.bottles_cli,
-    )?;
+    let (prefix, windows_path, enabled) =
+        verify_bottle_profile_path(&options.bottle, &options.profile, &options.bottles_cli)?;
     let report = serde_json::json!({
         "operation": "read_only_verified_bottle_profile_path",
         "bottle": options.bottle,
