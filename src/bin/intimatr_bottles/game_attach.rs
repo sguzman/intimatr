@@ -736,9 +736,14 @@ mod tests {
     #[test]
     fn comparison_profile_is_explicit_and_status_only() {
         let base = args(&[
-            "--attach-helper", "/tmp/wine-game-attach-helper.exe",
-            "--created-100ns", "133700000000000001",
-            "--pid", "42", "--exe", r"C:\Games\Game.exe",
+            "--attach-helper",
+            "/tmp/wine-game-attach-helper.exe",
+            "--created-100ns",
+            "133700000000000001",
+            "--pid",
+            "42",
+            "--exe",
+            r"C:\Games\Game.exe",
             "--offline-single-player",
         ]);
         let with_file = [base.clone(), args(&["--profile", "/tmp/speed.toml"])].concat();

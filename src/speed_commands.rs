@@ -560,7 +560,11 @@ mod tests {
             ..SpeedSettings::default()
         };
         let loaded = SpeedPreviewExecutor::with_profile_and_sha256(
-            stub(), &settings, &SpeedHotkeyConfig::default(), "loaded", digest,
+            stub(),
+            &settings,
+            &SpeedHotkeyConfig::default(),
+            "loaded",
+            digest,
         )
         .unwrap();
         assert_eq!(loaded.explicit_profile_sha256_word(0), Some(0x12345678));

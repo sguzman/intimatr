@@ -126,9 +126,7 @@ pub extern "system" fn intimatr_remote_speed_profile_state(_parameter: *mut c_vo
 /// accepted by this DLL at bootstrap. Selector 0..7 is an integer in the
 /// remote thread argument, not a pointer; this does not authenticate paths.
 #[unsafe(no_mangle)]
-pub extern "system" fn intimatr_remote_speed_profile_sha256_word(
-    selector: *mut c_void,
-) -> u32 {
+pub extern "system" fn intimatr_remote_speed_profile_sha256_word(selector: *mut c_void) -> u32 {
     runtime::remote_speed_profile_sha256_word(selector as usize)
 }
 
