@@ -305,6 +305,10 @@ jobs:
                 printf '%s\n' '[{"name":"Unrelated Offline","executable":"Unrelated.exe","path":"C:\\Example\\Unrelated.exe"}]'
               fi
               ;;
+            "run -b Fixture -p Selected standalone offline test fixture")
+              test -n "${INTIMATR_MOCK_LAUNCH_RECEIPT:-}" || exit 4
+              printf '%s\n' "${INTIMATR_SPEED_PROFILE:-missing}" > "$INTIMATR_MOCK_LAUNCH_RECEIPT"
+              ;;
             *)
               echo "Unexpected Bottles mock arguments: $*" >&2
               exit 2
@@ -766,6 +770,49 @@ jobs:
           fi
           grep -q 'symlink' target/wine-attach/symlink-profile.stderr
           profile_windows_path="$(jq -r '.windows_profile_path' target/wine-attach/launch-profile-path.json)"
+          # A registered-program launch uses the same exact full image policy
+          # and the verified exported profile; this mock confirms what the
+          # Bottles CLI receives, not what a real game receives.
+          jq -n --arg path "$game_fixture_windows" '[{
+            "name":"Selected standalone offline test fixture",
+            "executable":"wine-attach-target.exe",
+            "path":$path
+          }]' >target/wine-attach/mocks/prelaunch-programs.json
+          export INTIMATR_MOCK_PROGRAMS_JSON="$(pwd)/target/wine-attach/mocks/prelaunch-programs.json"
+          export INTIMATR_MOCK_LAUNCH_RECEIPT="$(pwd)/target/wine-attach/bottles-launch-env.receipt"
+          launch_args=(
+            --config "$(pwd)/target/wine-attach/host-speed-rules.toml"
+            --bottle Fixture --exe "$game_fixture_windows"
+            --program 'Selected standalone offline test fixture'
+            --profile "$WINEPREFIX/drive_c/intimatr-ci-speed.toml"
+            --bottles-cli target/wine-attach/mocks/bottles-cli
+            --offline-single-player --launch
+          )
+          if target/release/intimatr-bottles profile-launch \
+              --config "$(pwd)/target/wine-attach/host-speed-rules.toml" \
+              --bottle Fixture --exe 'C:\Unrelated.exe' \
+              --program 'Selected standalone offline test fixture' \
+              --profile "$WINEPREFIX/drive_c/intimatr-ci-speed.toml" \
+              --bottles-cli target/wine-attach/mocks/bottles-cli \
+              --offline-single-player --launch \
+              >target/wine-attach/launch-wrong-game.stdout 2>target/wine-attach/launch-wrong-game.stderr; then
+            echo "ERROR: profile-launch accepted a different game" >&2
+            exit 1
+          fi
+          test ! -e "$INTIMATR_MOCK_LAUNCH_RECEIPT"
+          target/release/intimatr-bottles profile-launch "${launch_args[@]}" \
+            >target/wine-attach/profile-launch-report.json
+          jq -e '.operation == "explicit_registered_bottles_profile_launch"
+            and .source_game_policy_verified == true
+            and .profile_file_matching_source_verified == true
+            and .bottles_run_cli_exited_successfully == true
+            and .game_process_started_verified == false
+            and .profile_reached_game_verified == false
+            and .dll_auto_loaded == false
+            and .bottle_configuration_modified == false
+            and .attachment_attempted == false' \
+            target/wine-attach/profile-launch-report.json > /dev/null
+          grep -Fx "$profile_windows_path" "$INTIMATR_MOCK_LAUNCH_RECEIPT"
           # A configured 2x initial speed must not accelerate the target
           # before explicit four-timer arming; activation starts at 1x.
           INTIMATR_SPEED_PROFILE="$profile_windows_path" INTIMATR_TEST_HOOK_STATUS_GATE=1 INTIMATR_TEST_REMOTE_STOP_WITH_HOOKS=1 INTIMATR_TEST_EXTERNAL_TIMER_ARM=1 INTIMATR_TEST_EXTERNAL_RATE_COMMANDS=1 xvfb-run -a wine target/wine-attach/game-fixture/wine-attach-target.exe >target/wine-attach/game-fixture/stdout 2>target/wine-attach/game-fixture/stderr &

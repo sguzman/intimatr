@@ -523,6 +523,23 @@ intimatr-bottles profile-path \
 
 This read-only command requires the bottle in native `bottles-cli` inventory, verifies its configured prefix and plain `drive_c`, rejects symlinks, parent traversal and files outside that C: drive, and validates the profile against the DLL loader. It reports `windows_profile_path` (for example `C:\\NEW-launch-speed.toml`) for the selected file. For a non-default native Bottles CLI location, `--bottles-cli /absolute/path/to/bottles-cli` is supported. It does not select a runner, edit a launch entry or change an existing process environment; the resulting path must still be passed explicitly at **game startup**. Non-C: mapped drives are deliberately unsupported in this first path check. Wine CI verifies C: translation, an outside-file refusal and a symlink refusal before starting its disposable selected-game fixture.
 
+### Explicit registered-program launch with a resolved profile
+
+For a **user-initiated offline single-player game**, the native host CLI now accepts:
+
+```sh
+intimatr-bottles profile-launch \
+  --config /absolute/path/to/global-speed.toml \
+  --bottle 'Your Bottle' --exe 'C:\\Games\\Game.exe' \
+  --program 'Registered Game Name' \
+  --profile /absolute/path/to/bottle/drive_c/NEW-launch-speed.toml \
+  --offline-single-player --launch
+```
+
+This requires an existing registered program (unique exact program name and full Windows executable identity), a verified selected bottle prefix, and a launch profile **identical to the global→bottle→game policy resolved for that exact identity**. Disabled and excluded games are refused. The command executes native `bottles-cli run -b ... -p ...` directly without a shell and sets `INTIMATR_SPEED_PROFILE` **only in the Bottles CLI subprocess environment**. It never edits the bottle's persistent environment variables, game files, registration or runner settings.
+
+**Important:** Bottles does not document a dedicated per-launch environment option for `run`. Passing this variable to the native CLI does not yet prove that Bottles forwards it into the resulting Windows game; a successful CLI exit does not establish a running process. Intimatr reports `profile_reached_game_verified=false`, `game_process_started_verified=false` and `dll_auto_loaded=false` intentionally. Injecting/arming the Intimatr DLL and testing actual game speed still require their own explicit gates and real native Bottles QA. The CI mock checks the native CLI invocation and its environment receipt, not genuine Bottles or game delivery. Source: [Bottles CLI documentation](https://docs.usebottles.com/advanced/cli).
+
 
 ### Explicitly configured speed steps in the selected-game timer session
 

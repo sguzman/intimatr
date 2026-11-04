@@ -29,6 +29,9 @@ mod probe_attach;
 #[path = "intimatr_bottles/profile_check.rs"]
 mod profile_check;
 #[cfg(target_os = "linux")]
+#[path = "intimatr_bottles/profile_launch.rs"]
+mod profile_launch;
+#[cfg(target_os = "linux")]
 #[path = "intimatr_bottles/read_only_snapshot.rs"]
 mod read_only_snapshot;
 
@@ -57,6 +60,7 @@ fn run() -> Result<(), String> {
             "Usage:\n  intimatr-bottles scan\n  intimatr-bottles plan (--all | --include-bottle GLOB | --include-program GLOB) [--exclude-bottle GLOB] [--exclude-program GLOB]\n  intimatr-bottles probe-attach --pid PID --prefix WINEPREFIX --helper PATH --runner ABSOLUTE_WINE_BINARY\n  intimatr-bottles profile-check --config TOML --bottle NAME --exe WINDOWS_PATH
   intimatr-bottles profile-export --config TOML --bottle NAME --exe WINDOWS_PATH --output ABSOLUTE_NEW_LINUX_TOML
   intimatr-bottles profile-path --bottle NAME --profile ABSOLUTE_LINUX_TOML [--bottles-cli NATIVE_BOTTLES_CLI]
+  intimatr-bottles profile-launch --config ORIGINAL_TOML --bottle NAME --exe EXACT_WINDOWS_PATH --program REGISTERED_PROGRAM_NAME --profile VERIFIED_C_DRIVE_TOML [--bottles-cli NATIVE_BOTTLES_CLI] --offline-single-player --launch
   intimatr-bottles pe-compat --exe ABSOLUTE_LINUX_PE_FILE
   intimatr-bottles bottle-compat --bottle NAME [--bottles-cli NATIVE_BOTTLES_CLI] [--include-mapped-drives]\n  intimatr-bottles processes --prefix INITIALIZED_WINEPREFIX\n  intimatr-bottles win-processes --prefix INITIALIZED_WINEPREFIX --helper WINE_PROCESS_LIST_EXE --runner ABSOLUTE_WINE_BINARY\n  intimatr-bottles match-snapshot --bottle NAME --programs BOTTLES_JSON --windows WINE_PROCESS_JSON\n  intimatr-bottles live-match --bottle NAME --helper WINE_PROCESS_LIST_EXE --runner ABSOLUTE_WINE_BINARY [--prefix WINEPREFIX] [--bottles-cli BOTTLES_CLI] [--pid WINDOWS_PID --exe EXACT_WINDOWS_PATH]\n  intimatr-bottles attach-game --bottle NAME --helper WINE_PROCESS_LIST_EXE --attach-helper ABSOLUTE_GAME_ATTACH_HELPER --runner ABSOLUTE_WINE_BINARY --pid WINDOWS_PID --exe EXACT_WINDOWS_PATH --created-100ns WIN_FILETIME --offline-single-player\n  intimatr-bottles arm-game-timers --bottle NAME --helper WINE_PROCESS_LIST_EXE --attach-helper ABSOLUTE_GAME_ATTACH_HELPER --runner ABSOLUTE_WINE_BINARY --pid WINDOWS_PID --exe EXACT_WINDOWS_PATH --created-100ns WIN_FILETIME --offline-single-player --experimental-four-timers
   intimatr-bottles set-game-speed --bottle NAME --helper WINE_PROCESS_LIST_EXE --attach-helper ABSOLUTE_GAME_ATTACH_HELPER --runner ABSOLUTE_WINE_BINARY --pid WINDOWS_PID --exe EXACT_WINDOWS_PATH --created-100ns WIN_FILETIME --offline-single-player --experimental-four-timers (--preset (half|normal|double) | --multiplier (0.1..10.0_CONFIGURED_STEP))
@@ -76,6 +80,9 @@ fn run() -> Result<(), String> {
     }
     if action == "profile-path" {
         return profile_check::run_profile_path(args.collect());
+    }
+    if action == "profile-launch" {
+        return profile_launch::run_profile_launch(args.collect());
     }
     if action == "pe-compat" {
         return pe_compat::run_pe_compat(args.collect());
@@ -118,7 +125,7 @@ fn run() -> Result<(), String> {
     }
     if action != "scan" && action != "plan" {
         return Err(
-            "unknown command; use --help for scan, plan, profile-check, profile-export, profile-path, pe-compat, bottle-compat, live-match, attach-game, arm-game-timers, set-game-speed, step-game-speed, stop-game, status-game and other commands".to_owned(),
+            "unknown command; use --help for scan, plan, profile-check, profile-export, profile-path, profile-launch, pe-compat, bottle-compat, live-match, attach-game, arm-game-timers, set-game-speed, step-game-speed, stop-game, status-game and other commands".to_owned(),
         );
     }
 

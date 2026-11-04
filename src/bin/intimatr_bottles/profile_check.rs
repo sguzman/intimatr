@@ -258,31 +258,45 @@ fn verified_profile_c_path(
 }
 
 #[cfg(target_os = "linux")]
-pub(super) fn run_profile_path(args: Vec<String>) -> Result<(), String> {
+pub(super) fn verify_bottle_profile_path(
+    bottle: &str,
+    profile: &str,
+    bottles_cli: &str,
+) -> Result<(std::path::PathBuf, String, bool), String> {
     use intimatr::{
         bottles::parse_bottle_names, bottles_prefix::verify_bottle_prefix,
         speed_profile_load::load_preview_profile,
     };
 
-    let options = ProfilePathOptions::parse(&args)?;
-    let list = super::bottles_json_with_command(&options.bottles_cli, &["list", "bottles"])?;
+    let list = super::bottles_json_with_command(bottles_cli, &["list", "bottles"])?;
     let bottles = parse_bottle_names(&list)
         .map_err(|error| format!("invalid native Bottles list: {error}"))?;
-    if !bottles.contains(&options.bottle) {
+    if !bottles.iter().any(|name| name == bottle) {
         return Err("selected bottle not found in native Bottles inventory".into());
     }
-    let root = super::bottles_json_with_command(&options.bottles_cli, &["info", "bottles-path"])?;
-    let prefix = intimatr::bottles_prefix::parse_bottles_root(&root)?.join(&options.bottle);
-    let identity = verify_bottle_prefix(&root, &options.bottle, &prefix)?;
-    let file = std::path::Path::new(&options.profile);
+    let root = super::bottles_json_with_command(bottles_cli, &["info", "bottles-path"])?;
+    let prefix = intimatr::bottles_prefix::parse_bottles_root(&root)?.join(bottle);
+    let identity = verify_bottle_prefix(&root, bottle, &prefix)?;
+    let file = std::path::Path::new(profile);
     let windows_path = verified_profile_c_path(&identity.canonical_bottle_prefix, file)?;
     let enabled = load_preview_profile(file)
         .map_err(|error| format!("profile is not acceptable to Windows DLL: {error}"))?
         .is_some();
+    Ok((identity.canonical_bottle_prefix, windows_path, enabled))
+}
+
+#[cfg(target_os = "linux")]
+pub(super) fn run_profile_path(args: Vec<String>) -> Result<(), String> {
+    let options = ProfilePathOptions::parse(&args)?;
+    let (prefix, windows_path, enabled) = verify_bottle_profile_path(
+        &options.bottle,
+        &options.profile,
+        &options.bottles_cli,
+    )?;
     let report = serde_json::json!({
         "operation": "read_only_verified_bottle_profile_path",
         "bottle": options.bottle,
-        "verified_bottle_prefix": identity.canonical_bottle_prefix,
+        "verified_bottle_prefix": prefix,
         "bottle_prefix_association_verified": true,
         "profile_linux_file": options.profile,
         "windows_profile_path": windows_path,
