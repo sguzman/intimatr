@@ -137,7 +137,7 @@ impl ProfileEnvironmentOptions {
         if bottle.trim().is_empty() {
             return Err("selected bottle name must not be empty".into());
         }
-        if program.as_deref().is_some_and(|name: &String| name.trim().is_empty()) {
+        if program.as_deref().is_some_and(|name| name.trim().is_empty()) {
             return Err("selected registered program name must not be empty".into());
         }
         let bottles_cli = bottles_cli.unwrap_or_else(|| "bottles-cli".to_owned());
@@ -164,10 +164,8 @@ pub(super) fn run_profile_env(args: Vec<String>) -> Result<(), String> {
         Err(error) => (None, Some(error)),
     };
     let (program_passed, program_blocker) = if let Some(program) = &options.program {
-        let programs = super::bottles_json_with_command(
-            &options.bottles_cli,
-            &["programs", "-b", &options.bottle],
-        )?;
+        let programs =
+            super::bottles_json_with_command(&options.bottles_cli, &["programs", "-b", &options.bottle])?;
         match verify_registered_program_environment(&programs, program) {
             Ok(()) => (Some(true), None),
             Err(error) => (Some(false), Some(error)),
