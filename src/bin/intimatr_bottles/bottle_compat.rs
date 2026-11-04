@@ -8,12 +8,13 @@ use std::{
 };
 
 use intimatr::{
-    bottles::{RegisteredProgram, parse_bottle_names, parse_registered_programs},
+    bottles::{RegisteredProgram, parse_bottle_names},
     bottles_prefix::{parse_bottles_root, verify_bottle_prefix},
     pe_timer_imports::inspect_pe_timer_imports,
 };
 
 use super::{bottles_json_with_command, pe_compat::classify_imports};
+use serde_json::Value;
 
 const MAX_REGISTERED_PROGRAMS: usize = 1024;
 const MAX_DIRECTORY_ENTRIES: usize = 8192;
@@ -223,9 +224,59 @@ fn inspect_program(
         "registered_name": program.name,
         "registered_executable": program.executable,
         "registered_windows_path": program.path,
+        "registration_metadata_valid": true,
         "resolved_linux_file": resolved,
         "static_pe_compatibility": classify_imports(inspection),
     })
+}
+
+/// Preserve valid neighbors when a registered program has null metadata.
+/// Only this read-only inventory tolerates malformed individual records.
+fn inspect_program_inventory(
+    prefix: &Path,
+    raw: &str,
+    include_mapped_drives: bool,
+) -> Result<Vec<Value>, String> {
+    let parsed: Value = serde_json::from_str(raw)
+        .map_err(|error| format!("invalid native Bottles programs JSON: {error}"))?;
+    let entries = parsed
+        .as_array()
+        .ok_or("native Bottles registered programs must be an array")?;
+    if entries.len() > MAX_REGISTERED_PROGRAMS {
+        return Err("selected bottle has too many programs for bounded PE inspection".into());
+    }
+    Ok(entries
+        .iter()
+        .enumerate()
+        .map(|(index, record)| {
+            match serde_json::from_value::<RegisteredProgram>(record.clone()) {
+                Ok(program)
+                    if !program.name.trim().is_empty()
+                        && !program.executable.trim().is_empty()
+                        && !program.path.trim().is_empty() =>
+                {
+                    inspect_program(prefix, &program, include_mapped_drives)
+                }
+                result => {
+                    let reason = match result {
+                        Ok(_) => "required registered-program identity field is empty".to_owned(),
+                        Err(error) => error.to_string(),
+                    };
+                    serde_json::json!({
+                        "registered_index": index,
+                        "registered_name": record.get("name").and_then(Value::as_str),
+                        "registered_executable": record.get("executable").and_then(Value::as_str),
+                        "registered_windows_path": record.get("path").and_then(Value::as_str),
+                        "registration_metadata_valid": false,
+                        "resolved_linux_file": null,
+                        "static_pe_compatibility": classify_imports(Err(format!(
+                            "invalid registered program entry {index}: {reason}"
+                        ))),
+                    })
+                }
+            }
+        })
+        .collect())
 }
 
 /// Inspect only registered executable files within one verified bottle.
@@ -237,24 +288,11 @@ fn inspect_selected_bottle(
 ) -> Result<(PathBuf, Vec<serde_json::Value>), String> {
     let prefix = parse_bottles_root(root)?.join(bottle);
     let ownership = verify_bottle_prefix(root, bottle, &prefix)?;
-    let programs = parse_registered_programs(&bottles_json_with_command(
-        cli,
-        &["programs", "-b", bottle],
-    )?)
-    .map_err(|error| format!("invalid registered Bottles programs: {error}"))?;
-    if programs.len() > MAX_REGISTERED_PROGRAMS {
-        return Err("selected bottle has too many programs for bounded PE inspection".into());
-    }
-    let reviewed = programs
-        .iter()
-        .map(|program| {
-            inspect_program(
-                &ownership.canonical_bottle_prefix,
-                program,
-                include_mapped_drives,
-            )
-        })
-        .collect::<Vec<_>>();
+    let reviewed = inspect_program_inventory(
+        &ownership.canonical_bottle_prefix,
+        &bottles_json_with_command(cli, &["programs", "-b", bottle])?,
+        include_mapped_drives,
+    )?;
     Ok((ownership.canonical_bottle_prefix, reviewed))
 }
 
@@ -480,6 +518,25 @@ mod tests {
             report["static_pe_compatibility"]["process_attachment_attempted"],
             false
         );
+    }
+
+    #[test]
+    fn invalid_registration_does_not_mask_valid_neighbor() {
+        let f = Fixture::new();
+        let raw = serde_json::json!([
+            {"name":"Valid","executable":"Game.exe","path":r"C:\Games\Game.exe"},
+            {"name":"Missing Path","executable":"Missing.exe","path":null},
+            {"name":"Null Arguments","executable":"Game.exe","path":r"C:\Games\Game.exe","arguments":null}
+        ]).to_string();
+        let result = inspect_program_inventory(&f.0, &raw, false).unwrap();
+        assert_eq!(result.len(), 3);
+        assert_eq!(result[0]["registration_metadata_valid"], true);
+        assert_eq!(result[1]["registered_name"], "Missing Path");
+        assert_eq!(result[1]["registration_metadata_valid"], false);
+        assert_eq!(result[1]["static_pe_compatibility"]["static_import_status"], "static_import_inventory_unknown");
+        assert_eq!(result[2]["registration_metadata_valid"], false);
+        assert!(result[2]["static_pe_compatibility"]["process_attachment_attempted"] == false);
+        assert!(inspect_program_inventory(&f.0, "{}", false).is_err());
     }
 
     #[test]
