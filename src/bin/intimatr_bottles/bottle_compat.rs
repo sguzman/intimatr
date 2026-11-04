@@ -60,7 +60,10 @@ fn parse_options(args: &[String]) -> Result<Options, String> {
             }
         }
     }
-    if bottle.as_deref().is_some_and(|name: &str| name.trim().is_empty()) {
+    if bottle
+        .as_deref()
+        .is_some_and(|name: &str| name.trim().is_empty())
+    {
         return Err("bottle-compat requires a nonempty bottle name".into());
     }
     if all == bottle.is_some() {
@@ -340,12 +343,8 @@ pub(super) fn run_bottle_compat(args: Vec<String>) -> Result<(), String> {
     }
 
     let bottle = options.bottle.as_deref().ok_or("missing selected bottle")?;
-    let (prefix, reviewed) = inspect_selected_bottle(
-        &root,
-        &options.cli,
-        bottle,
-        options.include_mapped_drives,
-    )?;
+    let (prefix, reviewed) =
+        inspect_selected_bottle(&root, &options.cli, bottle, options.include_mapped_drives)?;
     let output = serde_json::json!({
         "operation": "read_only_registered_bottle_static_pe_compatibility",
         "selected_bottle": bottle,
@@ -432,12 +431,14 @@ mod tests {
         assert!(!all.include_mapped_drives);
         assert!(parse_options(&[]).is_err());
         assert!(parse_options(&["--all".to_owned(), "--all".to_owned()]).is_err());
-        assert!(parse_options(&[
-            "--all".to_owned(),
-            "--bottle".to_owned(),
-            "Games".to_owned(),
-        ])
-        .is_err());
+        assert!(
+            parse_options(&[
+                "--all".to_owned(),
+                "--bottle".to_owned(),
+                "Games".to_owned(),
+            ])
+            .is_err()
+        );
         let one = parse_options(&["--bottle".to_owned(), "Games".to_owned()]).unwrap();
         assert_eq!(one.bottle.as_deref(), Some("Games"));
         assert!(!one.all);
