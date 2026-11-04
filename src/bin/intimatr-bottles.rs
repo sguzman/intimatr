@@ -32,6 +32,7 @@ mod profile_check;
 #[path = "intimatr_bottles/profile_environment.rs"]
 mod profile_environment;
 
+#[cfg(target_os = "linux")]
 #[path = "intimatr_bottles/profile_launch.rs"]
 mod profile_launch;
 #[cfg(target_os = "linux")]
