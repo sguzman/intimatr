@@ -513,6 +513,17 @@ The caller must arrange for this generated file to be visible at a verified **ab
 
 The disposable Wine CI fixture uses this export path for a global-disabled/bottle-enabled/game-specific profile (including 1.001× and 1.75× steps), independently matches the observed Windows executable identity back to the exact-game rule, and verifies that the installed IAT timer session inherits those steps after an explicit arm. This proves the handoff **inside that isolated test prefix**, not in the user's real Bottles installations or games.
 
+To translate the exported Linux file to a Windows path **without guessing a Wine drive mapping**, check the selected native Bottles prefix:
+
+```sh
+intimatr-bottles profile-path \
+  --bottle 'Your Bottle' \
+  --profile /absolute/path/to/selected/bottle/drive_c/NEW-launch-speed.toml
+```
+
+This read-only command requires the bottle in native `bottles-cli` inventory, verifies its configured prefix and plain `drive_c`, rejects symlinks, parent traversal and files outside that C: drive, and validates the profile against the DLL loader. It reports `windows_profile_path` (for example `C:\\NEW-launch-speed.toml`) for the selected file. For a non-default native Bottles CLI location, `--bottles-cli /absolute/path/to/bottles-cli` is supported. It does not select a runner, edit a launch entry or change an existing process environment; the resulting path must still be passed explicitly at **game startup**. Non-C: mapped drives are deliberately unsupported in this first path check. Wine CI verifies C: translation, an outside-file refusal and a symlink refusal before starting its disposable selected-game fixture.
+
+
 ### Explicitly configured speed steps in the selected-game timer session
 
 The Windows DLL can already load a **globally enabled, override-free** shared speed profile from an explicit absolute Windows path in the game process's `INTIMATR_SPEED_PROFILE` environment variable. The selected-game four-API timer session now inherits the **same validated configured step list and bounds** as Intimatr's preview/UI/RPC command executor; it does not silently fall back to built-in steps. At arming, the installed timer clock still begins at **1.0×**, regardless of `initial_multiplier`, and no startup acceleration lease is applied. Only explicit offline consent, exact target verification, and timer activation install hooks. Invalid or unreadable profiles keep the existing safe fallback behavior for legacy tools.
