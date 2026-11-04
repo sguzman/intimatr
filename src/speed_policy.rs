@@ -214,6 +214,27 @@ impl SharedSpeedConfig {
             matched_game: matched_game.is_some(),
         })
     }
+
+    /// Compile a verified bottle + full-executable policy into the
+    /// override-free TOML schema understood by the Windows DLL at launch.
+    /// This does NOT install hooks or alter an already-running process.
+    /// Exclusions remain disabled and cannot be revived by a game override.
+    pub fn resolved_launch_profile(
+        &self,
+        bottle: &str,
+        executable_path: &str,
+    ) -> Result<SharedSpeedConfig, SpeedProfileError> {
+        let resolved = self.resolve_for(bottle, executable_path)?;
+        let result = SharedSpeedConfig {
+            version: self.version,
+            speed: resolved.settings,
+            hotkeys: self.hotkeys.clone(),
+            bottles: Vec::new(),
+            games: Vec::new(),
+        };
+        result.validate()?;
+        Ok(result)
+    }
 }
 
 #[cfg(test)]
@@ -263,6 +284,43 @@ enabled = true
             .unwrap()
             .resolve_for(bottle, path)
             .unwrap()
+    }
+
+    #[test]
+    fn launch_profile_roundtrips_exact_bottle_and_game_rules_without_overrides() {
+        let global = SharedSpeedConfig::parse(PROFILE).unwrap();
+        let selected = global
+            .resolved_launch_profile("games", r"C:\Games\One\GAME.EXE")
+            .unwrap();
+        assert!(selected.speed.enabled);
+        assert_eq!(selected.speed.initial_multiplier, 2.0);
+        assert!(selected.bottles.is_empty() && selected.games.is_empty());
+        let serialized = toml::to_string(&selected).unwrap();
+        let loaded = crate::speed_profile_load::parse_preview_profile(&serialized)
+            .unwrap()
+            .unwrap();
+        assert_eq!(loaded.settings, selected.speed);
+        assert_eq!(loaded.hotkeys, selected.hotkeys);
+        assert_eq!(global.bottles.len(), 2);
+        assert_eq!(global.games.len(), 3);
+    }
+
+    #[test]
+    fn launch_profile_never_reenables_excluded_or_disabled_games() {
+        let global = SharedSpeedConfig::parse(PROFILE).unwrap();
+        for (bottle, exe) in [
+            ("Online", r"C:\Games\Online.exe"),
+            ("Games", r"C:\Games\Two\Game.exe"),
+            ("Other", r"C:\Games\One\Game.exe"),
+        ] {
+            let export = global.resolved_launch_profile(bottle, exe).unwrap();
+            assert!(!export.speed.enabled);
+            assert!(export.bottles.is_empty() && export.games.is_empty());
+            let serialized = toml::to_string(&export).unwrap();
+            assert!(crate::speed_profile_load::parse_preview_profile(&serialized)
+                .unwrap()
+                .is_none());
+        }
     }
 
     #[test]
