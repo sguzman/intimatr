@@ -282,6 +282,28 @@ mod tests {
     }
 
     #[test]
+    fn idle_status_poll_expires_hold_at_original_deadline() {
+        let mut session = SpeedSession::new(&SpeedSettings::default(), 0, 1_000, 0, 0).unwrap();
+        session
+            .apply(
+                100,
+                SpeedAction::HoldStart {
+                    multiplier: 2.0,
+                    duration_ms: 100,
+                },
+            )
+            .unwrap();
+        assert_eq!(session.multiplier(), 2.0);
+
+        // No timer callback is sampled between the hold start and this
+        // simulated status poll, long after the 200-tick deadline.
+        let observed = session.sample(500);
+        assert_eq!(observed.tick_count64, 600);
+        assert_eq!(session.multiplier(), 1.0);
+        assert_eq!(session.sample(600).tick_count64, 700);
+    }
+
+    #[test]
     fn release_and_focus_loss_restore_without_timer_jumps() {
         let mut session = SpeedSession::new(&SpeedSettings::default(), 0, 1_000, 0, 0).unwrap();
         session.apply(100, SpeedAction::Increase).unwrap();
