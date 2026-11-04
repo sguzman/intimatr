@@ -38,3 +38,14 @@ WINEPREFIX="$prefix" WINEARCH=win64 WINEDEBUG=-all WINEDLLOVERRIDES='steam_api64
 }
 grep -q 'Intimatr launch proxy startup verified' "$dir/probe.stdout"
 cat "$dir/probe.stdout"
+# The user's read-only Eastward export audit is retained only as compressed
+# names/ordinals, not any game code. Independently compile its full ABI surface.
+base64 -d tests/fixtures/eastward-steam-forwarders.def.gz.b64 | gzip -dc >"$dir/eastward.def"
+printf '%s  %s\n' '526914fdf4d850c2973ec61347d5b7a4a09dba9a2410f627f7f5ceb05c479ffd' "$dir/eastward.def" | sha256sum -c -
+test "$(grep -c '=steam_api64_intimatr_original\.' "$dir/eastward.def")" -eq 1209
+x86_64-w64-mingw32-gcc -shared -o "$dir/steam_api64-eastward-preview.dll" native/launch_proxy/steam_api64_bridge.c "$dir/eastward.def" "$dir/libintimatr.dll.a"
+x86_64-w64-mingw32-objdump -p "$dir/steam_api64-eastward-preview.dll" >"$dir/eastward-proxy-headers.txt"
+grep -q 'DLL Name: intimatr.dll' "$dir/eastward-proxy-headers.txt"
+grep -q 'steam_api64_intimatr_original.GetHSteamPipe' "$dir/eastward-proxy-headers.txt"
+grep -q 'steam_api64_intimatr_original.g_pSteamClientGameServer' "$dir/eastward-proxy-headers.txt"
+echo "Eastward 1209-export proxy compiled and linked from text manifest; real game not modified"
