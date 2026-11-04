@@ -174,7 +174,7 @@ pub(super) fn run_profile_launch(args: Vec<String>) -> Result<(), String> {
         &["programs", "-b", &options.bottle],
     )?;
     let registered = parse_registered_programs(&program_json)
-    .map_err(|error| format!("invalid selected native Bottles programs: {error}"))?;
+        .map_err(|error| format!("invalid selected native Bottles programs: {error}"))?;
     if registered.len() > 1024 {
         return Err("selected bottle has too many registered programs".into());
     }
