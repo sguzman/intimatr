@@ -35,7 +35,7 @@ in_table && /^[[:space:]]*\[[[:space:]]*[0-9]+\]/{
     sub(/\].*$/,"",ordinal)
   } else {
     # Some GNU objdump builds print only "[index] Name" in this table.
-    # The index is zero-based, unlike the +base table's final ordinal.
+    # The index is zero-based, unlike the final ordinal of a +base entry.
     sub(/^[[:space:]]*\[/,"",ordinal)
     sub(/\].*$/,"",ordinal)
     ordinal_is_index=1
