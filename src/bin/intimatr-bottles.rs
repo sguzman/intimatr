@@ -20,6 +20,9 @@ mod game_attach;
 #[path = "intimatr_bottles/live_match.rs"]
 mod live_match;
 #[cfg(target_os = "linux")]
+#[path = "intimatr_bottles/launch_proxy_deploy.rs"]
+mod launch_proxy_deploy;
+#[cfg(target_os = "linux")]
 #[path = "intimatr_bottles/pe_compat.rs"]
 mod pe_compat;
 #[cfg(target_os = "linux")]
@@ -66,7 +69,7 @@ fn run() -> Result<(), String> {
   intimatr-bottles profile-path --bottle NAME --profile ABSOLUTE_LINUX_TOML [--bottles-cli NATIVE_BOTTLES_CLI]
   intimatr-bottles profile-env --bottle NAME [--program REGISTERED_PROGRAM_NAME] [--bottles-cli NATIVE_BOTTLES_CLI]
   intimatr-bottles profile-launch --config ORIGINAL_TOML --bottle NAME --exe EXACT_WINDOWS_PATH --program REGISTERED_PROGRAM_NAME --profile VERIFIED_C_DRIVE_TOML [--bottles-cli NATIVE_BOTTLES_CLI] --offline-single-player --launch
-  intimatr-bottles pe-compat --exe ABSOLUTE_LINUX_PE_FILE
+  intimatr-bottles launch-proxy (status --game-dir EASTWARD_DIR | install --game-dir EASTWARD_DIR --proxy PREBUILT_X64_PROXY_DLL --dll INTIMATR_X64_DLL --config EASTWARD_TOML --offline-single-player --game-closed | remove --game-dir EASTWARD_DIR --offline-single-player --game-closed)\n  intimatr-bottles pe-compat --exe ABSOLUTE_LINUX_PE_FILE
   intimatr-bottles bottle-compat (--bottle NAME | --all) [--bottles-cli NATIVE_BOTTLES_CLI] [--include-mapped-drives]\n  intimatr-bottles processes --prefix INITIALIZED_WINEPREFIX\n  intimatr-bottles win-processes --prefix INITIALIZED_WINEPREFIX --helper WINE_PROCESS_LIST_EXE --runner ABSOLUTE_WINE_BINARY\n  intimatr-bottles match-snapshot --bottle NAME --programs BOTTLES_JSON --windows WINE_PROCESS_JSON\n  intimatr-bottles live-match --bottle NAME --helper WINE_PROCESS_LIST_EXE --runner ABSOLUTE_WINE_BINARY [--prefix WINEPREFIX] [--bottles-cli BOTTLES_CLI] [--pid WINDOWS_PID --exe EXACT_WINDOWS_PATH]\n  intimatr-bottles attach-game --bottle NAME --helper WINE_PROCESS_LIST_EXE --attach-helper ABSOLUTE_GAME_ATTACH_HELPER --runner ABSOLUTE_WINE_BINARY --pid WINDOWS_PID --exe EXACT_WINDOWS_PATH --created-100ns WIN_FILETIME --offline-single-player\n  intimatr-bottles arm-game-timers --bottle NAME --helper WINE_PROCESS_LIST_EXE --attach-helper ABSOLUTE_GAME_ATTACH_HELPER --runner ABSOLUTE_WINE_BINARY --pid WINDOWS_PID --exe EXACT_WINDOWS_PATH --created-100ns WIN_FILETIME --offline-single-player --experimental-four-timers [--require-profile VERIFIED_C_DRIVE_TOML]
   intimatr-bottles set-game-speed --bottle NAME --helper WINE_PROCESS_LIST_EXE --attach-helper ABSOLUTE_GAME_ATTACH_HELPER --runner ABSOLUTE_WINE_BINARY --pid WINDOWS_PID --exe EXACT_WINDOWS_PATH --created-100ns WIN_FILETIME --offline-single-player --experimental-four-timers (--preset (half|normal|double) | --multiplier (0.1..10.0_CONFIGURED_STEP))
   intimatr-bottles step-game-speed --bottle NAME --helper WINE_PROCESS_LIST_EXE --attach-helper ABSOLUTE_GAME_ATTACH_HELPER --runner ABSOLUTE_WINE_BINARY --pid WINDOWS_PID --exe EXACT_WINDOWS_PATH --created-100ns WIN_FILETIME --offline-single-player --experimental-four-timers --action (increase|decrease|toggle|reset)
@@ -110,6 +113,9 @@ fn run() -> Result<(), String> {
     if action == "live-match" {
         return live_match::run_live_match(args.collect());
     }
+    if action == "launch-proxy" {
+        return launch_proxy_deploy::run_launch_proxy(args.collect());
+    }
     if action == "attach-game" {
         return game_attach::run_game_attach(args.collect());
     }
@@ -133,7 +139,7 @@ fn run() -> Result<(), String> {
     }
     if action != "scan" && action != "plan" {
         return Err(
-            "unknown command; use --help for scan, plan, profile-check, profile-export, profile-path, profile-env, profile-launch, pe-compat, bottle-compat, live-match, attach-game, arm-game-timers, set-game-speed, step-game-speed, stop-game, status-game and other commands".to_owned(),
+            "unknown command; use --help for scan, plan, profile-check, profile-export, profile-path, profile-env, profile-launch, launch-proxy, pe-compat, bottle-compat, live-match, attach-game, arm-game-timers, set-game-speed, step-game-speed, stop-game, status-game and other commands".to_owned(),
         );
     }
 
