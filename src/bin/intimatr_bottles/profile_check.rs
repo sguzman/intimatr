@@ -76,11 +76,8 @@ impl ProfileExportOptions {
 
 #[cfg(target_os = "linux")]
 pub(super) fn run_profile_export(args: Vec<String>) -> Result<(), String> {
+    use intimatr::{speed_config::SharedSpeedConfig, speed_profile_load::parse_preview_profile};
     use std::{fs::OpenOptions, io::Write, os::unix::fs::OpenOptionsExt};
-    use intimatr::{
-        speed_config::SharedSpeedConfig,
-        speed_profile_load::parse_preview_profile,
-    };
 
     let options = ProfileExportOptions::parse(&args)?;
     let source = std::fs::read_to_string(&options.selection.config)
@@ -112,7 +109,9 @@ pub(super) fn run_profile_export(args: Vec<String>) -> Result<(), String> {
         .create_new(true)
         .mode(0o600)
         .open(&options.output)
-        .map_err(|error| format!("cannot create new launch profile (refusing overwrite): {error}"))?;
+        .map_err(|error| {
+            format!("cannot create new launch profile (refusing overwrite): {error}")
+        })?;
     file.write_all(rendered.as_bytes())
         .and_then(|()| file.sync_all())
         .map_err(|error| format!("cannot finish launch profile output: {error}"))?;
@@ -205,7 +204,14 @@ mod profile_check_tests {
 
     #[test]
     fn export_requires_explicit_absolute_destination_and_rejects_duplicates() {
-        let base = ["--config", "/tmp/speed.toml", "--bottle", "Games", "--exe", r"C:\Games\Game.exe"];
+        let base = [
+            "--config",
+            "/tmp/speed.toml",
+            "--bottle",
+            "Games",
+            "--exe",
+            r"C:\Games\Game.exe",
+        ];
         let mut valid = args(&base);
         valid.extend(args(&["--output", "/tmp/launch-profile.toml"]));
         let parsed = ProfileExportOptions::parse(&valid).unwrap();
