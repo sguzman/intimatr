@@ -14,7 +14,8 @@ use intimatr::{
 };
 
 use super::{
-    bottles_json_with_command, profile_check::verify_bottle_profile_path,
+    bottles_json_with_command,
+    profile_check::verify_bottle_profile_path,
     profile_environment::{verify_profile_environment, verify_registered_program_environment},
 };
 
@@ -169,10 +170,8 @@ pub(super) fn run_profile_launch(args: Vec<String>) -> Result<(), String> {
         return Err("launch profile differs from the selected game policy".into());
     }
 
-    let program_json = bottles_json_with_command(
-        &options.bottles_cli,
-        &["programs", "-b", &options.bottle],
-    )?;
+    let program_json =
+        bottles_json_with_command(&options.bottles_cli, &["programs", "-b", &options.bottle])?;
     let registered = parse_registered_programs(&program_json)
         .map_err(|error| format!("invalid selected native Bottles programs: {error}"))?;
     if registered.len() > 1024 {

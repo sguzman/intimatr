@@ -151,10 +151,7 @@ impl ProfileEnvironmentOptions {
 /// Read-only report for native field inspection, with blockers shown as data.
 pub(super) fn run_profile_env(args: Vec<String>) -> Result<(), String> {
     let options = ProfileEnvironmentOptions::parse(&args)?;
-    let inventory = super::bottles_json_with_command(
-        &options.bottles_cli,
-        &["list", "bottles"],
-    )?;
+    let inventory = super::bottles_json_with_command(&options.bottles_cli, &["list", "bottles"])?;
     let (mode, blocker) = match verify_profile_environment(&inventory, &options.bottle) {
         Ok(mode) => (Some(mode), None),
         Err(error) => (None, Some(error)),
@@ -330,7 +327,10 @@ mod tests {
                 "Inherited_Environment_Variables": ["INTIMATR_SPEED_PROFILE", 42]
             })),
         ] {
-            assert!(verify_profile_environment(&raw, "Selected").is_err(), "{raw}");
+            assert!(
+                verify_profile_environment(&raw, "Selected").is_err(),
+                "{raw}"
+            );
         }
         let raw = inventory(json!({
             "Limit_System_Environment": false,
