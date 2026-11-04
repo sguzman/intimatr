@@ -1235,6 +1235,98 @@ jobs:
           trap - EXIT
           unset INTIMATR_MOCK_PROGRAMS_JSON INTIMATR_MOCK_LAUNCH_WINE_CHILD
           echo "Mocked Bottles launch reached Windows fixture; native CLI then attached exact DLL and verified four scaled timers"
+          # An explicitly disabled profile is a veto, not permission to
+          # fall back to default speed steps. Use a second isolated compatible
+          # PE so timer activation failure is caused by profile rejection,
+          # not by missing main-image timer imports.
+          mkdir -p target/wine-attach/rejected
+          cp target/x86_64-pc-windows-gnu/release/wine-attach-target.exe target/wine-attach/rejected/
+          cat >"$WINEPREFIX/drive_c/intimatr-ci-disabled.toml" <<'DISABLED_SPEED_PROFILE'
+          version = 1
+          [speed]
+          enabled = false
+          DISABLED_SPEED_PROFILE
+          INTIMATR_SPEED_PROFILE='C:\intimatr-ci-disabled.toml' \
+            INTIMATR_TEST_REJECTED_PROFILE_ONLY=1 \
+            xvfb-run -a wine target/wine-attach/rejected/wine-attach-target.exe \
+            >target/wine-attach/rejected/stdout 2>target/wine-attach/rejected/stderr &
+          rejected_launcher=$!
+          trap 'kill "$rejected_launcher" 2>/dev/null || true' EXIT
+          for i in $(seq 1 150); do
+            if test -s target/wine-attach/rejected/attach-target.pid; then break; fi
+            sleep 0.1
+          done
+          test -s target/wine-attach/rejected/attach-target.pid
+          rejected_pid="$(cat target/wine-attach/rejected/attach-target.pid)"
+          target/release/intimatr-bottles win-processes \
+            --prefix "$WINEPREFIX" \
+            --helper target/wine-attach/wine-process-list.exe \
+            --runner "$(command -v wine)" >target/wine-attach/rejected/snapshot.json
+          rejected_image="$(jq -r --argjson pid "$rejected_pid" '[.processes[] | select(.windows_pid == $pid) | .full_image_path // empty] | first // empty' target/wine-attach/rejected/snapshot.json)"
+          rejected_created="$(jq -r --argjson pid "$rejected_pid" '[.processes[] | select(.windows_pid == $pid) | .process_creation_time_100ns // empty] | first // empty' target/wine-attach/rejected/snapshot.json)"
+          test -n "$rejected_image" && test -n "$rejected_created" && test "$rejected_created" != 0
+          jq -n --arg path "$rejected_image" '[{
+            "name":"Disabled speed profile offline fixture",
+            "executable":"wine-attach-target.exe",
+            "path":$path
+          }]' >target/wine-attach/mocks/rejected-programs.json
+          export INTIMATR_MOCK_PROGRAMS_JSON="$(pwd)/target/wine-attach/mocks/rejected-programs.json"
+          rejected_args=(
+            --bottle Fixture
+            --helper target/wine-attach/wine-process-list.exe
+            --attach-helper "$(pwd)/target/wine-attach/wine-game-attach-helper.exe"
+            --runner "$(command -v wine)"
+            --bottles-cli target/wine-attach/mocks/bottles-cli
+            --pid "$rejected_pid" --exe "$rejected_image"
+            --created-100ns "$rejected_created"
+          )
+          XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles attach-game \
+            "${rejected_args[@]}" --offline-single-player >target/wine-attach/rejected/attached.json
+          jq -e '.runtime_running_verified == true
+            and .speed_controls_verified == false' target/wine-attach/rejected/attached.json > /dev/null
+          for i in $(seq 1 150); do
+            if test -s target/wine-attach/rejected/attach-rejected-profile-ready.flag; then break; fi
+            sleep 0.1
+          done
+          test -s target/wine-attach/rejected/attach-rejected-profile-ready.flag
+          XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles status-game \
+            "${rejected_args[@]}" --offline-single-player >target/wine-attach/rejected/status.json
+          jq -e '.runtime_state == "running"
+            and .target_speed_profile_state == "rejected_or_disabled"
+            and .explicit_speed_profile_accepted_in_target == false
+            and .target_speed_profile_sha256 == null
+            and .profile_contents_match_verified == false
+            and .main_image_four_timer_imports_present == true
+            and .timer_hook_state == "none"
+            and .installed_virtual_clock_multiplier == null' target/wine-attach/rejected/status.json > /dev/null
+          if XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles arm-game-timers \
+            "${rejected_args[@]}" --offline-single-player --experimental-four-timers \
+            >target/wine-attach/rejected/arm.stdout 2>target/wine-attach/rejected/arm.stderr; then
+            echo "ERROR: disabled explicit profile unexpectedly armed four timers" >&2
+            exit 1
+          fi
+          grep -q 'timer activation rejected' target/wine-attach/rejected/arm.stderr
+          XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles status-game \
+            "${rejected_args[@]}" --offline-single-player >target/wine-attach/rejected/after-arm-rejection.json
+          jq -e '.runtime_state == "running"
+            and .target_speed_profile_state == "rejected_or_disabled"
+            and .timer_hook_state == "none"
+            and .timer_hooks_installed_verified == false
+            and .installed_virtual_clock_multiplier == null' target/wine-attach/rejected/after-arm-rejection.json > /dev/null
+          XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles stop-game \
+            "${rejected_args[@]}" --offline-single-player >target/wine-attach/rejected/stopped.json
+          jq -e '.runtime_stopped_verified == true
+            and .intimatr_module_unloaded == false' target/wine-attach/rejected/stopped.json > /dev/null
+          if ! wait "$rejected_launcher"; then
+            echo "ERROR: disabled-profile Wine target failed to exit cleanly" >&2
+            sed -n '1,100p' target/wine-attach/rejected/stdout >&2 || true
+            sed -n '1,100p' target/wine-attach/rejected/stderr >&2 || true
+            exit 1
+          fi
+          trap - EXIT
+          unset INTIMATR_MOCK_PROGRAMS_JSON
+          echo "Disabled explicit speed profile verified: DLL running, four timer hooks refused, clean stop"
+
           # Deliberately incompatible executable: WinMM is available via
           # LoadLibrary, but timeGetTime is not imported in the main PE IAT.
           # It must be rejected by both independent preflights, without any

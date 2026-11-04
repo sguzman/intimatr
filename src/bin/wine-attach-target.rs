@@ -280,6 +280,44 @@ mod target {
                 for _ in 0..200 {
                     match unsafe { state() } {
                         3 => {
+                            // CI-only fail-closed fixture for a supplied but
+                            // disabled launch profile. The target stays alive
+                            // until the separately selected status/arm/stop
+                            // commands have independently inspected it.
+                            if std::env::var_os("INTIMATR_TEST_REJECTED_PROFILE_ONLY").is_some() {
+                                type ProfileStateFn =
+                                    unsafe extern "system" fn(*mut c_void) -> u32;
+                                let check: ProfileStateFn = unsafe {
+                                    std::mem::transmute(resolve(
+                                        module,
+                                        c"intimatr_remote_speed_profile_state",
+                                    )?)
+                                };
+                                if unsafe { check(std::ptr::null_mut()) } != 2 {
+                                    return Err(
+                                        "disabled launch profile was not rejected by target".into()
+                                    );
+                                }
+                                std::fs::write(
+                                    directory.join("attach-rejected-profile-ready.flag"),
+                                    b"explicit_disabled_profile_rejected",
+                                )
+                                .map_err(|error| {
+                                    format!("cannot publish rejected-profile readiness: {error}")
+                                })?;
+                                for _ in 0..1600 {
+                                    if unsafe { state() } == 5 {
+                                        println!(
+                                            "Wine target rejected disabled profile and observed clean external stop"
+                                        );
+                                        return Ok(());
+                                    }
+                                    thread::sleep(Duration::from_millis(25));
+                                }
+                                return Err(
+                                    "rejected-profile test coordinator did not stop target".into()
+                                );
+                            }
                             // Allow the remote helper to finish its load thread
                             // before this deliberately controlled target exits.
                             thread::sleep(Duration::from_millis(250));

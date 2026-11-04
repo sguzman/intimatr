@@ -586,7 +586,14 @@ The isolated Wine fixture asserts acceptance after explicit attachment,
 absence in an unconfigured attached fixture, unavailability before
 attachment and after shutdown, and digest agreement/disagreement for a
 matching file and a copy with identical settings but different comments.
-These checks are not native-Bottles field QA.
+A separate disposable **timer-compatible** Windows fixture also starts
+with an explicitly supplied `enabled=false` profile, verifies that the
+running DLL reports `rejected_or_disabled`, refuses an independently
+requested four-timer arm, retains the unmodified timer imports and
+stops cleanly. The fixture keeps this test separate from the
+incompatible-executable import rejection, so the explicit profile veto
+cannot be mistaken for missing timer imports. None of these checks
+are native-Bottles field QA.
 
 ### Explicitly configured speed steps in the selected-game timer session
 
