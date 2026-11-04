@@ -74,8 +74,9 @@ pub(super) fn verify_registered_program_environment(
     programs_json: &str,
     program_name: &str,
 ) -> Result<(), String> {
-    let value: Value = serde_json::from_str(programs_json)
-        .map_err(|error| format!("invalid native Bottles registered program environment: {error}"))?;
+    let value: Value = serde_json::from_str(programs_json).map_err(|error| {
+        format!("invalid native Bottles registered program environment: {error}")
+    })?;
     let programs = value
         .as_array()
         .ok_or("native Bottles programs must be an array")?;
@@ -84,7 +85,9 @@ pub(super) fn verify_registered_program_environment(
         .filter(|program| program.get("name").and_then(Value::as_str) == Some(program_name))
         .collect::<Vec<_>>();
     if selected.len() != 1 {
-        return Err("selected registered program environment identity is absent or ambiguous".into());
+        return Err(
+            "selected registered program environment identity is absent or ambiguous".into(),
+        );
     }
     let program = selected[0]
         .as_object()
