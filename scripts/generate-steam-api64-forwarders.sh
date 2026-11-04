@@ -25,12 +25,30 @@ $1=="Number" && $2=="in:"{reading_export_counts=1;next}
 $1=="Table" && $2=="Addresses"{reading_export_counts=0}
 reading_export_counts && $1=="Export" && $2=="Address" && $3=="Table" && $4 ~ /^[0-9A-Fa-f]+$/{functions=$4}
 reading_export_counts && $1=="[Name" && $2=="Pointer/Ordinal]" && $3=="Table" && $4 ~ /^[0-9A-Fa-f]+$/{names=$4}
+$1=="Ordinal" && $2=="Base" && $3 ~ /^[0-9]+$/{ordinal_base=$3+0}
 /\[Ordinal\/Name Pointer\] Table/{in_table=1;next}
-in_table && /\+base\[[[:space:]]*[0-9]+\]/{
-  symbol=$NF; ordinal=$0
-  sub(/^.*\+base\[/,"",ordinal);sub(/\].*$/,"",ordinal)
+in_table && /^[[:space:]]*\[[[:space:]]*[0-9]+\]/{
+  symbol=$NF
+  ordinal=$0
+  if (ordinal ~ /\+base\[[[:space:]]*[0-9]+\]/) {
+    sub(/^.*\+base\[/,"",ordinal)
+    sub(/\].*$/,"",ordinal)
+  } else {
+    # Some GNU objdump builds print only "[index] Name" in this table.
+    # The index is zero-based, unlike the +base table's final ordinal.
+    sub(/^[[:space:]]*\[/,"",ordinal)
+    sub(/\].*$/,"",ordinal)
+    ordinal_is_index=1
+  }
   gsub(/[[:space:]]/,"",ordinal)
-  if(symbol !~ /^[A-Za-z_?$@][A-Za-z0-9_?$@]*$/ || ordinal !~ /^[0-9]+$/ || seen[symbol]++){bad=1;next}
+  if (ordinal_is_index) {
+    ordinal=ordinal+ordinal_base
+    ordinal_is_index=0
+  }
+  if(symbol !~ /^[A-Za-z_?$@][A-Za-z0-9_?$@]*$/ ||
+     ordinal !~ /^[0-9]+$/ || ordinal<=0 || seen[symbol]++ || seen_ordinal[ordinal]++){
+    bad=1;next
+  }
   count++
   printf "    %s=steam_api64_intimatr_original.%s @%d\n",symbol,symbol,ordinal+0
 }
