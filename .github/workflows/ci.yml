@@ -1214,7 +1214,14 @@ jobs:
           XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles stop-game "${game_args[@]}" --offline-single-player > target/wine-attach/game-stopped-again.json
           jq -e '.runtime_stopped_verified == true and .intimatr_module_unloaded == false' target/wine-attach/game-stopped-again.json > /dev/null
           touch target/wine-attach/game-fixture/attach-release.flag
-          wait "$game_launcher"
+          if ! wait "$game_launcher"; then
+            echo "ERROR: mocked Bottles game process did not exit cleanly" >&2
+            echo "Disposable Wine target stdout:" >&2
+            sed -n '1,100p' target/wine-attach/game-fixture/stdout >&2 || true
+            echo "Disposable Wine target stderr:" >&2
+            sed -n '1,100p' target/wine-attach/game-fixture/stderr >&2 || true
+            exit 1
+          fi
           jq -e '.operation == "explicit_registered_bottles_profile_launch"
             and .source_game_policy_verified == true
             and .profile_file_matching_source_verified == true

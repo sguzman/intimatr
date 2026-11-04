@@ -556,9 +556,12 @@ DLL's bootstrap, through the existing identity-gated Windows helper:
 `accepted` profile in a Running target. For an accepted profile,
 `target_speed_profile_sha256` is calculated from the **exact UTF-8 bytes
 successfully parsed during the target DLL's bootstrap** and retained in
-memory. It is unavailable when speed is unconfigured or the runtime is
-not Running. The read-only Windows helper retrieves eight 32-bit digest
-words from the exact owned DLL, never from a generic process scan.
+memory. For normal `status-game` calls the digest is intentionally **not
+queried** and remains null, even if the profile is accepted. Only an
+explicit `--profile` comparison requests the eight read-only digest
+words from the exact owned DLL. This avoids repeated remote-thread
+calls during routine status polling. The digest is also unavailable when
+speed is unconfigured or the runtime is not Running.
 
 To compare those accepted bytes with a particular existing profile file,
 use the same `status-game` selection arguments as before plus

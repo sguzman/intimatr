@@ -362,6 +362,9 @@ fn run_game_action(args: Vec<String>, action: GameAction) -> Result<(), String> 
         }
         GameAction::Status => {
             command.arg("--status-only");
+            if options.comparison_profile.is_some() {
+                command.arg("--include-profile-sha256");
+            }
         }
         GameAction::ArmTimers => {
             command
@@ -509,16 +512,20 @@ fn run_game_action(args: Vec<String>, action: GameAction) -> Result<(), String> 
             .next()
             .ok_or("game status helper did not report target profile digest")?;
         if hashes.next().is_some()
-            || (profile_state == "accepted"
+            || (options.comparison_profile.is_some()
+                && profile_state == "accepted"
                 && (sha256_text.len() != 64
                     || !sha256_text
                         .bytes()
                         .all(|digit| digit.is_ascii_digit() || (b'a'..=b'f').contains(&digit))))
-            || (profile_state != "accepted" && sha256_text != "unavailable")
+            || (!(options.comparison_profile.is_some() && profile_state == "accepted")
+                && sha256_text != "unavailable")
         {
             return Err("invalid or contradictory target profile SHA-256 evidence".into());
         }
-        let target_profile_sha256 = (profile_state == "accepted").then_some(sha256_text);
+        let target_profile_sha256 = (options.comparison_profile.is_some()
+            && profile_state == "accepted")
+            .then_some(sha256_text);
         let profile_contents_match_verified = target_profile_sha256.is_some()
             && expected_profile
                 .as_ref()

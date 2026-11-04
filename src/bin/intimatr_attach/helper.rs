@@ -519,7 +519,13 @@ pub mod helper {
         let (action, preset, milli_rate, step_action) = match args.next().as_deref() {
             None => ("attach", None, None, None),
             Some("--shutdown-only") if args.next().is_none() => ("stop", None, None, None),
-            Some("--status-only") if args.next().is_none() => ("status", None, None, None),
+            Some("--status-only") => match args.next().as_deref() {
+                None => ("status", None, None, None),
+                Some("--include-profile-sha256") if args.next().is_none() => {
+                    ("status-hash", None, None, None)
+                }
+                _ => return Err("unexpected status-game profile digest flags".into()),
+            },
             Some("--arm-four-timers-only")
                 if args.next().as_deref() == Some("--experimental-four-timers")
                     && args.next().is_none() =>
@@ -574,7 +580,8 @@ pub mod helper {
         };
         match action {
             "stop" => shutdown_selected(pid, &target),
-            "status" => status_selected(pid, &target),
+            "status" => status_selected(pid, &target, false),
+            "status-hash" => status_selected(pid, &target, true),
             "arm" => arm_selected(pid, &target),
             "preset" => preset_selected(pid, &target, preset.as_deref().unwrap_or_default()),
             "rate" => rate_selected(pid, &target, milli_rate.unwrap_or_default()),
@@ -711,7 +718,11 @@ pub mod helper {
 
     /// Query one selected process without loading, stopping, or changing its DLL.
     /// A remote thread executes only Intimatr's bounded lifecycle query.
-    fn status_selected(pid: u32, target: &AttachTarget) -> Result<(), String> {
+    fn status_selected(
+        pid: u32,
+        target: &AttachTarget,
+        include_profile_sha256: bool,
+    ) -> Result<(), String> {
         let executable = std::env::current_exe().map_err(|error| error.to_string())?;
         let dll = executable
             .parent()
@@ -742,9 +753,12 @@ pub mod helper {
                         super::remote_status::query_timer_import_coverage(process.0, pid, &dll)?;
                     let profile =
                         super::remote_status::query_explicit_profile_state(process.0, pid, &dll)?;
-                    let digest =
-                        super::remote_status::query_explicit_profile_sha256(process.0, pid, &dll)?;
-                    if (profile == "accepted") != digest.is_some() {
+                    let digest = if include_profile_sha256 && profile == "accepted" {
+                        super::remote_status::query_explicit_profile_sha256(process.0, pid, &dll)?
+                    } else {
+                        None
+                    };
+                    if (include_profile_sha256 && profile == "accepted") != digest.is_some() {
                         return Err("target accepted profile and SHA-256 evidence disagree".into());
                     }
                     if (hooks == "installed_four_timers") != (rate != 0)
