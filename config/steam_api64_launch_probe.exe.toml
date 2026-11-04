@@ -1,0 +1,16 @@
+# Test-only fake game configuration, not a real game policy.
+[target]
+executable = "steam_api64_launch_probe.exe"
+[ui]
+enabled = false
+[debugger]
+enabled = false
+ui_enabled = false
+[rpc]
+enabled = false
+[policy]
+allow_memory_read = false
+allow_memory_write = false
+allow_code_patch = false
+allow_debugger = false
+allow_remote_shutdown = false
