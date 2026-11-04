@@ -731,9 +731,44 @@ jobs:
             exit 1
           fi
           grep -q 'refusing overwrite' target/wine-attach/reexport.stderr
+          # Resolve the already-exported profile through the selected native
+          # Bottles C: prefix, never an assumed Z: mapping.
+          target/release/intimatr-bottles profile-path \
+            --bottle Fixture \
+            --profile "$WINEPREFIX/drive_c/intimatr-ci-speed.toml" \
+            --bottles-cli target/wine-attach/mocks/bottles-cli \
+            >target/wine-attach/launch-profile-path.json
+          jq -e '.operation == "read_only_verified_bottle_profile_path"
+            and .bottle_prefix_association_verified == true
+            and .profile_validated == true
+            and .speed_enabled == true
+            and .windows_profile_path == "C:\\intimatr-ci-speed.toml"
+            and .running_process_environment_modified == false
+            and .runner_verified == false
+            and .attachment_attempted == false' \
+            target/wine-attach/launch-profile-path.json > /dev/null
+          if target/release/intimatr-bottles profile-path \
+            --bottle Fixture \
+            --profile "$(pwd)/target/wine-attach/host-speed-rules.toml" \
+            --bottles-cli target/wine-attach/mocks/bottles-cli \
+            >target/wine-attach/outside-profile.stdout 2>target/wine-attach/outside-profile.stderr; then
+            echo "ERROR: profile-path accepted a source file outside selected C: drive" >&2
+            exit 1
+          fi
+          ln -s "$(pwd)/target/wine-attach/host-speed-rules.toml" "$WINEPREFIX/drive_c/escape-speed.toml"
+          if target/release/intimatr-bottles profile-path \
+            --bottle Fixture \
+            --profile "$WINEPREFIX/drive_c/escape-speed.toml" \
+            --bottles-cli target/wine-attach/mocks/bottles-cli \
+            >target/wine-attach/symlink-profile.stdout 2>target/wine-attach/symlink-profile.stderr; then
+            echo "ERROR: profile-path accepted symlinked profile" >&2
+            exit 1
+          fi
+          grep -q 'symlink' target/wine-attach/symlink-profile.stderr
+          profile_windows_path="$(jq -r '.windows_profile_path' target/wine-attach/launch-profile-path.json)"
           # A configured 2x initial speed must not accelerate the target
           # before explicit four-timer arming; activation starts at 1x.
-          INTIMATR_SPEED_PROFILE='C:\intimatr-ci-speed.toml' INTIMATR_TEST_HOOK_STATUS_GATE=1 INTIMATR_TEST_REMOTE_STOP_WITH_HOOKS=1 INTIMATR_TEST_EXTERNAL_TIMER_ARM=1 INTIMATR_TEST_EXTERNAL_RATE_COMMANDS=1 xvfb-run -a wine target/wine-attach/game-fixture/wine-attach-target.exe >target/wine-attach/game-fixture/stdout 2>target/wine-attach/game-fixture/stderr &
+          INTIMATR_SPEED_PROFILE="$profile_windows_path" INTIMATR_TEST_HOOK_STATUS_GATE=1 INTIMATR_TEST_REMOTE_STOP_WITH_HOOKS=1 INTIMATR_TEST_EXTERNAL_TIMER_ARM=1 INTIMATR_TEST_EXTERNAL_RATE_COMMANDS=1 xvfb-run -a wine target/wine-attach/game-fixture/wine-attach-target.exe >target/wine-attach/game-fixture/stdout 2>target/wine-attach/game-fixture/stderr &
           game_launcher=$!
           trap 'kill "$game_launcher" 2>/dev/null || true' EXIT
           for i in $(seq 1 100); do
