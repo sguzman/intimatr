@@ -13,7 +13,10 @@ use intimatr::{
     speed_profile_load::load_preview_profile,
 };
 
-use super::{bottles_json_with_command, profile_check::verify_bottle_profile_path};
+use super::{
+    bottles_json_with_command, profile_check::verify_bottle_profile_path,
+    profile_environment::verify_profile_environment,
+};
 
 #[derive(Debug, PartialEq, Eq)]
 struct ProfileLaunchOptions {
@@ -176,6 +179,13 @@ pub(super) fn run_profile_launch(args: Vec<String>) -> Result<(), String> {
     }
     verify_registered_program(&registered, &options.program, &options.executable)?;
 
+    // The selected bottle may restrict inherited host variables. This audit
+    // must pass before any game launch and does not attest runtime delivery.
+    let environment_mode = verify_profile_environment(
+        &bottles_json_with_command(&options.bottles_cli, &["list", "bottles"])?,
+        &options.bottle,
+    )?;
+
     // Bottles' documented run command has no per-launch environment option.
     // Supply a process-local variable without modifying the bottle's
     // persistent settings. The CLI exit status is NOT gameplay verification.
@@ -208,6 +218,9 @@ pub(super) fn run_profile_launch(args: Vec<String>) -> Result<(), String> {
         "windows_launch_profile": windows_profile,
         "source_game_policy_verified": true,
         "profile_file_matching_source_verified": true,
+        "bottles_environment_policy_preflight_passed": true,
+        "bottles_reported_profile_environment_mode": environment_mode,
+        "bottles_environment_delivery_verified_in_game": false,
         "bottles_run_cli_exited_successfully": true,
         "game_process_started_verified": false,
         "profile_reached_game_verified": false,
