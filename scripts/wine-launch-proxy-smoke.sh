@@ -9,7 +9,11 @@ cp config/steam_api64_launch_probe.exe.toml "$dir/config/"
 x86_64-w64-mingw32-gcc -shared -o "$dir/steam_api64.dll" native/launch_proxy/steam_api64_original_fixture.c -Wl,--out-implib,"$dir/libsteam_fixture.a"
 x86_64-w64-mingw32-gcc -o "$dir/steam_api64_launch_probe.exe" native/launch_proxy/steam_api64_launch_probe.c "$dir/libsteam_fixture.a"
 mv "$dir/steam_api64.dll" "$dir/steam_api64_intimatr_original.dll"
-INTIMATR_OBJDUMP=x86_64-w64-mingw32-objdump bash scripts/generate-steam-api64-forwarders.sh "$dir/steam_api64_intimatr_original.dll" "$dir/forwarders.def"
+if ! INTIMATR_OBJDUMP=x86_64-w64-mingw32-objdump bash scripts/generate-steam-api64-forwarders.sh "$dir/steam_api64_intimatr_original.dll" "$dir/forwarders.def"; then
+  echo "Synthetic original PE export table for diagnosing parser mismatch:" >&2
+  x86_64-w64-mingw32-objdump -p "$dir/steam_api64_intimatr_original.dll" | sed -n '/The Export Tables/,+32p' >&2
+  exit 1
+fi
 grep -q 'IntimatrFixtureValue=steam_api64_intimatr_original.IntimatrFixtureValue @1' "$dir/forwarders.def"
 printf 'LIBRARY intimatr.dll\nEXPORTS\nintimatr_lifecycle_state\n' >"$dir/intimatr_import.def"
 x86_64-w64-mingw32-dlltool --def "$dir/intimatr_import.def" --dllname intimatr.dll --output-lib "$dir/libintimatr.dll.a"
