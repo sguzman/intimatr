@@ -113,6 +113,15 @@ pub extern "system" fn intimatr_remote_timer_hook_state(_parameter: *mut c_void)
     crate::experimental_timer_probe::remote_hook_state()
 }
 
+/// Target-owned launch profile acceptance state. The value describes
+/// only bootstrap of this exact DLL: 0=not supplied, 1=validated and enabled,
+/// 2=explicit but rejected/disabled, 3=runtime unavailable. No secret path
+/// or game environment is returned; no hook or other side effect occurs.
+#[unsafe(no_mangle)]
+pub extern "system" fn intimatr_remote_speed_profile_state(_parameter: *mut c_void) -> u32 {
+    runtime::remote_explicit_speed_profile_state()
+}
+
 /// Read-only main-image timer import capability report. Return a four-bit
 /// coverage mask or u32::MAX when the PE inventory cannot be trusted.
 /// Presence does not establish that the game actually uses these clocks.

@@ -541,6 +541,30 @@ This requires an existing registered program (unique exact program name and full
 **Important:** Bottles does not document a dedicated per-launch environment option for `run`. Passing this variable to the native CLI does not yet prove that Bottles forwards it into the resulting Windows game; a successful CLI exit does not establish a running process. Intimatr reports `profile_reached_game_verified=false`, `game_process_started_verified=false` and `dll_auto_loaded=false` intentionally. Injecting/arming the Intimatr DLL and testing actual game speed still require their own explicit gates and real native Bottles QA. The CI mock now also launches an isolated Wine PE **through that mocked CLI**, verifies the profile path from inside the Windows process, and runs the explicit attach/four-timer speed regression on that same fixture. This is stronger evidence of the process-local environment transport, but **not** evidence that genuine Bottles forwards the variable into a game. The command's ordinary success report deliberately keeps its game-process/profile-delivery fields false. Source: [Bottles CLI documentation](https://docs.usebottles.com/advanced/cli).
 
 
+### Target-observed speed-profile state after attachment
+
+The read-only `intimatr-bottles status-game` command now obtains
+`target_speed_profile_state` directly from the exact selected Intimatr
+DLL's bootstrap, through the existing identity-gated Windows helper:
+
+- `absent`: the running DLL had no `INTIMATR_SPEED_PROFILE` environment variable at bootstrap; the separate explicit-arm path can still use built-in steps
+- `accepted`: the running DLL opened, parsed and accepted an enabled global-only launch profile
+- `rejected_or_disabled`: the environment variable was present but its profile failed validation or explicitly disabled speed; remote timer activation remains blocked
+- `unavailable`: no owned DLL is present, the runtime is not Running or its profile state cannot be queried
+
+`explicit_speed_profile_accepted_in_target=true` is only set for an
+`accepted` profile in a Running target. It does not establish **which**
+absolute profile path was read, prove the exact file was delivered by
+genuine Bottles, imply automatic DLL loading or claim that gameplay speed
+changed. `profile_path_identity_verified=false` remains explicit until
+there is an independent exact-profile identity proof. This query reads
+a bounded state value from the owned DLL, not arbitrary target process
+memory or its environment, and does not install or modify hooks.
+
+The isolated Wine fixture asserts acceptance after explicit attachment,
+absence in an unconfigured attached fixture, and unavailability before
+attachment and after shutdown. These checks are not native-Bottles field QA.
+
 ### Explicitly configured speed steps in the selected-game timer session
 
 The Windows DLL can already load a **globally enabled, override-free** shared speed profile from an explicit absolute Windows path in the game process's `INTIMATR_SPEED_PROFILE` environment variable. The selected-game four-API timer session now inherits the **same validated configured step list and bounds** as Intimatr's preview/UI/RPC command executor; it does not silently fall back to built-in steps. At arming, the installed timer clock still begins at **1.0×**, regardless of `initial_multiplier`, and no startup acceleration lease is applied. Only explicit offline consent, exact target verification, and timer activation install hooks. Invalid or unreadable profiles keep the existing safe fallback behavior for legacy tools.

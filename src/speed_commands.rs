@@ -169,6 +169,7 @@ pub struct SpeedPreviewExecutor {
     /// against game timer arming. Absence of a profile retains the historical
     /// separately opted-in fixture/default game path.
     blocked_by_explicit_profile: bool,
+    explicit_profile_configured: bool,
 }
 
 impl SpeedPreviewExecutor {
@@ -179,6 +180,7 @@ impl SpeedPreviewExecutor {
             inner,
             session: Mutex::new(None),
             blocked_by_explicit_profile: false,
+            explicit_profile_configured: false,
         }
     }
 
@@ -190,6 +192,21 @@ impl SpeedPreviewExecutor {
             inner,
             session: Mutex::new(None),
             blocked_by_explicit_profile: true,
+            explicit_profile_configured: false,
+        }
+    }
+
+    /// Side-effect-free launch-profile diagnostic, independent of a timer
+    /// session subsequently created by an explicit arm.
+    /// 0=not supplied, 1=explicit enabled profile accepted, 2=rejected or
+    /// disabled explicit profile. It says nothing about game simulation speed.
+    pub(crate) fn explicit_launch_profile_state(&self) -> u32 {
+        if self.blocked_by_explicit_profile {
+            2
+        } else if self.explicit_profile_configured {
+            1
+        } else {
+            0
         }
     }
 
@@ -214,6 +231,7 @@ impl SpeedPreviewExecutor {
                 label: label.to_owned(),
             })),
             blocked_by_explicit_profile: false,
+            explicit_profile_configured: true,
         })
     }
 
@@ -505,6 +523,24 @@ mod tests {
             CommandResult::Pong
         ));
         assert!(executor.watched_keys().unwrap().is_empty());
+    }
+
+    #[test]
+    fn explicit_launch_profile_state_distinguishes_absence_acceptance_and_rejection() {
+        let absent = SpeedPreviewExecutor::disabled(stub());
+        assert_eq!(absent.explicit_launch_profile_state(), 0);
+        let accepted = configured(stub());
+        assert_eq!(accepted.explicit_launch_profile_state(), 1);
+        let blocked = SpeedPreviewExecutor::blocked_explicit_profile(stub());
+        assert_eq!(blocked.explicit_launch_profile_state(), 2);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn default_timer_arming_cannot_masquerade_as_explicit_profile_delivery() {
+        let absent = SpeedPreviewExecutor::disabled(stub());
+        absent.arm_selected_game_session().unwrap();
+        assert_eq!(absent.explicit_launch_profile_state(), 0);
     }
 
     #[cfg(windows)]

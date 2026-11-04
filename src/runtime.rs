@@ -392,6 +392,25 @@ fn start_debugger_ui_if_enabled(
     Ok(Some(handle))
 }
 
+/// Observe how the target DLL's own bootstrap classified the launch speed
+/// profile. This is read-only: 0=absent, 1=accepted, 2=present but rejected
+/// or disabled, 3=runtime unavailable. No path or environment is disclosed.
+#[cfg(windows)]
+pub(crate) fn remote_explicit_speed_profile_state() -> u32 {
+    if lifecycle_state() != LifecycleState::Running {
+        return 3;
+    }
+    CONTEXT
+        .lock()
+        .ok()
+        .and_then(|guard| {
+            guard
+                .as_ref()
+                .map(|context| context.speed_preview_executor.explicit_launch_profile_state())
+        })
+        .unwrap_or(3)
+}
+
 /// Require a Running runtime and atomically installed IAT before enabling
 /// the one shared speed executor. Roll back imports if command setup fails.
 #[cfg(windows)]

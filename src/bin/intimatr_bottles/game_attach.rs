@@ -454,6 +454,22 @@ fn run_game_action(args: Vec<String>, action: GameAction) -> Result<(), String> 
         {
             return Err("target hook rate conflicts with timer installation status".into());
         }
+        let mut profiles = stdout
+            .lines()
+            .filter_map(|line| line.strip_prefix("INTIMATR_REMOTE_SPEED_PROFILE_STATE="));
+        let profile_state = profiles
+            .next()
+            .ok_or("game status helper did not return target speed-profile state")?;
+        if profiles.next().is_some()
+            || !matches!(
+                profile_state,
+                "absent" | "accepted" | "rejected_or_disabled" | "unavailable"
+            )
+            || (state == "absent" && profile_state != "unavailable")
+            || (state == "running" && profile_state == "unavailable")
+        {
+            return Err("invalid or contradictory target speed-profile state".into());
+        }
         let mut inventory = stdout
             .lines()
             .filter_map(|line| line.strip_prefix("INTIMATR_REMOTE_TIMER_IMPORT_MASK="));
@@ -517,6 +533,9 @@ fn run_game_action(args: Vec<String>, action: GameAction) -> Result<(), String> 
             "runtime_state": state,
             "runtime_running_verified": state == "running",
             "runtime_stopped_verified": state == "stopped",
+            "target_speed_profile_state": profile_state,
+            "explicit_speed_profile_accepted_in_target": state == "running" && profile_state == "accepted",
+            "profile_path_identity_verified": false,
             "timer_hook_state": hook_state,
             "timer_hooks_installed_verified": state == "running" && hook_state == "installed_four_timers",
             "installed_virtual_clock_multiplier": virtual_rate,

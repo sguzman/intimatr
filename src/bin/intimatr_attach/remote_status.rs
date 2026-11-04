@@ -21,6 +21,7 @@ const DONT_RESOLVE_DLL_REFERENCES: u32 = 0x0000_0001;
 const STATUS_EXPORT: &std::ffi::CStr = c"intimatr_remote_lifecycle_query";
 const SHUTDOWN_EXPORT: &std::ffi::CStr = c"intimatr_remote_shutdown";
 const HOOK_STATUS_EXPORT: &std::ffi::CStr = c"intimatr_remote_timer_hook_state";
+const PROFILE_STATE_EXPORT: &std::ffi::CStr = c"intimatr_remote_speed_profile_state";
 const ARM_TIMER_EXPORT: &std::ffi::CStr = c"intimatr_remote_arm_four_timers";
 const TIMER_IMPORT_COVERAGE_EXPORT: &std::ffi::CStr = c"intimatr_remote_timer_import_coverage";
 const SET_PRESET_EXPORT: &std::ffi::CStr = c"intimatr_remote_game_preset";
@@ -263,6 +264,30 @@ fn lifecycle_label(code: u32) -> Result<&'static str, String> {
         5 => Ok("stopped"),
         6 => Ok("failed"),
         _ => Err(format!("unknown Intimatr lifecycle code {code}")),
+    }
+}
+
+/// Query profile acceptance inside the already-running target DLL.
+/// This does not inspect the remote environment or reveal a profile path.
+pub fn query_explicit_profile_state(
+    process: Handle,
+    pid: u32,
+    dll: &Path,
+) -> Result<&'static str, String> {
+    let (base, image_size) = target_base(pid, dll)?;
+    let rva = export_rva(dll, PROFILE_STATE_EXPORT)?;
+    if rva >= image_size {
+        return Err("target Intimatr DLL lacks bounded profile-state export".into());
+    }
+    let entry = base
+        .checked_add(rva)
+        .ok_or("remote Intimatr profile-state address overflow")?;
+    match call_export(process, entry, 2_000)? {
+        0 => Ok("absent"),
+        1 => Ok("accepted"),
+        2 => Ok("rejected_or_disabled"),
+        3 => Ok("unavailable"),
+        code => Err(format!("invalid target profile-state code {code}")),
     }
 }
 

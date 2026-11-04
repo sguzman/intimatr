@@ -951,6 +951,8 @@ jobs:
             and .intimatr_module_loaded == false
             and .runtime_state == "absent"
             and .runtime_running_verified == false
+            and .target_speed_profile_state == "unavailable"
+            and .explicit_speed_profile_accepted_in_target == false
             and .timer_hook_state == "none"
             and .timer_hooks_installed_verified == false
             and .installed_virtual_clock_multiplier == null
@@ -970,6 +972,9 @@ jobs:
           # Attachment alone leaves all game IAT imports untouched.
           XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles status-game "${game_args[@]}" --offline-single-player >target/wine-attach/game-before-arm.json
           jq -e '.runtime_state == "running"
+            and .target_speed_profile_state == "accepted"
+            and .explicit_speed_profile_accepted_in_target == true
+            and .profile_path_identity_verified == false
             and .timer_hook_state == "none"
             and .timer_hooks_installed_verified == false
             and .main_image_four_timer_imports_present == true
@@ -1026,6 +1031,8 @@ jobs:
           XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles status-game "${game_args[@]}" --offline-single-player >target/wine-attach/game-hooked.json
           jq -e '.intimatr_module_loaded == true
             and .runtime_state == "running"
+            and .target_speed_profile_state == "accepted"
+            and .explicit_speed_profile_accepted_in_target == true
             and .timer_hook_state == "installed_four_timers"
             and .timer_hooks_installed_verified == true
             and .main_image_four_timer_imports_present == true
@@ -1144,6 +1151,8 @@ jobs:
           XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles status-game "${game_args[@]}" --offline-single-player >target/wine-attach/game-stopped-status.json
           jq -e '.intimatr_module_loaded == true
             and .runtime_state == "stopped"
+            and .target_speed_profile_state == "unavailable"
+            and .explicit_speed_profile_accepted_in_target == false
             and .runtime_running_verified == false
             and .runtime_stopped_verified == true
             and .timer_hook_state == "none"
@@ -1239,6 +1248,7 @@ jobs:
           XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles status-game "${incompatible_args[@]}" --offline-single-player >target/wine-attach/incompatible/before.json
           jq -e '.intimatr_module_loaded == false
             and .runtime_state == "absent"
+            and .target_speed_profile_state == "unavailable"
             and .timer_hook_state == "none"
             and .main_image_four_timer_imports_present == null
             and .static_pe_timer_import_coverage.time_get_time == false' target/wine-attach/incompatible/before.json > /dev/null
@@ -1246,6 +1256,8 @@ jobs:
           jq -e '.runtime_running_verified == true and .speed_controls_verified == false' target/wine-attach/incompatible/attached.json > /dev/null
           XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles status-game "${incompatible_args[@]}" --offline-single-player >target/wine-attach/incompatible/unarmed.json
           jq -e '.runtime_state == "running"
+            and .target_speed_profile_state == "absent"
+            and .explicit_speed_profile_accepted_in_target == false
             and .timer_hook_state == "none"
             and .installed_virtual_clock_multiplier == null
             and .main_image_four_timer_imports_present == false
