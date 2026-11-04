@@ -293,7 +293,11 @@ jobs:
           #!/bin/sh
           case "$*" in
             "--json list bottles")
-              printf '%s\n' '{"Fixture":{"Runner":"test-wine","Arch":"win64","Environment":"Gaming"}}'
+              if test -n "${INTIMATR_MOCK_BOTTLES_JSON:-}"; then
+                cat "$INTIMATR_MOCK_BOTTLES_JSON"
+              else
+                printf '%s\n' '{"Fixture":{"Runner":"test-wine","Arch":"win64","Environment":"Gaming","Limit_System_Environment":true,"Environment_Variables":{},"Inherited_Environment_Variables":["INTIMATR_SPEED_PROFILE"]}}'
+              fi
               ;;
             "--json info bottles-path")
               printf '%s' "$RUNNER_TEMP"
@@ -840,6 +844,22 @@ jobs:
             exit 1
           fi
           grep -q 'selected program name is absent or ambiguous' target/wine-attach/launch-duplicate-name.stderr
+          test ! -e "$INTIMATR_MOCK_LAUNCH_RECEIPT"
+          # Reject host-profile inheritance that Bottles would filter.
+          # A refused launch must not create a mock run receipt.
+          jq -n '{"Fixture":{"Limit_System_Environment":true,"Environment_Variables":{},"Inherited_Environment_Variables":["PATH"]}}' >target/wine-attach/mocks/filtered-env.json
+          if INTIMATR_MOCK_BOTTLES_JSON="$(pwd)/target/wine-attach/mocks/filtered-env.json" target/release/intimatr-bottles profile-launch "${launch_args[@]}" >target/wine-attach/launch-filtered.stdout 2>target/wine-attach/launch-filtered.stderr; then
+            echo "ERROR: profile-launch ignored a filtered inherited environment" >&2
+            exit 1
+          fi
+          grep -q 'must allowlist INTIMATR_SPEED_PROFILE' target/wine-attach/launch-filtered.stderr
+          test ! -e "$INTIMATR_MOCK_LAUNCH_RECEIPT"
+          jq -n '{"Fixture":{"Limit_System_Environment":true,"Inherited_Environment_Variables":["INTIMATR_SPEED_PROFILE"],"Environment_Variables":{"INTIMATR_SPEED_PROFILE":"C:\\wrong.toml"}}}' >target/wine-attach/mocks/override-env.json
+          if INTIMATR_MOCK_BOTTLES_JSON="$(pwd)/target/wine-attach/mocks/override-env.json" target/release/intimatr-bottles profile-launch "${launch_args[@]}" >target/wine-attach/launch-overridden.stdout 2>target/wine-attach/launch-overridden.stderr; then
+            echo "ERROR: profile-launch ignored a bottle-level profile override" >&2
+            exit 1
+          fi
+          grep -q 'explicitly overrides INTIMATR_SPEED_PROFILE' target/wine-attach/launch-overridden.stderr
           test ! -e "$INTIMATR_MOCK_LAUNCH_RECEIPT"
           # The selected game is launched by the *mock Bottles CLI* called
           # by profile-launch. The Windows PE observes its own launch
