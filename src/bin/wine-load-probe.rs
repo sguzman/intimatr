@@ -510,9 +510,8 @@ mod windows_probe {
         // This is the same export queried by the native selected-game helper.
         // Its return value must reflect an expired hold even if no hooked
         // timer API has been sampled since the deadline.
-        let read_installed_rate: unsafe extern "system" fn(*mut c_void) -> u32 = unsafe {
-            std::mem::transmute(resolve(module, c"intimatr_remote_game_rate_milli")?)
-        };
+        let read_installed_rate: unsafe extern "system" fn(*mut c_void) -> u32 =
+            unsafe { std::mem::transmute(resolve(module, c"intimatr_remote_game_rate_milli")?) };
         let hold = call(
             &client,
             &["--tcp", "127.0.0.1:31379", "hold", "2.0", "1800"],
