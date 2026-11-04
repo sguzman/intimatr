@@ -845,6 +845,20 @@ jobs:
           fi
           grep -q 'selected program name is absent or ambiguous' target/wine-attach/launch-duplicate-name.stderr
           test ! -e "$INTIMATR_MOCK_LAUNCH_RECEIPT"
+          # An individually registered program can override the host
+          # profile even when the selected bottle allows inheritance.
+          jq -n --arg path "$game_fixture_windows" '[{
+            "name":"Selected standalone offline test fixture",
+            "executable":"wine-attach-target.exe",
+            "path":$path,
+            "environment":{"INTIMATR_SPEED_PROFILE":"C:\\\\different.toml"}
+          }]' >target/wine-attach/mocks/overridden-game-programs.json
+          if INTIMATR_MOCK_PROGRAMS_JSON="$(pwd)/target/wine-attach/mocks/overridden-game-programs.json" target/release/intimatr-bottles profile-launch "${launch_args[@]}" >target/wine-attach/launch-game-override.stdout 2>target/wine-attach/launch-game-override.stderr; then
+            echo "ERROR: profile-launch ignored a registered-program environment override" >&2
+            exit 1
+          fi
+          grep -q 'registered program overrides INTIMATR_SPEED_PROFILE' target/wine-attach/launch-game-override.stderr
+          test ! -e "$INTIMATR_MOCK_LAUNCH_RECEIPT"
           # Inspect the actual selected (mocked) bottle policy without a launch.
           target/release/intimatr-bottles profile-env --bottle Fixture --bottles-cli target/wine-attach/mocks/bottles-cli >target/wine-attach/profile-env-preflight.json
           jq -e '.operation == "read_only_native_bottles_profile_environment_preflight"
