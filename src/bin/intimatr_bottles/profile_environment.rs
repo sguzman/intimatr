@@ -9,6 +9,14 @@ pub(super) fn verify_profile_environment(
     inventory_json: &str,
     bottle: &str,
 ) -> Result<&'static str, String> {
+    verify_named_bottle_environment(inventory_json, bottle, PROFILE_ENV)
+}
+
+pub(super) fn verify_named_bottle_environment(
+    inventory_json: &str,
+    bottle: &str,
+    variable: &str,
+) -> Result<&'static str, String> {
     let document: Value = serde_json::from_str(inventory_json)
         .map_err(|error| format!("invalid native Bottles environment inventory: {error}"))?;
     let root = document
@@ -36,9 +44,9 @@ pub(super) fn verify_profile_environment(
         .ok_or("selected bottle Environment_Variables is missing or not an object")?;
     if explicit
         .keys()
-        .any(|name| name.eq_ignore_ascii_case(PROFILE_ENV))
+        .any(|name| name.eq_ignore_ascii_case(variable))
     {
-        return Err("selected bottle explicitly overrides INTIMATR_SPEED_PROFILE".into());
+        return Err(format!("selected bottle explicitly overrides {variable}"));
     }
 
     if limited {
@@ -51,14 +59,13 @@ pub(super) fn verify_profile_environment(
             let name = item
                 .as_str()
                 .ok_or("inherited environment variable list contains a non-string entry")?;
-            if name == PROFILE_ENV {
+            if name == variable {
                 occurrences += 1;
             }
         }
         if occurrences != 1 {
             return Err(
-                "restricted bottle must allowlist INTIMATR_SPEED_PROFILE exactly once before launch"
-                    .into(),
+                format!("restricted bottle must allowlist {variable} exactly once before launch"),
             );
         }
         Ok("restricted_explicitly_allowlisted")
@@ -73,6 +80,14 @@ pub(super) fn verify_profile_environment(
 pub(super) fn verify_registered_program_environment(
     programs_json: &str,
     program_name: &str,
+) -> Result<(), String> {
+    verify_named_program_environment(programs_json, program_name, PROFILE_ENV)
+}
+
+pub(super) fn verify_named_program_environment(
+    programs_json: &str,
+    program_name: &str,
+    variable: &str,
 ) -> Result<(), String> {
     let value: Value = serde_json::from_str(programs_json).map_err(|error| {
         format!("invalid native Bottles registered program environment: {error}")
@@ -97,9 +112,9 @@ pub(super) fn verify_registered_program_environment(
         Some(Value::Object(environment)) => {
             if environment
                 .keys()
-                .any(|name| name.eq_ignore_ascii_case(PROFILE_ENV))
+                .any(|name| name.eq_ignore_ascii_case(variable))
             {
-                Err("selected registered program overrides INTIMATR_SPEED_PROFILE".into())
+                Err(format!("selected registered program overrides {variable}"))
             } else {
                 Ok(())
             }
@@ -220,6 +235,30 @@ mod tests {
             }
         })
         .to_string()
+    }
+
+    #[test]
+    fn validates_experimental_startup_environment_inheritance() {
+        const FLAG: &str = "INTIMATR_EXPERIMENTAL_STARTUP_TIMERS";
+        let ok = inventory(json!({
+            "Limit_System_Environment": true,
+            "Environment_Variables": {},
+            "Inherited_Environment_Variables": ["INTIMATR_SPEED_PROFILE", FLAG]
+        }));
+        assert!(super::verify_named_bottle_environment(&ok, "Selected", FLAG).is_ok());
+        let blocked = inventory(json!({
+            "Limit_System_Environment": true,
+            "Environment_Variables": {},
+            "Inherited_Environment_Variables": ["INTIMATR_SPEED_PROFILE"]
+        }));
+        assert!(super::verify_named_bottle_environment(&blocked, "Selected", FLAG).is_err());
+        let shadowed = inventory(json!({
+            "Limit_System_Environment": false,
+            "Environment_Variables": {"intimatr_experimental_startup_timers": "0"}
+        }));
+        assert!(super::verify_named_bottle_environment(&shadowed, "Selected", FLAG).is_err());
+        let program = r#"[{"name":"Eastward","environment":{"INTIMATR_EXPERIMENTAL_STARTUP_TIMERS":"0"}}]"#;
+        assert!(super::verify_named_program_environment(program, "Eastward", FLAG).is_err());
     }
 
     #[test]

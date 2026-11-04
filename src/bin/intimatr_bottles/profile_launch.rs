@@ -16,7 +16,10 @@ use intimatr::{
 use super::{
     bottles_json_with_command,
     profile_check::verify_bottle_profile_path,
-    profile_environment::{verify_profile_environment, verify_registered_program_environment},
+    profile_environment::{
+        verify_named_bottle_environment, verify_named_program_environment,
+        verify_profile_environment, verify_registered_program_environment,
+    },
 };
 
 #[derive(Debug, PartialEq, Eq)]
@@ -27,6 +30,7 @@ struct ProfileLaunchOptions {
     program: String,
     profile: String,
     bottles_cli: String,
+    experimental_four_timers: bool,
 }
 
 impl ProfileLaunchOptions {
@@ -39,6 +43,7 @@ impl ProfileLaunchOptions {
         let mut bottles_cli = None;
         let mut offline = false;
         let mut launch = false;
+        let mut experimental_four_timers = false;
         let mut iter = args.iter();
         while let Some(flag) = iter.next() {
             match flag.as_str() {
@@ -50,7 +55,11 @@ impl ProfileLaunchOptions {
                     launch = true;
                     continue;
                 }
-                "--offline-single-player" | "--launch" => {
+                "--experimental-four-timers" if !experimental_four_timers => {
+                    experimental_four_timers = true;
+                    continue;
+                }
+                "--offline-single-player" | "--launch" | "--experimental-four-timers" => {
                     return Err(format!("duplicate acknowledgment {flag}"));
                 }
                 _ => {}
@@ -106,6 +115,7 @@ impl ProfileLaunchOptions {
             program,
             profile,
             bottles_cli,
+            experimental_four_timers,
         })
     }
 }
@@ -180,24 +190,42 @@ pub(super) fn run_profile_launch(args: Vec<String>) -> Result<(), String> {
     verify_registered_program(&registered, &options.program, &options.executable)?;
     verify_registered_program_environment(&program_json, &options.program)?;
 
+    if options.experimental_four_timers {
+        verify_named_program_environment(
+            &program_json,
+            &options.program,
+            "INTIMATR_EXPERIMENTAL_STARTUP_TIMERS",
+        )?;
+    }
+
     // The selected bottle may restrict inherited host variables. This audit
     // must pass before any game launch and does not attest runtime delivery.
-    let environment_mode = verify_profile_environment(
-        &bottles_json_with_command(&options.bottles_cli, &["list", "bottles"])?,
-        &options.bottle,
-    )?;
+    let inventory_json = bottles_json_with_command(&options.bottles_cli, &["list", "bottles"])?;
+    let environment_mode = verify_profile_environment(&inventory_json, &options.bottle)?;
+    if options.experimental_four_timers {
+        verify_named_bottle_environment(
+            &inventory_json,
+            &options.bottle,
+            "INTIMATR_EXPERIMENTAL_STARTUP_TIMERS",
+        )?;
+    }
 
     // Bottles' documented run command has no per-launch environment option.
     // Supply a process-local variable without modifying the bottle's
     // persistent settings. The CLI exit status is NOT gameplay verification.
-    let output = Command::new(&options.bottles_cli)
+    let mut command = Command::new(&options.bottles_cli);
+    command
         .arg("run")
         .arg("-b")
         .arg(&options.bottle)
         .arg("-p")
         .arg(&options.program)
         .env("INTIMATR_SPEED_PROFILE", &windows_profile)
-        .output()
+        .env_remove("INTIMATR_EXPERIMENTAL_STARTUP_TIMERS");
+    if options.experimental_four_timers {
+        command.env("INTIMATR_EXPERIMENTAL_STARTUP_TIMERS", "1");
+    }
+    let output = command.output()
         .map_err(|error| format!("cannot invoke native Bottles run: {error}"))?;
     if !output.status.success() {
         return Err(format!(
@@ -226,6 +254,8 @@ pub(super) fn run_profile_launch(args: Vec<String>) -> Result<(), String> {
         "bottles_run_cli_exited_successfully": true,
         "game_process_started_verified": false,
         "profile_reached_game_verified": false,
+        "experimental_startup_timer_activation_requested": options.experimental_four_timers,
+        "experimental_startup_timer_activation_verified_in_game": false,
         "dll_auto_loaded": false,
         "gameplay_speed_verified": false,
         "bottle_configuration_modified": false,
@@ -270,11 +300,15 @@ mod tests {
             ProfileLaunchOptions::parse(&allowed).unwrap().program,
             "Offline Game"
         );
+        let opted_in = [allowed.clone(), args(&["--experimental-four-timers"])].concat();
+        assert!(ProfileLaunchOptions::parse(&opted_in).unwrap().experimental_four_timers);
+        assert!(!ProfileLaunchOptions::parse(&allowed).unwrap().experimental_four_timers);
         for invalid in [
             base.clone(),
             [base.clone(), args(&["--launch"])].concat(),
             [base.clone(), args(&["--offline-single-player"])].concat(),
             [allowed.clone(), args(&["--launch"])].concat(),
+            [opted_in.clone(), args(&["--experimental-four-timers"])].concat(),
             [allowed.clone(), args(&["--profile", "/tmp/other.toml"])].concat(),
             [allowed.clone(), args(&["--unknown", "value"])].concat(),
         ] {
