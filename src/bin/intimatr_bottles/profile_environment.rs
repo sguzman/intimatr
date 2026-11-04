@@ -34,7 +34,10 @@ pub(super) fn verify_profile_environment(
         .get("Environment_Variables")
         .and_then(Value::as_object)
         .ok_or("selected bottle Environment_Variables is missing or not an object")?;
-    if explicit.keys().any(|name| name.eq_ignore_ascii_case(PROFILE_ENV)) {
+    if explicit
+        .keys()
+        .any(|name| name.eq_ignore_ascii_case(PROFILE_ENV))
+    {
         return Err("selected bottle explicitly overrides INTIMATR_SPEED_PROFILE".into());
     }
 
@@ -70,7 +73,14 @@ mod tests {
     use serde_json::{Value, json};
 
     fn inventory(value: Value) -> String {
-        json!({"Selected": value, "Other": {"Limit_System_Environment": false, "Environment_Variables": {}}}).to_string()
+        json!({
+            "Selected": value,
+            "Other": {
+                "Limit_System_Environment": false,
+                "Environment_Variables": {}
+            }
+        })
+        .to_string()
     }
 
     #[test]
@@ -111,7 +121,11 @@ mod tests {
                 "Environment_Variables": {},
                 "Inherited_Environment_Variables": inherited
             }));
-            assert!(verify_profile_environment(&raw, "Selected").unwrap_err().contains("must allowlist"));
+            assert!(
+                verify_profile_environment(&raw, "Selected")
+                    .unwrap_err()
+                    .contains("must allowlist")
+            );
         }
     }
 
@@ -123,7 +137,11 @@ mod tests {
                 "Environment_Variables": {"intimatr_speed_profile": "C:\\wrong.toml"},
                 "Inherited_Environment_Variables": ["INTIMATR_SPEED_PROFILE"]
             }));
-            assert!(verify_profile_environment(&raw, "Selected").unwrap_err().contains("explicitly overrides"));
+            assert!(
+                verify_profile_environment(&raw, "Selected")
+                    .unwrap_err()
+                    .contains("explicitly overrides")
+            );
         }
     }
 
@@ -134,7 +152,10 @@ mod tests {
             "{}".to_owned(),
             json!({"bottles": ["Selected"]}).to_string(),
             inventory(json!({})),
-            inventory(json!({"Limit_System_Environment": "false", "Environment_Variables": {}})),
+            inventory(json!({
+                "Limit_System_Environment": "false",
+                "Environment_Variables": {}
+            })),
             inventory(json!({"Limit_System_Environment": false})),
             inventory(json!({
                 "Limit_System_Environment": true,
@@ -144,7 +165,10 @@ mod tests {
         ] {
             assert!(verify_profile_environment(&raw, "Selected").is_err(), "{raw}");
         }
-        let raw = inventory(json!({"Limit_System_Environment": false, "Environment_Variables": {}}));
+        let raw = inventory(json!({
+            "Limit_System_Environment": false,
+            "Environment_Variables": {}
+        }));
         assert!(verify_profile_environment(&raw, "Absent").is_err());
     }
 }
