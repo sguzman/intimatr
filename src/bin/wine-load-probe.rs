@@ -364,7 +364,10 @@ mod windows_probe {
     /// This verifies the *normal external RPC client*, rather than the
     /// special exported probe-rate setter, controls real imported timer
     /// reads inside the already-hooked disposable Wine fixture.
-    fn exercise_live_hook_through_rpc(directory: &Path) -> Result<(), String> {
+    fn exercise_live_hook_through_rpc(
+        directory: &Path,
+        module: &LoadedModule,
+    ) -> Result<(), String> {
         let client = directory.join("intimatr-speed.exe");
         for (action, value, expected) in [
             ("preset", Some("2.0"), 2.0),
@@ -397,7 +400,7 @@ mod windows_probe {
             measure_current_rate(expected)?;
         }
         println!("Ordinary speed RPC commands drove four already-installed Wine timer imports");
-        exercise_rpc_hold_expiry(directory)?;
+        exercise_rpc_hold_expiry(directory, module)?;
         Ok(())
     }
 
@@ -487,7 +490,10 @@ mod windows_probe {
 
     /// A read-only RPC status query must not restart a temporary rate.
     /// The IAT clock itself must expire the lease when callbacks are read.
-    fn exercise_rpc_hold_expiry(directory: &Path) -> Result<(), String> {
+    fn exercise_rpc_hold_expiry(
+        directory: &Path,
+        module: &LoadedModule,
+    ) -> Result<(), String> {
         fn call(client: &Path, request: &[&str]) -> Result<serde_json::Value, String> {
             let output = std::process::Command::new(client)
                 .args(request)
@@ -504,12 +510,21 @@ mod windows_probe {
         }
 
         let client = directory.join("intimatr-speed.exe");
+        // This is the same export queried by the native selected-game helper.
+        // Its return value must reflect an expired hold even if no hooked
+        // timer API has been sampled since the deadline.
+        let read_installed_rate: unsafe extern "system" fn(*mut c_void) -> u32 = unsafe {
+            std::mem::transmute(resolve(module, c"intimatr_remote_game_rate_milli")?)
+        };
         let hold = call(
             &client,
             &["--tcp", "127.0.0.1:31379", "hold", "2.0", "1800"],
         )?;
         if hold["preview_multiplier"] != 2.0 {
             return Err(format!("timed hold did not activate: {hold}"));
+        }
+        if unsafe { read_installed_rate(ptr::null_mut()) } != 2000 {
+            return Err("installed timer status did not observe active 2x hold".into());
         }
         let read_only = call(&client, &["--tcp", "127.0.0.1:31379", "status"])?;
         if read_only["preview_multiplier"] != 2.0 {
@@ -519,6 +534,15 @@ mod windows_probe {
         }
         measure_current_rate(2.0)?;
         thread::sleep(Duration::from_millis(1900));
+        // Read the authoritative installed IAT rate *before* calling any
+        // imported clock again. This probes the idle-deadline status path,
+        // not just expiry incidentally triggered by a game timer read.
+        let installed_after_idle = unsafe { read_installed_rate(ptr::null_mut()) };
+        if installed_after_idle != 1000 {
+            return Err(format!(
+                "idle installed-clock status failed to expire hold: {installed_after_idle}"
+            ));
+        }
         measure_current_rate(1.0)?;
         let expired = call(&client, &["--tcp", "127.0.0.1:31379", "status"])?;
         if expired["preview_multiplier"] != 1.0 {
@@ -657,7 +681,7 @@ mod windows_probe {
                 "only {count} timer imports hooked; expected at least four"
             ));
         }
-        exercise_live_hook_through_rpc(directory)?;
+        exercise_live_hook_through_rpc(directory, &module)?;
         exercise_external_linux_speed_bridge(directory)?;
         measure_rate(0.5, set_rate)?;
         measure_rate(2.0, set_rate)?;
