@@ -21,8 +21,10 @@ BEGIN {print "LIBRARY steam_api64.dll";print "EXPORTS"}
 # NumberOfFunctions/NumberOfNames keys found in some PE readers.
 $1=="NumberOfFunctions"{functions=$2}
 $1=="NumberOfNames"{names=$2}
-$1=="Export" && $2=="Address" && $3=="Table" && $4 ~ /^[0-9A-Fa-f]+$/{functions=$4}
-$1=="[Name" && $2=="Pointer/Ordinal]" && $3=="Table" && $4 ~ /^[0-9A-Fa-f]+$/{names=$4}
+$1=="Number" && $2=="in:"{reading_export_counts=1;next}
+$1=="Table" && $2=="Addresses"{reading_export_counts=0}
+reading_export_counts && $1=="Export" && $2=="Address" && $3=="Table" && $4 ~ /^[0-9A-Fa-f]+$/{functions=$4}
+reading_export_counts && $1=="[Name" && $2=="Pointer/Ordinal]" && $3=="Table" && $4 ~ /^[0-9A-Fa-f]+$/{names=$4}
 /\[Ordinal\/Name Pointer\] Table/{in_table=1;next}
 in_table && /\+base\[[[:space:]]*[0-9]+\]/{
   symbol=$NF; ordinal=$0
