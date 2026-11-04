@@ -244,6 +244,15 @@ mod target {
     pub fn run() -> Result<(), String> {
         let executable = std::env::current_exe().map_err(|error| error.to_string())?;
         let directory = executable.parent().unwrap_or_else(|| Path::new("."));
+        // Opt-in CI-only observation of the environment received by this
+        // *Windows process*, rather than merely by the Linux launch CLI.
+        // Never inspect arbitrary games or log their environment.
+        if std::env::var_os("INTIMATR_TEST_REPORT_PROFILE_AT_START").is_some() {
+            let observed = std::env::var("INTIMATR_SPEED_PROFILE")
+                .map_err(|error| format!("missing Windows launch speed profile: {error}"))?;
+            std::fs::write(directory.join("attach-profile-observed.txt"), observed)
+                .map_err(|error| format!("cannot publish Wine child profile receipt: {error}"))?;
+        }
         let pid_file = directory.join("attach-target.pid");
         std::fs::write(&pid_file, std::process::id().to_string())
             .map_err(|error| format!("cannot write target PID: {error}"))?;

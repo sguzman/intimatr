@@ -308,6 +308,12 @@ jobs:
             "run -b Fixture -p Selected standalone offline test fixture")
               test -n "${INTIMATR_MOCK_LAUNCH_RECEIPT:-}" || exit 4
               printf '%s\n' "${INTIMATR_SPEED_PROFILE:-missing}" > "$INTIMATR_MOCK_LAUNCH_RECEIPT"
+              # With this opt-in, the mock launches our disposable Wine PE
+              # *synchronously*, retaining the native CLI process until
+              # the game fixture exits. No real Bottles is present in CI.
+              if test "${INTIMATR_MOCK_LAUNCH_WINE_CHILD:-0}" = 1; then
+                INTIMATR_TEST_REPORT_PROFILE_AT_START=1 INTIMATR_TEST_HOOK_STATUS_GATE=1 INTIMATR_TEST_REMOTE_STOP_WITH_HOOKS=1 INTIMATR_TEST_EXTERNAL_TIMER_ARM=1 INTIMATR_TEST_EXTERNAL_RATE_COMMANDS=1 xvfb-run -a wine target/wine-attach/game-fixture/wine-attach-target.exe >target/wine-attach/game-fixture/stdout 2>target/wine-attach/game-fixture/stderr
+              fi
               ;;
             *)
               echo "Unexpected Bottles mock arguments: $*" >&2
@@ -835,22 +841,14 @@ jobs:
           fi
           grep -q 'selected program name is absent or ambiguous' target/wine-attach/launch-duplicate-name.stderr
           test ! -e "$INTIMATR_MOCK_LAUNCH_RECEIPT"
+          # The selected game is launched by the *mock Bottles CLI* called
+          # by profile-launch. The Windows PE observes its own launch
+          # environment before the exact-PID attach/timer regression runs.
+          # Run the native command asynchronously so the fixture's arm and
+          # stop controls can be driven by this CI orchestrator.
+          export INTIMATR_MOCK_LAUNCH_WINE_CHILD=1
           target/release/intimatr-bottles profile-launch "${launch_args[@]}" \
-            >target/wine-attach/profile-launch-report.json
-          jq -e '.operation == "explicit_registered_bottles_profile_launch"
-            and .source_game_policy_verified == true
-            and .profile_file_matching_source_verified == true
-            and .bottles_run_cli_exited_successfully == true
-            and .game_process_started_verified == false
-            and .profile_reached_game_verified == false
-            and .dll_auto_loaded == false
-            and .bottle_configuration_modified == false
-            and .attachment_attempted == false' \
-            target/wine-attach/profile-launch-report.json > /dev/null
-          grep -Fx "$profile_windows_path" "$INTIMATR_MOCK_LAUNCH_RECEIPT"
-          # A configured 2x initial speed must not accelerate the target
-          # before explicit four-timer arming; activation starts at 1x.
-          INTIMATR_SPEED_PROFILE="$profile_windows_path" INTIMATR_TEST_HOOK_STATUS_GATE=1 INTIMATR_TEST_REMOTE_STOP_WITH_HOOKS=1 INTIMATR_TEST_EXTERNAL_TIMER_ARM=1 INTIMATR_TEST_EXTERNAL_RATE_COMMANDS=1 xvfb-run -a wine target/wine-attach/game-fixture/wine-attach-target.exe >target/wine-attach/game-fixture/stdout 2>target/wine-attach/game-fixture/stderr &
+            >target/wine-attach/profile-launch-report.json &
           game_launcher=$!
           trap 'kill "$game_launcher" 2>/dev/null || true' EXIT
           for i in $(seq 1 100); do
@@ -860,6 +858,10 @@ jobs:
             sleep 0.1
           done
           test -s target/wine-attach/game-fixture/attach-target.pid
+          test -s target/wine-attach/game-fixture/attach-profile-observed.txt
+          grep -Fx "$profile_windows_path" "$INTIMATR_MOCK_LAUNCH_RECEIPT"
+          grep -Fx "$profile_windows_path" target/wine-attach/game-fixture/attach-profile-observed.txt
+          echo "Mock Bottles CLI passed selected profile into the running Windows PE"
           game_pid="$(cat target/wine-attach/game-fixture/attach-target.pid)"
           target/release/intimatr-bottles win-processes \
             --prefix "$WINEPREFIX" \
@@ -1171,9 +1173,19 @@ jobs:
           jq -e '.runtime_stopped_verified == true and .intimatr_module_unloaded == false' target/wine-attach/game-stopped-again.json > /dev/null
           touch target/wine-attach/game-fixture/attach-release.flag
           wait "$game_launcher"
+          jq -e '.operation == "explicit_registered_bottles_profile_launch"
+            and .source_game_policy_verified == true
+            and .profile_file_matching_source_verified == true
+            and .bottles_run_cli_exited_successfully == true
+            and .game_process_started_verified == false
+            and .profile_reached_game_verified == false
+            and .dll_auto_loaded == false
+            and .bottle_configuration_modified == false
+            and .attachment_attempted == false' \
+            target/wine-attach/profile-launch-report.json > /dev/null
           trap - EXIT
-          unset INTIMATR_MOCK_PROGRAMS_JSON
-          echo "Explicit offline-game CLI loaded exact DLL into separately located disposable Wine PE test target"
+          unset INTIMATR_MOCK_PROGRAMS_JSON INTIMATR_MOCK_LAUNCH_WINE_CHILD
+          echo "Mocked Bottles launch reached Windows fixture; native CLI then attached exact DLL and verified four scaled timers"
           # Deliberately incompatible executable: WinMM is available via
           # LoadLibrary, but timeGetTime is not imported in the main PE IAT.
           # It must be rejected by both independent preflights, without any
