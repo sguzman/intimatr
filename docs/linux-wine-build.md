@@ -529,9 +529,11 @@ Before attempting a game launch, inspect the selected native bottle's reported h
 
 ```sh
 intimatr-bottles profile-env --bottle 'Your Bottle'
+# Optionally inspect an exact registered program as well:
+intimatr-bottles profile-env --bottle 'Your Bottle' --program 'Registered Game Name'
 ```
 
-The optional `--bottles-cli /absolute/path/to/bottles-cli` is supported. The JSON report distinguishes a permitted unrestricted environment, an explicit `INTIMATR_SPEED_PROFILE` inheritance allowlist, and an explanatory policy blocker. This command checks **bottle-level policy only**; it does not inspect a selected game's individual registered-program environment. It does **not** execute `bottles-cli run`, launch Wine, modify the bottle or establish that a game received the profile. The real native-Bottles installation and actual propagation still require field verification.
+The optional `--bottles-cli /absolute/path/to/bottles-cli` is supported. The JSON report distinguishes a permitted unrestricted environment, an explicit `INTIMATR_SPEED_PROFILE` inheritance allowlist, and an explanatory policy blocker. With only `--bottle`, the command checks bottle-level policy; it returns `null` for per-program and combined results. Adding `--program` also checks the uniquely named registered program's environment and reports independent and combined policy decisions, refusing ambiguous or conflicting program metadata. Neither mode proves that a Windows game received the value. It does **not** execute `bottles-cli run`, launch Wine, modify the bottle or establish that a game received the profile. The real native-Bottles installation and actual propagation still require field verification.
 
 ### Explicit registered-program launch with a resolved profile
 

@@ -111,12 +111,14 @@ pub(super) fn verify_registered_program_environment(
 #[derive(Debug, PartialEq, Eq)]
 struct ProfileEnvironmentOptions {
     bottle: String,
+    program: Option<String>,
     bottles_cli: String,
 }
 
 impl ProfileEnvironmentOptions {
     fn parse(args: &[String]) -> Result<Self, String> {
         let mut bottle = None;
+        let mut program = None;
         let mut bottles_cli = None;
         let mut iter = args.iter();
         while let Some(flag) = iter.next() {
@@ -126,6 +128,7 @@ impl ProfileEnvironmentOptions {
                 .ok_or_else(|| format!("missing value after {flag}"))?;
             match flag.as_str() {
                 "--bottle" if bottle.is_none() => bottle = Some(value.clone()),
+                "--program" if program.is_none() => program = Some(value.clone()),
                 "--bottles-cli" if bottles_cli.is_none() => bottles_cli = Some(value.clone()),
                 _ => return Err(format!("duplicate or unexpected profile-env flag: {flag}")),
             }
@@ -133,6 +136,9 @@ impl ProfileEnvironmentOptions {
         let bottle: String = bottle.ok_or("missing --bottle")?;
         if bottle.trim().is_empty() {
             return Err("selected bottle name must not be empty".into());
+        }
+        if program.as_deref().is_some_and(|name: &String| name.trim().is_empty()) {
+            return Err("selected registered program name must not be empty".into());
         }
         let bottles_cli = bottles_cli.unwrap_or_else(|| "bottles-cli".to_owned());
         if std::path::Path::new(&bottles_cli)
@@ -143,6 +149,7 @@ impl ProfileEnvironmentOptions {
         }
         Ok(Self {
             bottle,
+            program,
             bottles_cli,
         })
     }
@@ -156,10 +163,27 @@ pub(super) fn run_profile_env(args: Vec<String>) -> Result<(), String> {
         Ok(mode) => (Some(mode), None),
         Err(error) => (None, Some(error)),
     };
+    let (program_passed, program_blocker) = if let Some(program) = &options.program {
+        let programs = super::bottles_json_with_command(
+            &options.bottles_cli,
+            &["programs", "-b", &options.bottle],
+        )?;
+        match verify_registered_program_environment(&programs, program) {
+            Ok(()) => (Some(true), None),
+            Err(error) => (Some(false), Some(error)),
+        }
+    } else {
+        (None, None)
+    };
+    let combined = program_passed.map(|passed| passed && mode.is_some());
     let report = serde_json::json!({
         "operation": "read_only_native_bottles_profile_environment_preflight",
         "selected_bottle": options.bottle,
+        "selected_registered_program": options.program,
         "reported_bottle_policy_accepts_profile_environment": mode.is_some(),
+        "reported_registered_program_environment_accepts_profile": program_passed,
+        "registered_program_environment_blocker": program_blocker,
+        "reported_combined_profile_environment_policy_accepts": combined,
         "reported_environment_mode": mode,
         "blocker": blocker,
         "bottles_run_invoked": false,
@@ -297,10 +321,20 @@ mod tests {
             ProfileEnvironmentOptions::parse(&valid).unwrap().bottle,
             "My Games"
         );
+        let selected = ["--bottle", "My Games", "--program", "Single Player"].map(str::to_owned);
+        assert_eq!(
+            ProfileEnvironmentOptions::parse(&selected)
+                .unwrap()
+                .program
+                .as_deref(),
+            Some("Single Player")
+        );
         for bad in [
             vec![],
             vec!["--bottle", ""],
             vec!["--bottle", "Games", "--bottle", "Another"],
+            vec!["--bottle", "Games", "--program", ""],
+            vec!["--bottle", "Games", "--program", "Game", "--program", "Other"],
             vec!["--bottle", "Games", "--bottles-cli", "/usr/bin/wine"],
             vec!["--bottle", "Games", "--unknown", "value"],
         ] {

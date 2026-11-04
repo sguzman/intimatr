@@ -859,6 +859,19 @@ jobs:
           fi
           grep -q 'registered program overrides INTIMATR_SPEED_PROFILE' target/wine-attach/launch-game-override.stderr
           test ! -e "$INTIMATR_MOCK_LAUNCH_RECEIPT"
+          # An explicit program selector adds independent read-only verification.
+          target/release/intimatr-bottles profile-env --bottle Fixture --program 'Selected standalone offline test fixture' --bottles-cli target/wine-attach/mocks/bottles-cli >target/wine-attach/profile-env-program.json
+          jq -e '.reported_registered_program_environment_accepts_profile == true
+            and .reported_combined_profile_environment_policy_accepts == true
+            and .selected_registered_program == "Selected standalone offline test fixture"
+            and .bottles_run_invoked == false' target/wine-attach/profile-env-program.json > /dev/null
+          INTIMATR_MOCK_PROGRAMS_JSON="$(pwd)/target/wine-attach/mocks/overridden-game-programs.json" target/release/intimatr-bottles profile-env --bottle Fixture --program 'Selected standalone offline test fixture' --bottles-cli target/wine-attach/mocks/bottles-cli >target/wine-attach/profile-env-program-override.json
+          jq -e '.reported_bottle_policy_accepts_profile_environment == true
+            and .reported_registered_program_environment_accepts_profile == false
+            and .reported_combined_profile_environment_policy_accepts == false
+            and (.registered_program_environment_blocker | contains("overrides INTIMATR_SPEED_PROFILE"))
+            and .bottles_run_invoked == false' target/wine-attach/profile-env-program-override.json > /dev/null
+          test ! -e "$INTIMATR_MOCK_LAUNCH_RECEIPT"
           # Inspect the actual selected (mocked) bottle policy without a launch.
           target/release/intimatr-bottles profile-env --bottle Fixture --bottles-cli target/wine-attach/mocks/bottles-cli >target/wine-attach/profile-env-preflight.json
           jq -e '.operation == "read_only_native_bottles_profile_environment_preflight"
