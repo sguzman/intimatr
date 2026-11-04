@@ -420,6 +420,15 @@ pub(crate) fn arm_selected_game_timers() -> bool {
     false
 }
 
+/// Convert an already-validated speed to the remote thousandth-rate ABI.
+/// Truncation is incorrect for valid decimal steps such as 1.001x: a binary
+/// floating-point product may be 1000.99999 even though the selected rate is
+/// exactly 1001 thousandths. Keep preset and step confirmations consistent.
+#[cfg(any(test, windows))]
+fn rounded_speed_rate_milli(multiplier: f64) -> u32 {
+    (multiplier * 1000.0).round() as u32
+}
+
 /// Selected-game speed uses the same speed CommandExecutor as RPC/UI. A
 /// report is successful only when the installed timer session agrees.
 #[cfg(windows)]
@@ -452,7 +461,7 @@ pub(crate) fn selected_game_select_rate(multiplier: f64) -> bool {
     };
     status.configured
         && status.preview_multiplier == multiplier
-        && crate::experimental_timer_probe::remote_rate_milli() == (multiplier * 1000.0) as u32
+        && crate::experimental_timer_probe::remote_rate_milli() == rounded_speed_rate_milli(multiplier)
 }
 
 /// Apply one configured shared speed-state action to the exact selected
@@ -493,7 +502,7 @@ pub(crate) fn selected_game_step_action(selector: u32) -> u32 {
         return 0;
     };
     let observed = crate::experimental_timer_probe::remote_rate_milli();
-    let expected = (status.preview_multiplier * 1000.0).round() as u32;
+    let expected = rounded_speed_rate_milli(status.preview_multiplier);
     if !status.configured || observed != expected || !(100..=10_000).contains(&observed) {
         return 0;
     }
@@ -590,6 +599,16 @@ pub enum RuntimeError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn remote_thousandth_rate_confirmation_roundtrips_every_supported_step() {
+        // Each rate may be represented inexactly as f64, but must compare
+        // against the exact ABI integer (0.100x through 10.000x).
+        for milli in 100_u32..=10_000 {
+            let rate = f64::from(milli) / 1000.0;
+            assert_eq!(rounded_speed_rate_milli(rate), milli, "{rate}x");
+        }
+    }
 
     #[test]
     fn module_directory_uses_parent_directory() {
