@@ -165,6 +165,10 @@ impl PreviewSession {
 pub struct SpeedPreviewExecutor {
     inner: Arc<dyn CommandExecutor>,
     session: Mutex<Option<PreviewSession>>,
+    /// A present but invalid/disabled launch profile is an explicit veto
+    /// against game timer arming. Absence of a profile retains the historical
+    /// separately opted-in fixture/default game path.
+    blocked_by_explicit_profile: bool,
 }
 
 impl SpeedPreviewExecutor {
@@ -174,6 +178,18 @@ impl SpeedPreviewExecutor {
         Self {
             inner,
             session: Mutex::new(None),
+            blocked_by_explicit_profile: false,
+        }
+    }
+
+    /// Explicitly supplied disabled/invalid profiles must NEVER fall back to
+    /// built-in game clock steps when a remote caller later asks to arm.
+    /// Scanner, debugger and ordinary read-only RPC remain unaffected.
+    pub fn blocked_explicit_profile(inner: Arc<dyn CommandExecutor>) -> Self {
+        Self {
+            inner,
+            session: Mutex::new(None),
+            blocked_by_explicit_profile: true,
         }
     }
 
@@ -197,6 +213,7 @@ impl SpeedPreviewExecutor {
                 started_at: Instant::now(),
                 label: label.to_owned(),
             })),
+            blocked_by_explicit_profile: false,
         })
     }
 
@@ -205,6 +222,9 @@ impl SpeedPreviewExecutor {
     /// permission to install hooks; the caller still performs every gate.
     #[cfg(windows)]
     pub(crate) fn selected_game_timer_settings(&self) -> Result<SpeedSettings, SpeedPreviewError> {
+        if self.blocked_by_explicit_profile {
+            return Err(SpeedPreviewError::InactiveProfile);
+        }
         let guard = self
             .session
             .lock()
@@ -223,6 +243,9 @@ impl SpeedPreviewExecutor {
     /// into the target: every arm starts at 1x.
     #[cfg(windows)]
     pub(crate) fn arm_selected_game_session(&self) -> Result<(), SpeedPreviewError> {
+        if self.blocked_by_explicit_profile {
+            return Err(SpeedPreviewError::InactiveProfile);
+        }
         let mut guard = self
             .session
             .lock()
@@ -482,6 +505,36 @@ mod tests {
             CommandResult::Pong
         ));
         assert!(executor.watched_keys().unwrap().is_empty());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn explicitly_disabled_profile_blocks_timer_arm_without_breaking_legacy_commands() {
+        let blocked = SpeedPreviewExecutor::blocked_explicit_profile(stub());
+        assert!(matches!(
+            blocked.selected_game_timer_settings(),
+            Err(SpeedPreviewError::InactiveProfile)
+        ));
+        assert!(matches!(
+            blocked.arm_selected_game_session(),
+            Err(SpeedPreviewError::InactiveProfile)
+        ));
+        assert!(matches!(
+            blocked.execute(Command::Ping).unwrap().result,
+            CommandResult::Pong
+        ));
+        assert_eq!(
+            report(
+                blocked
+                    .execute(Command::Speed {
+                        request: SpeedRequest::Status
+                    })
+                    .unwrap()
+            ),
+            SpeedPreviewStatus::unavailable()
+        );
+        let absent = SpeedPreviewExecutor::disabled(stub());
+        assert!(absent.selected_game_timer_settings().unwrap().enabled);
     }
 
     #[cfg(windows)]
