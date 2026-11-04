@@ -220,7 +220,8 @@ fn verified_profile_c_path(prefix: &std::path::Path, file: &std::path::Path) -> 
             .to_str()
             .ok_or("profile contains a non-UTF-8 Windows path component")?;
         if name.is_empty()
-            || name.ends_with(['.', ' '])
+            || name.ends_with('.')
+            || name.ends_with(' ')
             || name.chars().any(|c| {
                 c.is_control() || matches!(c, '\\' | ':' | '/' | '*' | '?' | '"' | '<' | '>' | '|')
             })
