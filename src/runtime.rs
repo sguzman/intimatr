@@ -613,7 +613,10 @@ fn maybe_arm_explicit_startup_timers() {
     }
     let profile_state = remote_explicit_speed_profile_state();
     if !approved_startup_timer_activation(consent.as_deref(), profile_state) {
-        warn!(profile_state, "startup timer hooks refused: explicit launch profile not accepted");
+        warn!(
+            profile_state,
+            "startup timer hooks refused: explicit launch profile not accepted"
+        );
         return;
     }
     if arm_selected_game_timers() {
@@ -683,7 +686,14 @@ mod tests {
 
     #[test]
     fn startup_timer_hooks_require_exact_flag_and_accepted_profile() {
-        for flag in [None, Some(""), Some("0"), Some("true"), Some(" 1"), Some("1 ")] {
+        for flag in [
+            None,
+            Some(""),
+            Some("0"),
+            Some("true"),
+            Some(" 1"),
+            Some("1 "),
+        ] {
             assert!(!approved_startup_timer_activation(flag, 1));
         }
         for state in [0, 2, 3] {
