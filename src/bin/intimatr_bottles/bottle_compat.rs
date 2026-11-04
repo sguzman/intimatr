@@ -248,8 +248,8 @@ fn inspect_program_inventory(
     Ok(entries
         .iter()
         .enumerate()
-        .map(|(index, record)| {
-            match serde_json::from_value::<RegisteredProgram>(record.clone()) {
+        .map(
+            |(index, record)| match serde_json::from_value::<RegisteredProgram>(record.clone()) {
                 Ok(program)
                     if !program.name.trim().is_empty()
                         && !program.executable.trim().is_empty()
@@ -274,8 +274,8 @@ fn inspect_program_inventory(
                         ))),
                     })
                 }
-            }
-        })
+            },
+        )
         .collect())
 }
 
@@ -533,9 +533,15 @@ mod tests {
         assert_eq!(result[0]["registration_metadata_valid"], true);
         assert_eq!(result[1]["registered_name"], "Missing Path");
         assert_eq!(result[1]["registration_metadata_valid"], false);
-        assert_eq!(result[1]["static_pe_compatibility"]["static_import_status"], "static_import_inventory_unknown");
+        assert_eq!(
+            result[1]["static_pe_compatibility"]["static_import_status"],
+            "static_import_inventory_unknown"
+        );
         assert_eq!(result[2]["registration_metadata_valid"], false);
-        assert!(result[2]["static_pe_compatibility"]["process_attachment_attempted"] == false);
+        assert_eq!(
+            result[2]["static_pe_compatibility"]["process_attachment_attempted"],
+            false
+        );
         assert!(inspect_program_inventory(&f.0, "{}", false).is_err());
     }
 
