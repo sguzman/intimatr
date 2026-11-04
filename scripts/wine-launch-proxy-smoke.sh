@@ -7,7 +7,7 @@ for tool in x86_64-w64-mingw32-gcc x86_64-w64-mingw32-dlltool x86_64-w64-mingw32
 cp target/x86_64-pc-windows-gnu/release/intimatr.dll "$dir/intimatr.dll"
 cp config/steam_api64_launch_probe.exe.toml "$dir/config/"
 x86_64-w64-mingw32-gcc -shared -o "$dir/steam_api64.dll" native/launch_proxy/steam_api64_original_fixture.c -Wl,--out-implib,"$dir/libsteam_fixture.a"
-x86_64-w64-mingw32-gcc -o "$dir/steam_api64_launch_probe.exe" native/launch_proxy/steam_api64_launch_probe.c "$dir/libsteam_fixture.a"
+x86_64-w64-mingw32-gcc -o "$dir/steam_api64_launch_probe.exe" native/launch_proxy/steam_api64_launch_probe.c "$dir/libsteam_fixture.a" -lwinmm
 mv "$dir/steam_api64.dll" "$dir/steam_api64_intimatr_original.dll"
 if ! INTIMATR_OBJDUMP=x86_64-w64-mingw32-objdump bash scripts/generate-steam-api64-forwarders.sh "$dir/steam_api64_intimatr_original.dll" "$dir/forwarders.def"; then
   echo "Synthetic original PE export table for diagnosing parser mismatch:" >&2
@@ -38,6 +38,22 @@ WINEPREFIX="$prefix" WINEARCH=win64 WINEDEBUG=-all WINEDLLOVERRIDES='steam_api64
 }
 grep -q 'Intimatr launch proxy startup verified' "$dir/probe.stdout"
 cat "$dir/probe.stdout"
+# A separate affirmative environment flag plus an accepted launch profile
+# authorizes automatic four-timer arming in the owned Wine fixture only.
+mkdir -p "$prefix/drive_c"
+printf 'version = 1\n[speed]\nenabled = true\ninitial_multiplier = 1.0\n' >"$prefix/drive_c/intimatr-startup-qa.toml"
+WINEPREFIX="$prefix" WINEARCH=win64 WINEDEBUG=-all \
+  WINEDLLOVERRIDES='steam_api64=n' \
+  INTIMATR_EXPERIMENTAL_STARTUP_TIMERS=1 \
+  INTIMATR_SPEED_PROFILE='C:\intimatr-startup-qa.toml' \
+  xvfb-run -a wine "$dir/steam_api64_launch_probe.exe" \
+  >"$dir/probe-armed.stdout" 2>"$dir/probe-armed.stderr" || {
+    cat "$dir/probe-armed.stderr" >&2
+    cat "$dir/probe-armed.stdout" >&2
+    exit 1
+  }
+grep -q 'Intimatr load-time startup hooks verified' "$dir/probe-armed.stdout"
+cat "$dir/probe-armed.stdout"
 # The user's read-only Eastward export audit is retained only as compressed
 # names/ordinals, not any game code. Independently compile its full ABI surface.
 base64 -d tests/fixtures/eastward-steam-forwarders.def.gz.b64 | gzip -dc >"$dir/eastward.def"

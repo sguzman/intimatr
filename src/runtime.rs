@@ -183,6 +183,9 @@ fn bootstrap(module_path: PathBuf, host_executable: PathBuf) -> Result<(), Runti
 
             LIFECYCLE.mark_running()?;
             info!(state = ?LIFECYCLE.state(), "Intimatr runtime is running");
+            // A proxy load does not grant permission to arm game timing.
+            #[cfg(windows)]
+            maybe_arm_explicit_startup_timers();
             Ok(())
         }
         Err(error) => {
@@ -595,6 +598,31 @@ fn handle_rpc_post_action(action: PostAction) {
     }
 }
 
+/// Load-time hooks require an exact opt-in and an accepted launch profile.
+#[cfg(any(test, windows))]
+fn approved_startup_timer_activation(flag: Option<&str>, profile_state: u32) -> bool {
+    flag == Some("1") && profile_state == 1
+}
+
+#[cfg(windows)]
+fn maybe_arm_explicit_startup_timers() {
+    const FLAG: &str = "INTIMATR_EXPERIMENTAL_STARTUP_TIMERS";
+    let consent = std::env::var(FLAG).ok();
+    if consent.as_deref() != Some("1") {
+        return;
+    }
+    let profile_state = remote_explicit_speed_profile_state();
+    if !approved_startup_timer_activation(consent.as_deref(), profile_state) {
+        warn!(profile_state, "startup timer hooks refused: explicit launch profile not accepted");
+        return;
+    }
+    if arm_selected_game_timers() {
+        info!("startup timer hooks installed at safe initial 1x");
+    } else {
+        warn!("startup timer hooking failed; game timing remains unmodified");
+    }
+}
+
 fn module_directory(module_path: &Path) -> Result<PathBuf, RuntimeError> {
     module_path
         .parent()
@@ -651,6 +679,17 @@ mod tests {
             let rate = f64::from(milli) / 1000.0;
             assert_eq!(rounded_speed_rate_milli(rate), milli, "{rate}x");
         }
+    }
+
+    #[test]
+    fn startup_timer_hooks_require_exact_flag_and_accepted_profile() {
+        for flag in [None, Some(""), Some("0"), Some("true"), Some(" 1"), Some("1 ")] {
+            assert!(!approved_startup_timer_activation(flag, 1));
+        }
+        for state in [0, 2, 3] {
+            assert!(!approved_startup_timer_activation(Some("1"), state));
+        }
+        assert!(approved_startup_timer_activation(Some("1"), 1));
     }
 
     #[test]

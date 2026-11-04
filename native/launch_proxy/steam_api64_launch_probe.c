@@ -1,20 +1,67 @@
-// Fixture checks export forwarding and normal pre-main DLL dependency load.
+// Synthetic game imports four clocks and the forwarded Steam-style DLL.
+// Real launch-time DLL bootstrap and explicitly opted-in 1x/2x/1x verification.
 #include <windows.h>
+#include <mmsystem.h>
+#include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
 __declspec(dllimport) int __cdecl IntimatrFixtureValue(void);
 typedef unsigned int (__stdcall *state_fn)(void);
+typedef unsigned int (__stdcall *remote_fn)(void *);
+
 int main(void) {
-    if (IntimatrFixtureValue() != 731) { fputs("Original forward failed\n",stderr); return 1; }
-    HMODULE proxy=GetModuleHandleW(L"steam_api64.dll");
-    HMODULE dll=GetModuleHandleW(L"intimatr.dll");
-    if (!proxy || !dll) { fputs("Launch DLL dependency missing\n",stderr); return 2; }
-    state_fn state=(state_fn)GetProcAddress(dll,"intimatr_lifecycle_state");
-    if(!state) return 3;
-    for(int i=0;i<300;i++) {
-        unsigned int s=state();
-        if(s==3) {puts("Intimatr launch proxy startup verified: original export forwarded, runtime Running");return 0;}
-        if(s==6) {fputs("Intimatr bootstrap failed\n",stderr);return 4;}
+    LARGE_INTEGER qpc;
+    if (!QueryPerformanceCounter(&qpc)) return 10;
+    volatile unsigned long long sample =
+        (unsigned long long)GetTickCount() + GetTickCount64() +
+        timeGetTime() + (unsigned long long)qpc.QuadPart;
+    (void)sample;
+    if (IntimatrFixtureValue() != 731) {
+        fputs("Original export forwarding failed\n", stderr);
+        return 1;
+    }
+    HMODULE bridge = GetModuleHandleW(L"steam_api64.dll");
+    HMODULE dll = GetModuleHandleW(L"intimatr.dll");
+    if (!bridge || !dll) {
+        fputs("Proxy or Intimatr was not loaded at process startup\n", stderr);
+        return 2;
+    }
+    state_fn state = (state_fn)GetProcAddress(dll, "intimatr_lifecycle_state");
+    remote_fn hooks = (remote_fn)GetProcAddress(dll, "intimatr_remote_timer_hook_state");
+    remote_fn rate = (remote_fn)GetProcAddress(dll, "intimatr_remote_game_rate_milli");
+    remote_fn preset = (remote_fn)GetProcAddress(dll, "intimatr_remote_game_preset");
+    if (!state || !hooks || !rate || !preset) return 3;
+    const char *flag = getenv("INTIMATR_EXPERIMENTAL_STARTUP_TIMERS");
+    int opted_in = flag && strcmp(flag, "1") == 0;
+    for (int i = 0; i < 300; ++i) {
+        if (state() == 6) {
+            fputs("Intimatr startup failed\n", stderr);
+            return 4;
+        }
+        if (state() == 3 && (!opted_in || hooks(NULL) == 1)) {
+            if (!opted_in) {
+                puts("Intimatr launch proxy startup verified: original export forwarded, runtime Running");
+                return 0;
+            }
+            if (rate(NULL) != 1000) {
+                fputs("Startup hooks did not begin at 1x\n", stderr);
+                return 5;
+            }
+            if (preset((void *)(uintptr_t)3) != 1 || rate(NULL) != 2000) {
+                fputs("Startup hooks failed 2x preset\n", stderr);
+                return 6;
+            }
+            if (preset((void *)(uintptr_t)2) != 1 || rate(NULL) != 1000) {
+                fputs("Startup hooks failed 1x reset\n", stderr);
+                return 7;
+            }
+            puts("Intimatr load-time startup hooks verified: four timers, 1x/2x/1x, original export forwarded");
+            return 0;
+        }
         Sleep(25);
     }
-    fprintf(stderr,"Intimatr never reached Running: %u\n",state());return 5;
+    fprintf(stderr, "Startup did not reach expected state: runtime %u hooks %u\n", state(), hooks(NULL));
+    return 8;
 }
