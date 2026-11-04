@@ -29,6 +29,9 @@ mod probe_attach;
 #[path = "intimatr_bottles/profile_check.rs"]
 mod profile_check;
 #[cfg(target_os = "linux")]
+#[path = "intimatr_bottles/profile_environment.rs"]
+mod profile_environment;
+
 #[path = "intimatr_bottles/profile_launch.rs"]
 mod profile_launch;
 #[cfg(target_os = "linux")]
