@@ -65,17 +65,16 @@ fn compress(state: &mut [u32; 8], block: &[u8]) {
 /// Profile size is separately bounded to 1 MiB by the caller.
 pub fn sha256_words(data: &[u8]) -> [u32; 8] {
     let mut state = INITIAL;
-    let mut chunks = data.chunks_exact(64);
-    for block in &mut chunks {
+    let (chunks, remainder) = data.as_chunks::<64>();
+    for block in chunks {
         compress(&mut state, block);
     }
-    let remainder = chunks.remainder();
     let mut tail = [0_u8; 128];
     tail[..remainder.len()].copy_from_slice(remainder);
     tail[remainder.len()] = 0x80;
     let padded_len = if remainder.len() <= 55 { 64 } else { 128 };
     tail[padded_len - 8..padded_len].copy_from_slice(&(data.len() as u64 * 8).to_be_bytes());
-    for block in tail[..padded_len].chunks_exact(64) {
+    for block in tail[..padded_len].as_chunks::<64>().0 {
         compress(&mut state, block);
     }
     state
