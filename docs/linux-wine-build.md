@@ -496,6 +496,23 @@ After **manually** loading Intimatr into an explicitly selected, offline single-
 
 With an explicitly selected registered offline single-player Wine process, an already loaded Intimatr DLL and separately armed four-API timer imports, the native CLI can run `intimatr-bottles step-game-speed ... --offline-single-player --experimental-four-timers --action increase` (also `decrease`, `toggle`, `reset`). The command retains the same `--bottle`, `--pid`, `--exe`, `--created-100ns`, `--runner`, helper, and Bottles identity arguments as `set-game-speed`. The dedicated Windows helper rechecks image identity, process generation, x64 machine, known protection modules and exact DLL ownership under the per-target lock, then invokes the shared `SpeedRequest` state machine. It reads the target's returned thousandth-rate and independently re-queries the installed virtual clock, rejecting absent/incomplete hooks and stopped runtimes. `toggle` alternates 1× with the last non-1× configured selection, `reset` returns to 1×, and increase/decrease follow the configured step list. **These are session-clock actions, not proof of gameplay acceleration.** CI checks increase→increase→decrease→toggle→toggle→reset, confirms every resulting virtual-clock rate from `status-game`, and demonstrates that `stop-game` restores the original IAT imports even when the target is at 1.5× during active timer reads. No real game has been tested.
 
+### Export one resolved game profile before Wine launch
+
+The native Linux controller now supports an explicit, no-overwrite handoff file:
+
+```sh
+intimatr-bottles profile-export \
+  --config /absolute/path/to/global-speed.toml \
+  --bottle 'Your Bottle' --exe 'C:\\Games\\YourGame.exe' \
+  --output /absolute/path/to/NEW-launch-speed.toml
+```
+
+The source is a versioned shared profile with optional global, bottle and exact-game rules. The exporter applies that precedence to the **supplied identity**, validates the effective speed and hotkeys, then writes a **new** override-free profile accepted by the Windows DLL. Disabled/excluded games remain disabled; a second export to an existing output path is refused, rather than silently replacing it. This operation only reads the source and creates the specifically requested Linux file: it does not launch Wine, change any running process environment, attach the DLL or modify Bottles registration.
+
+The caller must arrange for this generated file to be visible at a verified **absolute Windows path in the selected game's Wine prefix** and set `INTIMATR_SPEED_PROFILE` in the **game's environment before the game launches**. Merely setting the variable for the separate Linux helper does not change the environment of an already-running game. Do not guess a `Z:` mapping or infer the Windows path from the Linux file name; use the chosen prefix's actual drive mapping. The DLL will refuse unresolved override sections, so pass only the exported profile, never the original multi-game policy. This is a first explicit launch-time configuration transport step, **not yet** automated native Bottles handoff into already-running games.
+
+The disposable Wine CI fixture uses this export path for a global-disabled/bottle-enabled/game-specific profile (including 1.001× and 1.75× steps), independently matches the observed Windows executable identity back to the exact-game rule, and verifies that the installed IAT timer session inherits those steps after an explicit arm. This proves the handoff **inside that isolated test prefix**, not in the user's real Bottles installations or games.
+
 ### Explicitly configured speed steps in the selected-game timer session
 
 The Windows DLL can already load a **globally enabled, override-free** shared speed profile from an explicit absolute Windows path in the game process's `INTIMATR_SPEED_PROFILE` environment variable. The selected-game four-API timer session now inherits the **same validated configured step list and bounds** as Intimatr's preview/UI/RPC command executor; it does not silently fall back to built-in steps. At arming, the installed timer clock still begins at **1.0×**, regardless of `initial_multiplier`, and no startup acceleration lease is applied. Only explicit offline consent, exact target verification, and timer activation install hooks. Invalid or unreadable profiles keep the existing safe fallback behavior for legacy tools.
