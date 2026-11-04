@@ -37,7 +37,7 @@ in_table && /\+base\[[[:space:]]*[0-9]+\]/{
 END{
   if(bad || functions=="" || names=="" || fromhex(functions)<=0 ||
     fromhex(functions)!=fromhex(names) || count!=fromhex(names)){
-      print "Refusing incomplete or ordinal-only export table" > "/dev/stderr";exit 1
+      printf "Refusing incomplete or ordinal-only export table: functions=%s names=%s collected=%d malformed=%d\n", functions, names, count, bad > "/dev/stderr";exit 1
   }
 }' >"$temp"
 mv -- "$temp" "$2"
