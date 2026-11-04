@@ -573,6 +573,27 @@ bottle's C: drive**, and must be a valid enabled global-only profile.
 C: translation; a mismatch returns `false`, not a game mutation.
 `--profile` is rejected on attach, stop and speed-changing commands.
 
+To **require** the target to have accepted the exact selected profile
+contents *before any timer hooks are installed*, add
+`--require-profile /absolute/linux/path/inside/selected/bottle/drive_c/speed.toml`
+to the usual explicitly authorized `arm-game-timers` command (alongside
+`--offline-single-player --experimental-four-timers`). The Linux controller
+validates the file within the selected bottle's C: drive and parses the
+same enabled global-only profile format, then passes the SHA-256 of those
+bytes to the dedicated Windows helper. **While holding the selected process's
+per-target helper mutex**, the helper queries the already-loaded DLL's
+immutable accepted-profile fingerprint and refuses activation before the
+timer-hook installation call if the digest is absent or different. The
+normal, unguarded arm option remains available and does not invent a
+profile match; `--require-profile` is rejected on other commands.
+
+A successful guarded arm reports
+`profile_contents_matched_before_activation=true` and the verified
+`required_profile_windows_path` with
+`profile_path_identity_verified=false`. The Wine fixture now verifies both
+a refused arm for identical settings but different comment bytes and an
+accepted exact-content arm, with a read-only no-hooks check after refusal.
+
 **Content equality is not path or source authentication.** A digest match
 does not independently establish which filesystem pathname the game
 originally opened, whether native Bottles forwarded its environment, or

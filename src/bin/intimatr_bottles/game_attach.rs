@@ -17,6 +17,7 @@ struct GameAttachOptions {
     rate_milli: Option<u32>,
     step_action: Option<String>,
     comparison_profile: Option<String>,
+    required_profile: Option<String>,
 }
 
 impl GameAttachOptions {
@@ -30,6 +31,7 @@ impl GameAttachOptions {
         let mut rate_milli = None;
         let mut step_action = None;
         let mut comparison_profile = None;
+        let mut required_profile = None;
         let mut iter = args.iter();
         while let Some(arg) = iter.next() {
             match arg.as_str() {
@@ -74,6 +76,14 @@ impl GameAttachOptions {
                     comparison_profile = Some(path.clone());
                 }
                 "--profile" => return Err("duplicate --profile".into()),
+                "--require-profile" if required_profile.is_none() => {
+                    let path = iter.next().ok_or("missing --require-profile path")?;
+                    if !Path::new(path).is_absolute() {
+                        return Err("required launch profile must be an absolute Linux file path".into());
+                    }
+                    required_profile = Some(path.clone());
+                }
+                "--require-profile" => return Err("duplicate --require-profile".into()),
                 "--attach-helper" if attach_helper.is_none() => {
                     let path = iter.next().ok_or("missing --attach-helper path")?;
                     if !Path::new(path).is_absolute() {
@@ -129,6 +139,7 @@ impl GameAttachOptions {
             rate_milli,
             step_action,
             comparison_profile,
+            required_profile,
         })
     }
 }
@@ -270,6 +281,12 @@ fn run_game_action(args: Vec<String>, action: GameAction) -> Result<(), String> 
     if action != GameAction::Status && options.comparison_profile.is_some() {
         return Err("--profile is only valid for read-only status-game".into());
     }
+    if action != GameAction::ArmTimers && options.required_profile.is_some() {
+        return Err("--require-profile is only valid for arm-game-timers".into());
+    }
+    if options.comparison_profile.is_some() && options.required_profile.is_some() {
+        return Err("choose only one status or arm profile verification".into());
+    }
     let attach_helper = fs::canonicalize(&options.attach_helper)
         .map_err(|error| format!("cannot find game attach helper: {error}"))?;
     if !attach_helper.is_file()
@@ -322,11 +339,15 @@ fn run_game_action(args: Vec<String>, action: GameAction) -> Result<(), String> 
 
     validate_static_timer_imports(action, candidate.timer_import_coverage)?;
 
-    // Optional status-only comparison against one caller-specified file.
-    // Verify its C: path under the same freshly selected bottle prefix.
-    // The digest comes from the bytes this read validated, not a later
-    // filesystem read. Never infer a Windows path from Z:.
-    let expected_profile = if let Some(profile_path) = options.comparison_profile.as_deref() {
+    // Status may compare contents read-only. Arm can independently require
+    // the same fingerprint to match *inside the selected target process*
+    // before installing any hooks under the target's attachment mutex.
+    // Both paths must be within the freshly verified selected bottle C:.
+    let expected_profile = if let Some(profile_path) = options
+        .comparison_profile
+        .as_deref()
+        .or(options.required_profile.as_deref())
+    {
         let path = Path::new(profile_path);
         let windows_path = super::profile_check::verified_profile_c_path(&selected.prefix, path)?;
         let profile = intimatr::speed_profile_load::load_preview_profile(path)
@@ -370,6 +391,12 @@ fn run_game_action(args: Vec<String>, action: GameAction) -> Result<(), String> 
             command
                 .arg("--arm-four-timers-only")
                 .arg("--experimental-four-timers");
+            if options.required_profile.is_some() {
+                let (sha256, _) = expected_profile
+                    .as_ref()
+                    .ok_or("required arm profile was not verified")?;
+                command.arg("--require-profile-sha256").arg(sha256);
+            }
         }
         GameAction::SetRate => {
             if let Some(preset) = options.rate_preset.as_deref() {
@@ -689,6 +716,9 @@ fn run_game_action(args: Vec<String>, action: GameAction) -> Result<(), String> 
             "gameplay_speed_verified": false,
             "speed_controls_verified": false,
             "activation_attempted": true,
+            "profile_contents_matched_before_activation": options.required_profile.is_some(),
+            "required_profile_windows_path": options.required_profile.as_ref().and_then(|_| expected_profile.as_ref().map(|(_, path)| path)),
+            "profile_path_identity_verified": false,
             "experimental_four_timers_acknowledged": true,
             "offline_single_player_acknowledged": true
         })
@@ -770,6 +800,52 @@ mod tests {
             [base.clone(), args(&["--profile", "speed.toml"])].concat(),
             [base.clone(), args(&["--profile"])].concat(),
             [base, args(&["--profile", "/tmp/a", "--profile", "/tmp/b"])].concat(),
+        ] {
+            assert!(GameAttachOptions::parse(&invalid).is_err());
+        }
+    }
+
+    #[test]
+    fn arm_profile_requirement_is_explicit_bounded_and_action_specific() {
+        let base = args(&[
+            "--attach-helper",
+            "/tmp/wine-game-attach-helper.exe",
+            "--created-100ns",
+            "133700000000000001",
+            "--pid",
+            "42",
+            "--exe",
+            r"C:\Games\Game.exe",
+            "--offline-single-player",
+            "--experimental-four-timers",
+        ]);
+        let valid = [base.clone(), args(&["--require-profile", "/tmp/speed.toml"])].concat();
+        assert_eq!(
+            GameAttachOptions::parse(&valid)
+                .unwrap()
+                .required_profile
+                .as_deref(),
+            Some("/tmp/speed.toml")
+        );
+        assert!(run_game_action(
+            valid,
+            GameAction::Status,
+        )
+        .unwrap_err()
+        .contains("only valid for arm-game-timers"));
+        for invalid in [
+            [base.clone(), args(&["--require-profile", "relative.toml"])].concat(),
+            [base.clone(), args(&["--require-profile"])].concat(),
+            [
+                base,
+                args(&[
+                    "--require-profile",
+                    "/tmp/one.toml",
+                    "--require-profile",
+                    "/tmp/two.toml",
+                ]),
+            ]
+            .concat(),
         ] {
             assert!(GameAttachOptions::parse(&invalid).is_err());
         }

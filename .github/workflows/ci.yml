@@ -1038,9 +1038,36 @@ jobs:
             sleep 0.1
           done
           test -s target/wine-attach/game-fixture/attach-await-arm.flag
-          XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles arm-game-timers "${game_args[@]}" --offline-single-player --experimental-four-timers >target/wine-attach/game-armed.json
+          # Guard the moment of hook installation, not just a separate
+          # status query: matching settings with different file bytes
+          # must fail under the exact target's helper mutex.
+          if XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles arm-game-timers "${game_args[@]}" \
+            --offline-single-player --experimental-four-timers \
+            --require-profile "$WINEPREFIX/drive_c/intimatr-ci-comment-only.toml" \
+            >target/wine-attach/game-arm-wrong-profile.stdout 2>target/wine-attach/game-arm-wrong-profile.stderr; then
+            echo "ERROR: arm-game-timers accepted a different exact speed profile" >&2
+            exit 1
+          fi
+          grep -q 'required speed profile contents differ in target; activation not attempted' target/wine-attach/game-arm-wrong-profile.stderr
+          XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles status-game "${game_args[@]}" \
+            --offline-single-player >target/wine-attach/game-after-failed-profile-arm.json
+          jq -e '.runtime_state == "running"
+            and .target_speed_profile_state == "accepted"
+            and .timer_hook_state == "none"
+            and .timer_hooks_installed_verified == false
+            and .installed_virtual_clock_multiplier == null' \
+            target/wine-attach/game-after-failed-profile-arm.json > /dev/null
+          # Exact accepted bytes permit a user-authorized arm. No path
+          # authenticity or actual gameplay-speed claim is implied.
+          XDG_DATA_HOME="$managed_home" target/release/intimatr-bottles arm-game-timers "${game_args[@]}" \
+            --offline-single-player --experimental-four-timers \
+            --require-profile "$WINEPREFIX/drive_c/intimatr-ci-speed.toml" \
+            >target/wine-attach/game-armed.json
           jq -e '.operation == "explicit_offline_single_player_game_timer_activation"
             and .runtime_running_verified == true
+            and .profile_contents_matched_before_activation == true
+            and .required_profile_windows_path == "C:\\intimatr-ci-speed.toml"
+            and .profile_path_identity_verified == false
             and .timer_hooks_installed_verified == true
             and .installed_virtual_clock_multiplier == 1.0
             and .gameplay_speed_verified == false

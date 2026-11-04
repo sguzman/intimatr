@@ -516,6 +516,7 @@ pub mod helper {
                 "game action requires explicit --offline-single-player acknowledgment".into(),
             );
         }
+        let mut required_profile_sha256 = None;
         let (action, preset, milli_rate, step_action) = match args.next().as_deref() {
             None => ("attach", None, None, None),
             Some("--shutdown-only") if args.next().is_none() => ("stop", None, None, None),
@@ -527,9 +528,26 @@ pub mod helper {
                 _ => return Err("unexpected status-game profile digest flags".into()),
             },
             Some("--arm-four-timers-only")
-                if args.next().as_deref() == Some("--experimental-four-timers")
-                    && args.next().is_none() =>
+                if args.next().as_deref() == Some("--experimental-four-timers") =>
             {
+                match args.next().as_deref() {
+                    None => {}
+                    Some("--require-profile-sha256") => {
+                        let digest = args
+                            .next()
+                            .ok_or("missing required profile fingerprint")?;
+                        if digest.len() != 64
+                            || !digest.bytes().all(|ch| {
+                                ch.is_ascii_digit() || (b'a'..=b'f').contains(&ch)
+                            })
+                            || args.next().is_some()
+                        {
+                            return Err("invalid required profile SHA-256 fingerprint".into());
+                        }
+                        required_profile_sha256 = Some(digest);
+                    }
+                    _ => return Err("unexpected timer-arm profile verification flags".into()),
+                }
                 ("arm", None, None, None)
             }
             Some("--set-game-preset-only") => {
@@ -582,7 +600,7 @@ pub mod helper {
             "stop" => shutdown_selected(pid, &target),
             "status" => status_selected(pid, &target, false),
             "status-hash" => status_selected(pid, &target, true),
-            "arm" => arm_selected(pid, &target),
+            "arm" => arm_selected(pid, &target, required_profile_sha256.as_deref()),
             "preset" => preset_selected(pid, &target, preset.as_deref().unwrap_or_default()),
             "rate" => rate_selected(pid, &target, milli_rate.unwrap_or_default()),
             "step" => step_selected(pid, &target, step_action.as_deref().unwrap_or_default()),
@@ -594,7 +612,11 @@ pub mod helper {
     /// offline target. The helper verifies the same identity again under its
     /// per-target mutex and rejects recognized protection modules. The DLL
     /// independently requires Running and an intact original IAT layout.
-    fn arm_selected(pid: u32, target: &AttachTarget) -> Result<(), String> {
+    fn arm_selected(
+        pid: u32,
+        target: &AttachTarget,
+        required_profile_sha256: Option<&str>,
+    ) -> Result<(), String> {
         let executable = std::env::current_exe().map_err(|error| error.to_string())?;
         let dll = executable
             .parent()
@@ -617,6 +639,22 @@ pub mod helper {
         reject_observed_protection_modules(pid)?;
         if target_intimatr_module(pid, &dll)? != IntimatrModulePresence::Expected {
             return Err("cannot activate timers: exact owned Intimatr DLL is not loaded".into());
+        }
+        if let Some(expected_sha256) = required_profile_sha256 {
+            let observed = super::remote_status::query_explicit_profile_sha256(
+                process.0,
+                pid,
+                &dll,
+            )?
+            .ok_or("required speed profile was not accepted in target; activation not attempted")?;
+            if intimatr::speed_profile_fingerprint::sha256_hex(&observed)
+                != expected_sha256
+            {
+                return Err(
+                    "required speed profile contents differ in target; activation not attempted"
+                        .into(),
+                );
+            }
         }
         super::remote_status::arm_four_timers(process.0, pid, &dll)?;
         println!("INTIMATR_REMOTE_FOUR_TIMERS_INSTALLED=1");
