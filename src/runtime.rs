@@ -461,7 +461,8 @@ pub(crate) fn selected_game_select_rate(multiplier: f64) -> bool {
     };
     status.configured
         && status.preview_multiplier == multiplier
-        && crate::experimental_timer_probe::remote_rate_milli() == rounded_speed_rate_milli(multiplier)
+        && crate::experimental_timer_probe::remote_rate_milli()
+            == rounded_speed_rate_milli(multiplier)
 }
 
 /// Apply one configured shared speed-state action to the exact selected
