@@ -681,18 +681,58 @@ jobs:
           mkdir -p target/wine-attach/game-fixture/config
           cp target/wine-attach/wine-attach-target.exe target/wine-attach/game-fixture/
           cp config/wine-attach-target.exe.toml target/wine-attach/game-fixture/config/
-          # Explicit Windows-visible, launch-time profile for this disposable
-          # process. Its 1.75x and 1.001x steps are absent from built-ins.
-          # Initial 2x must *not* accelerate the game before explicit arming;
-          # the timer session is always initialized to the safe 1x baseline.
-          mkdir -p "$WINEPREFIX/drive_c"
-          cat >"$WINEPREFIX/drive_c/intimatr-ci-speed.toml" <<'GAME_SPEED_PROFILE'
+          # Resolve a real global -> bottle -> exact-game policy on the
+          # native Linux side BEFORE this disposable process launches.
+          # The DLL itself consumes only the resolved override-free TOML
+          # through its explicit Windows-visible environment variable.
+          # We know this isolated Wine prefix exposes the fixture via Z:.
+          # An actual Bottles integration must independently verify its
+          # selected prefix/drive mapping rather than guessing Z:.
+          game_fixture_windows="Z:$(pwd)/target/wine-attach/game-fixture/wine-attach-target.exe"
+          cat >target/wine-attach/host-speed-rules.toml <<GAME_SPEED_RULES
           version = 1
           [speed]
+          enabled = false
+          [[bottles]]
+          name = "Fixture"
+          [bottles.speed]
           enabled = true
+          initial_multiplier = 1.5
+          [[games]]
+          bottle = "Fixture"
+          path = '$game_fixture_windows'
+          [games.speed]
           initial_multiplier = 2.0
           steps = [0.25, 0.5, 0.75, 1.0, 1.001, 1.5, 1.75, 2.0, 3.0, 5.0, 10.0]
-          GAME_SPEED_PROFILE
+          GAME_SPEED_RULES
+          mkdir -p "$WINEPREFIX/drive_c"
+          target/release/intimatr-bottles profile-export \
+            --config "$(pwd)/target/wine-attach/host-speed-rules.toml" \
+            --bottle Fixture --exe "$game_fixture_windows" \
+            --output "$WINEPREFIX/drive_c/intimatr-ci-speed.toml" \
+            >target/wine-attach/launch-profile-export.json
+          jq -e '.operation == "explicit_launch_profile_export"
+            and .resolved_speed_enabled == true
+            and .override_rules_in_output == 0
+            and .attachment_attempted == false
+            and .running_process_environment_modified == false' \
+            target/wine-attach/launch-profile-export.json > /dev/null
+          grep -q 'initial_multiplier = 2.0' "$WINEPREFIX/drive_c/intimatr-ci-speed.toml"
+          if grep -q '\[\[games\]\]' "$WINEPREFIX/drive_c/intimatr-ci-speed.toml"; then
+            echo "ERROR: exported DLL profile retained game overrides" >&2
+            exit 1
+          fi
+          if target/release/intimatr-bottles profile-export \
+            --config "$(pwd)/target/wine-attach/host-speed-rules.toml" \
+            --bottle Fixture --exe "$game_fixture_windows" \
+            --output "$WINEPREFIX/drive_c/intimatr-ci-speed.toml" \
+            >target/wine-attach/reexport.stdout 2>target/wine-attach/reexport.stderr; then
+            echo "ERROR: profile-export overwrote an existing launch profile" >&2
+            exit 1
+          fi
+          grep -q 'refusing overwrite' target/wine-attach/reexport.stderr
+          # A configured 2x initial speed must not accelerate the target
+          # before explicit four-timer arming; activation starts at 1x.
           INTIMATR_SPEED_PROFILE='C:\intimatr-ci-speed.toml' INTIMATR_TEST_HOOK_STATUS_GATE=1 INTIMATR_TEST_REMOTE_STOP_WITH_HOOKS=1 INTIMATR_TEST_EXTERNAL_TIMER_ARM=1 INTIMATR_TEST_EXTERNAL_RATE_COMMANDS=1 xvfb-run -a wine target/wine-attach/game-fixture/wine-attach-target.exe >target/wine-attach/game-fixture/stdout 2>target/wine-attach/game-fixture/stderr &
           game_launcher=$!
           trap 'kill "$game_launcher" 2>/dev/null || true' EXIT
@@ -710,6 +750,18 @@ jobs:
             --runner "$(command -v wine)" > target/wine-attach/game-before.json
           game_image="$(jq -r --argjson pid "$game_pid" '[.processes[] | select(.windows_pid == $pid) | .full_image_path // empty] | first // empty' target/wine-attach/game-before.json)"
           test -n "$game_image"
+          # Independently validate that the target's *observed* Windows
+          # image path matches the exact-game override just exported.
+          target/release/intimatr-bottles profile-check \
+            --config "$(pwd)/target/wine-attach/host-speed-rules.toml" \
+            --bottle Fixture --exe "$game_image" \
+            >target/wine-attach/profile-resolved-observed.json
+          jq -e '.resolved.matched_game == true
+            and .resolved.matched_bottle == true
+            and .resolved.settings.enabled == true
+            and .resolved.settings.initial_multiplier == 2.0
+            and (.resolved.settings.steps | index(1.001) != null)' \
+            target/wine-attach/profile-resolved-observed.json > /dev/null
           game_created="$(jq -r --argjson pid "$game_pid" '[.processes[] | select(.windows_pid == $pid) | .process_creation_time_100ns // empty] | first // empty' target/wine-attach/game-before.json)"
           test -n "$game_created" && test "$game_created" != "0"
           jq -n --arg path "$game_image" '[{
