@@ -162,7 +162,11 @@ impl ProfilePathOptions {
                 "--bottle" if bottle.is_none() => bottle = Some(value.clone()),
                 "--profile" if profile.is_none() => profile = Some(value.clone()),
                 "--bottles-cli" if bottles_cli.is_none() => bottles_cli = Some(value.clone()),
-                _ => return Err(format!("unsupported or repeated profile-path option {flag}")),
+                _ => {
+                    return Err(format!(
+                        "unsupported or repeated profile-path option {flag}"
+                    ));
+                }
             }
         }
         let bottle: String = bottle.ok_or("profile-path requires --bottle NAME")?;
@@ -191,7 +195,10 @@ impl ProfilePathOptions {
 /// Require literal, unambiguous C: components underneath the verified prefix.
 /// Symlinks and parent traversal cannot be used to claim a Windows path.
 #[cfg(target_os = "linux")]
-fn verified_profile_c_path(prefix: &std::path::Path, file: &std::path::Path) -> Result<String, String> {
+fn verified_profile_c_path(
+    prefix: &std::path::Path,
+    file: &std::path::Path,
+) -> Result<String, String> {
     use std::{fs, path::Component};
     if !file.is_absolute() {
         return Err("profile must be an absolute Linux file path".into());
@@ -253,8 +260,7 @@ fn verified_profile_c_path(prefix: &std::path::Path, file: &std::path::Path) -> 
 #[cfg(target_os = "linux")]
 pub(super) fn run_profile_path(args: Vec<String>) -> Result<(), String> {
     use intimatr::{
-        bottles::parse_bottle_names,
-        bottles_prefix::verify_bottle_prefix,
+        bottles::parse_bottle_names, bottles_prefix::verify_bottle_prefix,
         speed_profile_load::load_preview_profile,
     };
 
@@ -265,10 +271,7 @@ pub(super) fn run_profile_path(args: Vec<String>) -> Result<(), String> {
     if !bottles.contains(&options.bottle) {
         return Err("selected bottle not found in native Bottles inventory".into());
     }
-    let root = super::bottles_json_with_command(
-        &options.bottles_cli,
-        &["info", "bottles-path"],
-    )?;
+    let root = super::bottles_json_with_command(&options.bottles_cli, &["info", "bottles-path"])?;
     let prefix = intimatr::bottles_prefix::parse_bottles_root(&root)?.join(&options.bottle);
     let identity = verify_bottle_prefix(&root, &options.bottle, &prefix)?;
     let file = std::path::Path::new(&options.profile);
@@ -330,7 +333,9 @@ pub(super) fn run_profile_check(args: Vec<String>) -> Result<(), String> {
 
 #[cfg(all(test, target_os = "linux"))]
 mod profile_check_tests {
-    use super::{ProfileCheckOptions, ProfileExportOptions, ProfilePathOptions, verified_profile_c_path};
+    use super::{
+        ProfileCheckOptions, ProfileExportOptions, ProfilePathOptions, verified_profile_c_path,
+    };
     fn args(parts: &[&str]) -> Vec<String> {
         parts.iter().map(|part| (*part).to_owned()).collect()
     }
@@ -407,9 +412,12 @@ mod profile_check_tests {
     #[test]
     fn path_preflight_requires_specific_bottle_and_absolute_profile() {
         let good = args(&[
-            "--bottle", "Games",
-            "--profile", "/tmp/bottle/drive_c/speed.toml",
-            "--bottles-cli", "/tmp/bottles-cli",
+            "--bottle",
+            "Games",
+            "--profile",
+            "/tmp/bottle/drive_c/speed.toml",
+            "--bottles-cli",
+            "/tmp/bottles-cli",
         ]);
         assert_eq!(ProfilePathOptions::parse(&good).unwrap().bottle, "Games");
         for invalid in [
@@ -426,7 +434,11 @@ mod profile_check_tests {
     #[cfg(unix)]
     #[test]
     fn windows_profile_path_refuses_escape_symlink_and_traversal() {
-        use std::{fs, os::unix::fs::symlink, sync::atomic::{AtomicUsize, Ordering}};
+        use std::{
+            fs,
+            os::unix::fs::symlink,
+            sync::atomic::{AtomicUsize, Ordering},
+        };
         static NEXT: AtomicUsize = AtomicUsize::new(0);
         let dir = std::env::temp_dir().join(format!(
             "intimatr-profile-path-{}-{}",
@@ -455,5 +467,4 @@ mod profile_check_tests {
         assert!(verified_profile_c_path(&prefix, &bad).is_err());
         fs::remove_dir_all(&dir).unwrap();
     }
-
 }
