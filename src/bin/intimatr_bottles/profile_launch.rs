@@ -15,7 +15,7 @@ use intimatr::{
 
 use super::{
     bottles_json_with_command, profile_check::verify_bottle_profile_path,
-    profile_environment::verify_profile_environment,
+    profile_environment::{verify_profile_environment, verify_registered_program_environment},
 };
 
 #[derive(Debug, PartialEq, Eq)]
@@ -169,15 +169,17 @@ pub(super) fn run_profile_launch(args: Vec<String>) -> Result<(), String> {
         return Err("launch profile differs from the selected game policy".into());
     }
 
-    let registered = parse_registered_programs(&bottles_json_with_command(
+    let program_json = bottles_json_with_command(
         &options.bottles_cli,
         &["programs", "-b", &options.bottle],
-    )?)
+    )?;
+    let registered = parse_registered_programs(&program_json)
     .map_err(|error| format!("invalid selected native Bottles programs: {error}"))?;
     if registered.len() > 1024 {
         return Err("selected bottle has too many registered programs".into());
     }
     verify_registered_program(&registered, &options.program, &options.executable)?;
+    verify_registered_program_environment(&program_json, &options.program)?;
 
     // The selected bottle may restrict inherited host variables. This audit
     // must pass before any game launch and does not attest runtime delivery.
@@ -219,6 +221,7 @@ pub(super) fn run_profile_launch(args: Vec<String>) -> Result<(), String> {
         "source_game_policy_verified": true,
         "profile_file_matching_source_verified": true,
         "bottles_environment_policy_preflight_passed": true,
+        "registered_program_environment_preflight_passed": true,
         "bottles_reported_profile_environment_mode": environment_mode,
         "bottles_environment_delivery_verified_in_game": false,
         "bottles_run_cli_exited_successfully": true,
