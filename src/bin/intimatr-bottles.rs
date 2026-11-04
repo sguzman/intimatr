@@ -55,6 +55,7 @@ fn run() -> Result<(), String> {
     if action == "--help" || action == "-h" {
         println!(
             "Usage:\n  intimatr-bottles scan\n  intimatr-bottles plan (--all | --include-bottle GLOB | --include-program GLOB) [--exclude-bottle GLOB] [--exclude-program GLOB]\n  intimatr-bottles probe-attach --pid PID --prefix WINEPREFIX --helper PATH --runner ABSOLUTE_WINE_BINARY\n  intimatr-bottles profile-check --config TOML --bottle NAME --exe WINDOWS_PATH
+  intimatr-bottles profile-export --config TOML --bottle NAME --exe WINDOWS_PATH --output ABSOLUTE_NEW_LINUX_TOML
   intimatr-bottles pe-compat --exe ABSOLUTE_LINUX_PE_FILE
   intimatr-bottles bottle-compat --bottle NAME [--bottles-cli NATIVE_BOTTLES_CLI] [--include-mapped-drives]\n  intimatr-bottles processes --prefix INITIALIZED_WINEPREFIX\n  intimatr-bottles win-processes --prefix INITIALIZED_WINEPREFIX --helper WINE_PROCESS_LIST_EXE --runner ABSOLUTE_WINE_BINARY\n  intimatr-bottles match-snapshot --bottle NAME --programs BOTTLES_JSON --windows WINE_PROCESS_JSON\n  intimatr-bottles live-match --bottle NAME --helper WINE_PROCESS_LIST_EXE --runner ABSOLUTE_WINE_BINARY [--prefix WINEPREFIX] [--bottles-cli BOTTLES_CLI] [--pid WINDOWS_PID --exe EXACT_WINDOWS_PATH]\n  intimatr-bottles attach-game --bottle NAME --helper WINE_PROCESS_LIST_EXE --attach-helper ABSOLUTE_GAME_ATTACH_HELPER --runner ABSOLUTE_WINE_BINARY --pid WINDOWS_PID --exe EXACT_WINDOWS_PATH --created-100ns WIN_FILETIME --offline-single-player\n  intimatr-bottles arm-game-timers --bottle NAME --helper WINE_PROCESS_LIST_EXE --attach-helper ABSOLUTE_GAME_ATTACH_HELPER --runner ABSOLUTE_WINE_BINARY --pid WINDOWS_PID --exe EXACT_WINDOWS_PATH --created-100ns WIN_FILETIME --offline-single-player --experimental-four-timers
   intimatr-bottles set-game-speed --bottle NAME --helper WINE_PROCESS_LIST_EXE --attach-helper ABSOLUTE_GAME_ATTACH_HELPER --runner ABSOLUTE_WINE_BINARY --pid WINDOWS_PID --exe EXACT_WINDOWS_PATH --created-100ns WIN_FILETIME --offline-single-player --experimental-four-timers (--preset (half|normal|double) | --multiplier (0.1..10.0_CONFIGURED_STEP))
@@ -68,6 +69,9 @@ fn run() -> Result<(), String> {
     }
     if action == "profile-check" {
         return profile_check::run_profile_check(args.collect());
+    }
+    if action == "profile-export" {
+        return profile_check::run_profile_export(args.collect());
     }
     if action == "pe-compat" {
         return pe_compat::run_pe_compat(args.collect());
@@ -110,7 +114,7 @@ fn run() -> Result<(), String> {
     }
     if action != "scan" && action != "plan" {
         return Err(
-            "unknown command; use --help for scan, plan, pe-compat, bottle-compat, live-match, attach-game, arm-game-timers, set-game-speed, step-game-speed, stop-game, status-game and other commands".to_owned(),
+            "unknown command; use --help for scan, plan, profile-check, profile-export, pe-compat, bottle-compat, live-match, attach-game, arm-game-timers, set-game-speed, step-game-speed, stop-game, status-game and other commands".to_owned(),
         );
     }
 
