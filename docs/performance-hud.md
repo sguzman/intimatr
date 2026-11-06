@@ -83,7 +83,7 @@ engine runs twice as fast. Real gameplay acceleration must be observed.
 
 - **Right Shift + F12** toggles the HUD, independently of speed.
 - `Ctrl+F7`, `Ctrl+F8`, `Ctrl+F9`, `Ctrl+F11` remain the speed controls.
-- `--` means no verified, installed four-timer hook session.
+- `--` means no verified, installed four-timer hook session. The HUD also displays `--` before the telemetry file exists, rather than leaving the value blank.
 - The HUD exporter is read-only: it polls an existing hook state and writes
   a short, plain-text status file, never installs hooks, reads game memory
   or adds network services.
