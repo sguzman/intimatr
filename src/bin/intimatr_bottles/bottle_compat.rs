@@ -173,7 +173,7 @@ fn resolve_c_drive_file(prefix: &Path, windows_path: &str) -> Result<PathBuf, St
 /// Wine maps DOS drives through symlinks in this exact prefix's dosdevices.
 /// The mapping itself must be an existing symlink to a directory; never
 /// infer Z: as host root or substitute an unverified fallback.
-fn resolve_registered_file(
+pub(super) fn resolve_registered_file(
     prefix: &Path,
     windows_path: &str,
     include_mapped_drives: bool,

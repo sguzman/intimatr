@@ -323,7 +323,7 @@ jobs:
             "run -b Fixture -p Selected standalone offline test fixture")
               test -n "${INTIMATR_MOCK_LAUNCH_RECEIPT:-}" || exit 4
               printf '%s\n' "${INTIMATR_SPEED_PROFILE:-missing}" > "$INTIMATR_MOCK_LAUNCH_RECEIPT"
-              printf '%s\n' "${MANGOHUD:-missing}" "${INTIMATR_HUD_TELEMETRY:-missing}" > "${INTIMATR_MOCK_LAUNCH_RECEIPT}.hud"
+              printf '%s\n' "${MANGOHUD:-missing}" "${INTIMATR_HUD_TELEMETRY:-missing}" "${MANGOHUD_CONFIGFILE:-missing}" > "${INTIMATR_MOCK_LAUNCH_RECEIPT}.hud"
               # With this opt-in, the mock launches our disposable Wine PE
               # *synchronously*, retaining the native CLI process until
               # the game fixture exits. No real Bottles is present in CI.
@@ -949,7 +949,7 @@ jobs:
           grep -q 'must allowlist MANGOHUD' target/wine-attach/hud-denied.stderr
           test ! -e "$INTIMATR_MOCK_LAUNCH_RECEIPT"
           jq -n '{"Fixture":{"Limit_System_Environment":true,"Environment_Variables":{},
-            "Inherited_Environment_Variables":["INTIMATR_SPEED_PROFILE","MANGOHUD","INTIMATR_HUD_TELEMETRY"]}}' \
+            "Inherited_Environment_Variables":["INTIMATR_SPEED_PROFILE","MANGOHUD","INTIMATR_HUD_TELEMETRY","MANGOHUD_CONFIGFILE"]}}' \
             >target/wine-attach/mocks/hud-allowlisted-env.json
           jq -n --arg path "$game_fixture_windows" '[{
             "name":"Selected standalone offline test fixture",
@@ -978,6 +978,42 @@ jobs:
           grep -Fx "$profile_windows_path" "$INTIMATR_MOCK_LAUNCH_RECEIPT"
           test "$(sed -n '1p' "${INTIMATR_MOCK_LAUNCH_RECEIPT}.hud")" = '1'
           test "$(sed -n '2p' "${INTIMATR_MOCK_LAUNCH_RECEIPT}.hud")" = '1'
+          rm -- "$INTIMATR_MOCK_LAUNCH_RECEIPT" "${INTIMATR_MOCK_LAUNCH_RECEIPT}.hud"
+          # Verify exact file handoff through this selected Wine Z: mapping.
+          # The fixture is disposable and the mock never renders MangoHud.
+          hud_config="$(pwd)/target/wine-attach/game-fixture/MangoHud.conf"
+          printf 'legacy_layout=0\ncustom_text=Speed\n' >"$hud_config"
+          sha256sum "$hud_config" | cut -d' ' -f1 >"$(dirname "$hud_config")/intimatr-mangohud.sha256"
+          if INTIMATR_MOCK_BOTTLES_JSON="$(pwd)/target/wine-attach/mocks/hud-allowlisted-env.json" \
+              target/release/intimatr-bottles profile-launch "${launch_args[@]}" --mangohud \
+              --mangohud-config "/tmp/unrelated/MangoHud.conf" \
+              >target/wine-attach/hud-wrong-file.stdout 2>target/wine-attach/hud-wrong-file.stderr; then
+            echo "ERROR: unrelated HUD config was accepted" >&2
+            exit 1
+          fi
+          grep -q 'beside the exact selected executable' target/wine-attach/hud-wrong-file.stderr
+          test ! -e "$INTIMATR_MOCK_LAUNCH_RECEIPT"
+          printf '# tampered\n' >>"$hud_config"
+          if INTIMATR_MOCK_BOTTLES_JSON="$(pwd)/target/wine-attach/mocks/hud-allowlisted-env.json" \
+              target/release/intimatr-bottles profile-launch "${launch_args[@]}" --mangohud \
+              --mangohud-config "$hud_config" \
+              >target/wine-attach/hud-tampered.stdout 2>target/wine-attach/hud-tampered.stderr; then
+            echo "ERROR: modified HUD config was accepted" >&2
+            exit 1
+          fi
+          grep -q 'checksum changed' target/wine-attach/hud-tampered.stderr
+          test ! -e "$INTIMATR_MOCK_LAUNCH_RECEIPT"
+          printf 'legacy_layout=0\ncustom_text=Speed\n' >"$hud_config"
+          # The caller's generic config must not override the owned layout.
+          MANGOHUD_CONFIG='fps_only' \
+            INTIMATR_MOCK_BOTTLES_JSON="$(pwd)/target/wine-attach/mocks/hud-allowlisted-env.json" \
+            target/release/intimatr-bottles profile-launch "${launch_args[@]}" --mangohud \
+            --mangohud-config "$hud_config" >target/wine-attach/hud-managed-report.json
+          jq -e '.mangohud_managed_config_verified_before_launch == true
+            and .mangohud_managed_config_host_path != null
+            and .mangohud_rendering_verified_in_game == false' \
+            target/wine-attach/hud-managed-report.json >/dev/null
+          test "$(sed -n '3p' "${INTIMATR_MOCK_LAUNCH_RECEIPT}.hud")" = "$hud_config"
           rm -- "$INTIMATR_MOCK_LAUNCH_RECEIPT" "${INTIMATR_MOCK_LAUNCH_RECEIPT}.hud"
           # The selected game is launched by the *mock Bottles CLI* called
           # by profile-launch. The Windows PE observes its own launch

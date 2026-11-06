@@ -74,6 +74,38 @@ pub(super) fn verify_named_bottle_environment(
     }
 }
 
+/// Reject a bottle-level option that can override the selected HUD config.
+/// Allowlisting of the separately chosen CONFIGFILE is checked independently.
+pub(super) fn reject_named_bottle_override(
+    inventory_json: &str,
+    bottle: &str,
+    variable: &str,
+) -> Result<(), String> {
+    let document: Value = serde_json::from_str(inventory_json)
+        .map_err(|error| format!("invalid native Bottles environment inventory: {error}"))?;
+    let root = document
+        .as_object()
+        .ok_or("native Bottles environment inventory must be a name-keyed object")?;
+    let bottles = match root.get("bottles").or_else(|| root.get("Bottles")) {
+        Some(Value::Object(items)) => items,
+        Some(_) => return Err("native Bottles environment inventory lacks bottle metadata".into()),
+        None => root,
+    };
+    let selected = bottles
+        .get(bottle)
+        .ok_or("selected bottle is absent from native environment inventory")?
+        .as_object()
+        .ok_or("selected bottle has no environment configuration metadata")?;
+    let explicit = selected
+        .get("Environment_Variables")
+        .and_then(Value::as_object)
+        .ok_or("selected bottle Environment_Variables is missing or not an object")?;
+    if explicit.keys().any(|key| key.eq_ignore_ascii_case(variable)) {
+        return Err(format!("selected bottle explicitly overrides {variable}"));
+    }
+    Ok(())
+}
+
 /// The registered program can add a second, higher-precedence environment
 /// layer after the bottle-wide inherited-variable filter. Never accept a
 /// per-program value that could shadow this explicitly selected launch file.

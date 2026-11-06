@@ -78,6 +78,16 @@ Use it with the existing required `--config`, `--bottle`, `--exe`,
 arguments. It does **not** arm timer hooks unless the independent
 `--experimental-four-timers` acknowledgment is also supplied.
 
+For deterministic use of the installed **Intimatr per-game layout**, add
+`--mangohud-config /absolute/game/directory/MangoHud.conf` alongside
+`--mangohud`. The manager verifies the exact registered executable's
+directory, the unchanged Intimatr ownership SHA-256 marker, and the selected
+bottle/program environment permissions for `MANGOHUD_CONFIGFILE`. It clears
+any inherited host `MANGOHUD_CONFIG` override for this invocation and
+rejects explicit conflicting Bottles/program values. A registered game on a
+non-C: Wine drive is resolved only for this explicit selection through that
+bottle's verified drive mapping. This must follow the separate HUD install.
+
 Alternatively, enable MangoHud for the selected bottle using its **Monitor
 Performance / MangoHud** setting, or launch the Vulkan game with the
 `MANGOHUD=1` environment variable. If Bottles restricts host environment variables, `MANGOHUD`

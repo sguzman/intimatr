@@ -82,7 +82,11 @@ an explicit `--mangohud` option to request MangoHud and HUD telemetry for
 that selected invocation. This requires allowlisting the relevant environment
 variables in restricted Bottles environments and does not itself install
 the per-game HUD config. The `--experimental-four-timers` opt-in is separate.
-A CLI success report does not confirm an actual game process or overlay.
+The optional `--mangohud-config /absolute/game/directory/MangoHud.conf`
+verifies and selects the exact managed HUD file for the registered game
+through `MANGOHUD_CONFIGFILE`; it requires `--mangohud` and does not change
+global settings. A CLI success report does not confirm an actual game process
+or overlay.
 See [performance HUD setup](performance-hud.md).
 
 Adding a fully verified per-game launch shortcut and GUI Bottles integration

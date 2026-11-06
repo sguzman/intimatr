@@ -4,21 +4,28 @@
 //! process environment changed. It does not edit bottle configuration,
 //! install a DLL, or claim that Bottles forwarded the variable to a game.
 
-use std::{path::Path, process::Command};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 use intimatr::{
     bottles::{RegisteredProgram, parse_registered_programs},
     speed_config::SharedSpeedConfig,
     speed_policy::game_path_key,
+    speed_profile_fingerprint::{sha256_hex, sha256_words},
     speed_profile_load::load_preview_profile,
 };
 
 use super::{
+    bottle_compat::resolve_registered_file,
     bottles_json_with_command,
     profile_check::verify_bottle_profile_path,
     profile_environment::{
-        verify_named_bottle_environment, verify_named_program_environment,
-        verify_profile_environment, verify_registered_program_environment,
+        reject_named_bottle_override, verify_named_bottle_environment,
+        verify_named_program_environment, verify_profile_environment,
+        verify_registered_program_environment,
     },
 };
 
@@ -32,6 +39,7 @@ struct ProfileLaunchOptions {
     bottles_cli: String,
     experimental_four_timers: bool,
     mangohud: bool,
+    mangohud_config: Option<String>,
 }
 
 impl ProfileLaunchOptions {
@@ -46,6 +54,7 @@ impl ProfileLaunchOptions {
         let mut launch = false;
         let mut experimental_four_timers = false;
         let mut mangohud = false;
+        let mut mangohud_config = None;
         let mut iter = args.iter();
         while let Some(flag) = iter.next() {
             match flag.as_str() {
@@ -84,6 +93,9 @@ impl ProfileLaunchOptions {
                 "--program" if program.is_none() => program = Some(value.clone()),
                 "--profile" if profile.is_none() => profile = Some(value.clone()),
                 "--bottles-cli" if bottles_cli.is_none() => bottles_cli = Some(value.clone()),
+                "--mangohud-config" if mangohud_config.is_none() => {
+                    mangohud_config = Some(value.clone());
+                }
                 _ => {
                     return Err(format!(
                         "duplicate or unexpected profile-launch flag: {flag}"
@@ -110,6 +122,11 @@ impl ProfileLaunchOptions {
         }
         game_path_key(&executable)
             .map_err(|error| format!("invalid selected game identity: {error}"))?;
+        if let Some(path) = &mangohud_config {
+            if !mangohud || !Path::new(path).is_absolute() {
+                return Err("--mangohud-config requires --mangohud and an absolute path".into());
+            }
+        }
         let bottles_cli = bottles_cli.unwrap_or_else(|| "bottles-cli".to_owned());
         if Path::new(&bottles_cli)
             .file_name()
@@ -126,6 +143,7 @@ impl ProfileLaunchOptions {
             bottles_cli,
             experimental_four_timers,
             mangohud,
+            mangohud_config,
         })
     }
 }
@@ -152,6 +170,46 @@ fn verify_registered_program(
         return Err("registered executable does not match selected full Windows path".into());
     }
     Ok(())
+}
+
+/// Accept only a verified Intimatr-owned HUD beside the selected executable.
+/// This is an integrity preflight, not a claim of in-game renderer delivery.
+fn verified_managed_mangohud_config(
+    prefix: &Path,
+    windows_executable: &str,
+    selected_path: &str,
+) -> Result<PathBuf, String> {
+    // Non-C: mappings are consulted only after the user explicitly selects
+    // the HUD config; no global Z: guessing during ordinary launches.
+    let executable = resolve_registered_file(prefix, windows_executable, true)?;
+    let directory = executable.parent().ok_or("selected executable has no parent directory")?;
+    let config = directory.join("MangoHud.conf");
+    if Path::new(selected_path) != config {
+        return Err("managed MangoHud config must be beside the exact selected executable".into());
+    }
+    let marker = directory.join("intimatr-mangohud.sha256");
+    for path in [&config, &marker] {
+        let meta = fs::symlink_metadata(path)
+            .map_err(|error| format!("missing managed MangoHud file: {error}"))?;
+        if meta.file_type().is_symlink() || !meta.is_file() {
+            return Err("managed MangoHud config or marker is not a regular file".into());
+        }
+    }
+    let bytes = fs::read(&config)
+        .map_err(|error| format!("cannot read managed MangoHud config: {error}"))?;
+    if bytes.is_empty() || bytes.len() > 64 * 1024 {
+        return Err("managed MangoHud config is empty or exceeds 64 KiB".into());
+    }
+    let expected = fs::read_to_string(&marker)
+        .map_err(|error| format!("cannot read MangoHud ownership marker: {error}"))?;
+    let expected = expected.trim_end_matches('\n');
+    if expected.len() != 64 || !expected.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err("invalid MangoHud ownership checksum".into());
+    }
+    if !sha256_hex(&sha256_words(&bytes)).eq_ignore_ascii_case(expected) {
+        return Err("MangoHud config checksum changed; refusing launch".into());
+    }
+    Ok(config)
 }
 
 pub(super) fn run_profile_launch(args: Vec<String>) -> Result<(), String> {
@@ -199,6 +257,11 @@ pub(super) fn run_profile_launch(args: Vec<String>) -> Result<(), String> {
     }
     verify_registered_program(&registered, &options.program, &options.executable)?;
     verify_registered_program_environment(&program_json, &options.program)?;
+    let managed_hud = options
+        .mangohud_config
+        .as_deref()
+        .map(|path| verified_managed_mangohud_config(&prefix, &options.executable, path))
+        .transpose()?;
 
     if options.experimental_four_timers {
         verify_named_program_environment(
@@ -210,6 +273,11 @@ pub(super) fn run_profile_launch(args: Vec<String>) -> Result<(), String> {
     if options.mangohud {
         for variable in ["MANGOHUD", "INTIMATR_HUD_TELEMETRY"] {
             verify_named_program_environment(&program_json, &options.program, variable)?;
+        }
+        if managed_hud.is_some() {
+            for variable in ["MANGOHUD_CONFIGFILE", "MANGOHUD_CONFIG"] {
+                verify_named_program_environment(&program_json, &options.program, variable)?;
+            }
         }
     }
 
@@ -227,6 +295,14 @@ pub(super) fn run_profile_launch(args: Vec<String>) -> Result<(), String> {
     if options.mangohud {
         for variable in ["MANGOHUD", "INTIMATR_HUD_TELEMETRY"] {
             verify_named_bottle_environment(&inventory_json, &options.bottle, variable)?;
+        }
+        if managed_hud.is_some() {
+            verify_named_bottle_environment(
+                &inventory_json,
+                &options.bottle,
+                "MANGOHUD_CONFIGFILE",
+            )?;
+            reject_named_bottle_override(&inventory_json, &options.bottle, "MANGOHUD_CONFIG")?;
         }
     }
 
@@ -251,6 +327,11 @@ pub(super) fn run_profile_launch(args: Vec<String>) -> Result<(), String> {
         command
             .env("MANGOHUD", "1")
             .env("INTIMATR_HUD_TELEMETRY", "1");
+    }
+    if let Some(config) = &managed_hud {
+        command
+            .env_remove("MANGOHUD_CONFIG")
+            .env("MANGOHUD_CONFIGFILE", config);
     }
     let output = command
         .output()
@@ -286,6 +367,8 @@ pub(super) fn run_profile_launch(args: Vec<String>) -> Result<(), String> {
         "experimental_startup_timer_activation_verified_in_game": false,
         "mangohud_vulkan_activation_requested": options.mangohud,
         "mangohud_telemetry_export_requested": options.mangohud,
+        "mangohud_managed_config_verified_before_launch": managed_hud.is_some(),
+        "mangohud_managed_config_host_path": managed_hud,
         "mangohud_rendering_verified_in_game": false,
         "dll_auto_loaded": false,
         "gameplay_speed_verified": false,
@@ -333,6 +416,14 @@ mod tests {
         );
         let opted_in = [allowed.clone(), args(&["--experimental-four-timers"])].concat();
         let hud = [allowed.clone(), args(&["--mangohud"])].concat();
+        let configured = [hud.clone(), args(&["--mangohud-config", "/tmp/MangoHud.conf"])].concat();
+        assert_eq!(
+            ProfileLaunchOptions::parse(&configured)
+                .unwrap()
+                .mangohud_config
+                .as_deref(),
+            Some("/tmp/MangoHud.conf")
+        );
         assert!(ProfileLaunchOptions::parse(&hud).unwrap().mangohud);
         assert!(!ProfileLaunchOptions::parse(&allowed).unwrap().mangohud);
         assert!(
@@ -352,6 +443,9 @@ mod tests {
             [allowed.clone(), args(&["--launch"])].concat(),
             [opted_in.clone(), args(&["--experimental-four-timers"])].concat(),
             [hud.clone(), args(&["--mangohud"])].concat(),
+            [allowed.clone(), args(&["--mangohud-config", "/tmp/MangoHud.conf"])].concat(),
+            [hud.clone(), args(&["--mangohud-config", "MangoHud.conf"])].concat(),
+            [configured.clone(), args(&["--mangohud-config", "/tmp/other.conf"])].concat(),
             [allowed.clone(), args(&["--profile", "/tmp/other.toml"])].concat(),
             [allowed.clone(), args(&["--unknown", "value"])].concat(),
         ] {
