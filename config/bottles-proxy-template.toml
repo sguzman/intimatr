@@ -1,0 +1,28 @@
+# Generated per selected offline game; keep UI/debugger/RPC disabled.
+# Requires a separate speed profile and the opt-in startup environment flag
+# before any timer hooks are enabled.
+[target]
+executable = "__INTIMATR_GAME_EXE__"
+
+[logging]
+filter = "intimatr=info"
+directory = "logs"
+file_name = "intimatr.log"
+console = false
+
+[ui]
+enabled = false
+
+[debugger]
+enabled = false
+ui_enabled = false
+
+[rpc]
+enabled = false
+
+[policy]
+allow_memory_read = false
+allow_memory_write = false
+allow_code_patch = false
+allow_debugger = false
+allow_remote_shutdown = false
