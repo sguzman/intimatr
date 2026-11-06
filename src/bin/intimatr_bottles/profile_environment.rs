@@ -100,7 +100,10 @@ pub(super) fn reject_named_bottle_override(
         .get("Environment_Variables")
         .and_then(Value::as_object)
         .ok_or("selected bottle Environment_Variables is missing or not an object")?;
-    if explicit.keys().any(|key| key.eq_ignore_ascii_case(variable)) {
+    if explicit
+        .keys()
+        .any(|key| key.eq_ignore_ascii_case(variable))
+    {
         return Err(format!("selected bottle explicitly overrides {variable}"));
     }
     Ok(())

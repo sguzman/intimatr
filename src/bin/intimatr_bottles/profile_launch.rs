@@ -182,7 +182,9 @@ fn verified_managed_mangohud_config(
     // Non-C: mappings are consulted only after the user explicitly selects
     // the HUD config; no global Z: guessing during ordinary launches.
     let executable = resolve_registered_file(prefix, windows_executable, true)?;
-    let directory = executable.parent().ok_or("selected executable has no parent directory")?;
+    let directory = executable
+        .parent()
+        .ok_or("selected executable has no parent directory")?;
     let config = directory.join("MangoHud.conf");
     if Path::new(selected_path) != config {
         return Err("managed MangoHud config must be beside the exact selected executable".into());
@@ -416,7 +418,11 @@ mod tests {
         );
         let opted_in = [allowed.clone(), args(&["--experimental-four-timers"])].concat();
         let hud = [allowed.clone(), args(&["--mangohud"])].concat();
-        let configured = [hud.clone(), args(&["--mangohud-config", "/tmp/MangoHud.conf"])].concat();
+        let configured = [
+            hud.clone(),
+            args(&["--mangohud-config", "/tmp/MangoHud.conf"]),
+        ]
+        .concat();
         assert_eq!(
             ProfileLaunchOptions::parse(&configured)
                 .unwrap()
@@ -443,9 +449,17 @@ mod tests {
             [allowed.clone(), args(&["--launch"])].concat(),
             [opted_in.clone(), args(&["--experimental-four-timers"])].concat(),
             [hud.clone(), args(&["--mangohud"])].concat(),
-            [allowed.clone(), args(&["--mangohud-config", "/tmp/MangoHud.conf"])].concat(),
+            [
+                allowed.clone(),
+                args(&["--mangohud-config", "/tmp/MangoHud.conf"]),
+            ]
+            .concat(),
             [hud.clone(), args(&["--mangohud-config", "MangoHud.conf"])].concat(),
-            [configured.clone(), args(&["--mangohud-config", "/tmp/other.conf"])].concat(),
+            [
+                configured.clone(),
+                args(&["--mangohud-config", "/tmp/other.conf"]),
+            ]
+            .concat(),
             [allowed.clone(), args(&["--profile", "/tmp/other.toml"])].concat(),
             [allowed.clone(), args(&["--unknown", "value"])].concat(),
         ] {
