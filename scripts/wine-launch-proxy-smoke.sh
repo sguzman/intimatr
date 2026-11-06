@@ -152,6 +152,23 @@ cmp "$second/steam_api64_intimatr_original.dll" "$dir/steam_api64_intimatr_origi
 # The separate MangoHud adapter installs no render hook. Validate the compact
 # metrics layout and independent speed-file paths under the two game dirs.
 bash scripts/bottles-hud.sh plan "$fixtures/batch-manifest.json" >"$fixtures/hud-plan.log"
+# The first selected game can be configured even when the second lacks
+# write permission. A failed batch must remove the first game's *unchanged*
+# new config and marker, without altering either DLL deployment.
+chmod 0555 "$second"
+if bash scripts/bottles-hud.sh install "$fixtures/batch-manifest.json" \
+  --offline-single-player --games-closed >"$fixtures/hud-partial.stdout" \
+  2>"$fixtures/hud-partial.stderr"; then
+  chmod 0755 "$second"
+  echo "ERROR: HUD install succeeded in an unwritable selected game" >&2
+  exit 1
+fi
+chmod 0755 "$second"
+grep -q 'HUD batch install failed' "$fixtures/hud-partial.stderr"
+grep -Fq "Rolled back unchanged HUD config: $first" "$fixtures/hud-partial.stderr"
+test ! -e "$first/MangoHud.conf" && test ! -e "$first/intimatr-mangohud.sha256"
+test ! -e "$second/MangoHud.conf" && test ! -e "$second/intimatr-mangohud.sha256"
+test -f "$first/intimatr.dll" && test -f "$second/intimatr.dll"
 bash scripts/bottles-hud.sh install "$fixtures/batch-manifest.json" \
   --offline-single-player --games-closed >"$fixtures/hud-install.log"
 grep -Fq 'exec=mtime=$(stat -c %Y ' "$first/MangoHud.conf"

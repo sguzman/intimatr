@@ -108,7 +108,46 @@ if [[ "$action" == remove ]]; then
   exit 0
 fi
 
+# A batch installation must not leave a successful first game configured
+# when a later game fails. Roll back only files created in this invocation,
+# and only while their recorded checksums still match. Preserve modified
+# files rather than deleting another process's work.
 umask 077
+declare -a installed_this_run=()
+pending_config=""
+pending_checksum=""
+rollback_install() {
+  local result=$?
+  if (( result != 0 )); then
+    echo "HUD batch install failed; restoring unchanged files created in this attempt" >&2
+    if [[ -n "$pending_config" && -f "$pending_config" && ! -L "$pending_config" ]]; then
+      local actual
+      actual="$(sha256sum -- "$pending_config" | cut -d' ' -f1)" || actual=""
+      if [[ "$actual" == "$pending_checksum" ]]; then
+        rm -f -- "$pending_config" || true
+      else
+        echo "Preserving modified or unverifiable partial HUD config: $pending_config" >&2
+      fi
+    fi
+    local game expected observed
+    for game in "${installed_this_run[@]}"; do
+      if [[ -f "$game/$config" && ! -L "$game/$config" &&
+            -f "$game/$marker" && ! -L "$game/$marker" ]]; then
+        expected="$(cat -- "$game/$marker")" || expected=""
+        observed="$(sha256sum -- "$game/$config" | cut -d' ' -f1)" || observed=""
+        if [[ -n "$expected" && "$expected" == "$observed" ]]; then
+          rm -f -- "$game/$config" "$game/$marker" || true
+          echo "Rolled back unchanged HUD config: $game" >&2
+        else
+          echo "Preserving modified HUD config after failure: $game" >&2
+        fi
+      else
+        echo "Preserving incomplete or modified HUD files: $game" >&2
+      fi
+    done
+  fi
+}
+trap rollback_install EXIT
 for game in "${games[@]}"; do
   # Quote paths as an argument to MangoHud's exec shell. Manifest validation
   # rejects both quote types, controls, and embedded newlines.
@@ -138,11 +177,16 @@ toggle_hud=Shift_R+F12
 EOF
   ) || { echo "Cannot create MangoHud config in: $game" >&2; exit 1; }
   checksum="$(sha256sum "$output" | cut -d' ' -f1)"
+  pending_config="$output"
+  pending_checksum="$checksum"
   printf '%s\n' "$checksum" >"$game/$marker" || {
-    rm -f -- "$output"
     echo "Failed to write ownership marker" >&2
     exit 1
   }
+  installed_this_run+=("$game")
+  pending_config=""
+  pending_checksum=""
   echo "Configured Intimatr HUD for: $game"
 done
+trap - EXIT
 echo "Enable MangoHud in Bottles for the selected games. With startup timing opted in, the DLL writes observed speed to the game-specific rate file."

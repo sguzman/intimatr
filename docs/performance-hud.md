@@ -60,7 +60,10 @@ bash scripts/bottles-hud.sh install /absolute/selection.json --offline-single-pl
 ```
 
 This creates only `MangoHud.conf` and an ownership SHA-256 marker beside
-each selected game executable. It refuses existing configs rather than
+each selected game executable. If a later selected game cannot be configured,
+the installer rolls back any unchanged HUD files it created earlier in the
+same batch; files modified by another process are preserved. It refuses
+existing configs rather than
 overwriting user's prior MangoHud settings. The config is specific to that
 game's install directory, so it does not change global HUD preferences or
 affect other games. MangoHud normally discovers a `MangoHud.conf` beside the
