@@ -154,8 +154,10 @@ cmp "$second/steam_api64_intimatr_original.dll" "$dir/steam_api64_intimatr_origi
 bash scripts/bottles-hud.sh plan "$fixtures/batch-manifest.json" >"$fixtures/hud-plan.log"
 bash scripts/bottles-hud.sh install "$fixtures/batch-manifest.json" \
   --offline-single-player --games-closed >"$fixtures/hud-install.log"
-grep -Fq "exec=cat '$first/intimatr-hud-rate.txt'" "$first/MangoHud.conf"
-grep -Fq "exec=cat '$second/intimatr-hud-rate.txt'" "$second/MangoHud.conf"
+grep -Fq 'exec=mtime=$(stat -c %Y ' "$first/MangoHud.conf"
+grep -Fq 'exec=mtime=$(stat -c %Y ' "$second/MangoHud.conf"
+grep -Fq "'$first/intimatr-hud-rate.txt'" "$first/MangoHud.conf"
+grep -Fq "'$second/intimatr-hud-rate.txt'" "$second/MangoHud.conf"
 for path in "$first" "$second"; do
   grep -Fxq 'fps' "$path/MangoHud.conf"
   grep -Fxq 'cpu_stats' "$path/MangoHud.conf"
@@ -168,6 +170,10 @@ for path in "$first" "$second"; do
   hud_exec="$(sed -n 's/^exec=//p' "$path/MangoHud.conf")"
   test "$(bash -c "$hud_exec")" = '--'
   printf '2.00x\n' >"$path/intimatr-hud-rate.txt"
+  test "$(bash -c "$hud_exec")" = '2.00x'
+  touch -d '12 seconds ago' "$path/intimatr-hud-rate.txt"
+  test "$(bash -c "$hud_exec")" = '--'
+  touch "$path/intimatr-hud-rate.txt"
   test "$(bash -c "$hud_exec")" = '2.00x'
   rm -- "$path/intimatr-hud-rate.txt"
 done

@@ -123,9 +123,16 @@ engine runs twice as fast. Real gameplay acceleration must be observed.
 - The HUD exporter is read-only: it polls an existing hook state and writes
   a short, plain-text status file, never installs hooks, reads game memory
   or adds network services.
-- When the game exits cleanly, the exporter resets the status file to `--`.
-  An abrupt crash may leave a stale value until the next launch, so it must
-  not be treated as a durable game-process health indicator.
+- While active, the exporter refreshes its rate file at least every 2 seconds
+  even when the speed multiplier is unchanged. MangoHud reports `--` if the
+  rate file is missing, empty, dated in the future, or more than 6 seconds old.
+  A clean shutdown writes `--`; an abrupt crash is therefore reflected after
+  the freshness window. This remains a *best-effort heartbeat*, not proof of
+  game health, actual rendering, or measured gameplay speed.
+- MangoHud's upstream `exec` integration runs a shell; that path has known
+  compatibility limitations with some launchers. If it stalls a particular
+  game, remove the optional HUD using the independently verified rollback
+  command. Do not assume the render hook is universally compatible.
 - CPU/GPU percentages and RAM/VRAM figures are MangoHud measurements; some
   depend on available drivers and sensors. Per-process memory (`procmem`)
   is a different quantity from total system RAM.

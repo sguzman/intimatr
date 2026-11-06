@@ -12,13 +12,14 @@ use std::{
         atomic::{AtomicBool, Ordering},
     },
     thread::{self, JoinHandle},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use thiserror::Error;
 
 const NAME: &str = "intimatr-hud-rate.txt";
 const INTERVAL: Duration = Duration::from_millis(250);
+const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(2);
 const OPT_IN: &str = "INTIMATR_HUD_TELEMETRY";
 
 #[derive(Debug, Error)]
@@ -106,8 +107,16 @@ impl HudTelemetryWorker {
     }
 }
 
+/// Changing the multiplier must update immediately. An unchanged multiplier
+/// still needs a bounded heartbeat: otherwise a crashed game could leave a
+/// permanently plausible but dead value in MangoHud.
+fn needs_refresh(previous: &str, next: &str, since_write: Duration) -> bool {
+    previous != next || since_write >= HEARTBEAT_INTERVAL
+}
+
 fn run(path: PathBuf, stop: Arc<AtomicBool>) {
     let mut previous = String::new();
+    let mut last_write = Instant::now();
     while !stop.load(Ordering::Acquire) {
         let observed = if crate::experimental_timer_probe::remote_hook_state() == 1 {
             crate::experimental_timer_probe::remote_rate_milli()
@@ -115,12 +124,13 @@ fn run(path: PathBuf, stop: Arc<AtomicBool>) {
             0
         };
         let text = format_observed_rate(observed);
-        if text != previous {
+        if needs_refresh(&previous, &text, last_write.elapsed()) {
             if write_rate(&path, &text).is_err() {
                 // Never crash the game or write through an unexpected link.
                 break;
             }
             previous = text;
+            last_write = Instant::now();
         }
         thread::sleep(INTERVAL);
     }
@@ -135,7 +145,21 @@ impl Drop for HudTelemetryWorker {
 
 #[cfg(test)]
 mod tests {
-    use super::format_observed_rate;
+    use super::{HEARTBEAT_INTERVAL, format_observed_rate, needs_refresh};
+    use std::time::Duration;
+
+    #[test]
+    fn unchanged_rate_refreshes_heartbeat_without_disk_writes_every_poll() {
+        assert!(needs_refresh("--", "2.00x", Duration::ZERO));
+        assert!(!needs_refresh("2.00x", "2.00x", Duration::ZERO));
+        assert!(!needs_refresh(
+            "2.00x",
+            "2.00x",
+            HEARTBEAT_INTERVAL - Duration::from_millis(1),
+        ));
+        assert!(needs_refresh("2.00x", "2.00x", HEARTBEAT_INTERVAL));
+        assert!(needs_refresh("2.00x", "--", Duration::ZERO));
+    }
 
     #[test]
     fn distinguishes_unavailable_from_real_installed_speed() {
