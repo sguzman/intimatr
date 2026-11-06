@@ -107,7 +107,7 @@ vram
 procmem
 custom_text_center=INTIMATR
 custom_text=Speed
-exec=cat '$game/$rate'
+exec=cat '$game/$rate' 2>/dev/null || printf '%s\n' '--'
 toggle_hud=Shift_R+F12
 EOF
   ) || { echo "Cannot create MangoHud config in: $game" >&2; exit 1; }
