@@ -1054,7 +1054,32 @@ jobs:
           target/release/intimatr-bottles profile-launch "${launch_args[@]}" \
             >target/wine-attach/profile-launch-report.json &
           game_launcher=$!
-          trap 'kill "$game_launcher" 2>/dev/null || true' EXIT
+          # On any nonzero exit, include *fixture-owned* evidence before
+          # killing its process. Never mask a genuine Wine regression.
+          game_launch_diagnostics() {
+            local result=$?
+            if (( result != 0 )); then
+              echo "ERROR: selected-game Wine CI failed (exit $result)" >&2
+              for path in \
+                target/wine-attach/game-fixture/stdout \
+                target/wine-attach/game-fixture/stderr \
+                target/wine-attach/game-fixture/attach-profile-observed.txt \
+                target/wine-attach/game-before.json \
+                target/wine-attach/game-attach.json \
+                target/wine-attach/game-before-arm.json \
+                target/wine-attach/game-rate-before-arm.stderr; do
+                if [[ -f "$path" ]]; then
+                  echo "--- $path ---" >&2
+                  tail -n 70 -- "$path" >&2 || true
+                fi
+              done
+              echo "--- CI rate handshake markers ---" >&2
+              find target/wine-attach/game-fixture -maxdepth 1 -type f \
+                -name 'attach-*.flag' -printf '%f\n' >&2 || true
+            fi
+            kill "$game_launcher" 2>/dev/null || true
+          }
+          trap game_launch_diagnostics EXIT
           for i in $(seq 1 100); do
             if test -s target/wine-attach/game-fixture/attach-target.pid; then
               break

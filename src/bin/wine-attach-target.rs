@@ -203,7 +203,12 @@ mod target {
                     let done = directory.join(format!("attach-rate-{label}-done.flag"));
                     std::fs::write(&ready, b"awaiting_explicit_speed_preset")
                         .map_err(|error| format!("cannot publish rate gate: {error}"))?;
-                    if !(0..800).any(|_| {
+                    // This gate is only for the disposable CI target. Host
+                    // orchestration performs multiple exact-PID checks, and
+                    // 20 seconds can expire on busy Wine runners just before
+                    // the authorized request arrives. Fail closed after a
+                    // bounded 40 seconds rather than racing the harness.
+                    if !(0..1600).any(|_| {
                         if done.is_file() {
                             true
                         } else {
