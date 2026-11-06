@@ -124,7 +124,10 @@ fn state_executable(state: &Deployment) -> Result<&str, String> {
     if state.version != 2 {
         return Err("unsupported deployment marker version".into());
     }
-    let executable = state.executable.as_deref().ok_or("deployment marker lacks executable identity")?;
+    let executable = state
+        .executable
+        .as_deref()
+        .ok_or("deployment marker lacks executable identity")?;
     if !valid_executable(executable) {
         return Err("invalid executable identity in deployment marker".into());
     }
@@ -153,7 +156,9 @@ fn verify_game_dir(raw: &Path) -> Result<PathBuf, String> {
     if drive == game {
         return Err("game directory must be below drive_c".into());
     }
-    let prefix = drive.parent().ok_or("cannot resolve selected bottle prefix")?;
+    let prefix = drive
+        .parent()
+        .ok_or("cannot resolve selected bottle prefix")?;
     if !present(&prefix.join("bottle.yml"))? || !drive.is_dir() {
         return Err("selected directory is not inside an initialized Bottles prefix".into());
     }
@@ -277,7 +282,8 @@ fn install(
     let config_bytes = read_file(config)?;
     check_pe64_dll(&original)?;
     if let Some(expected) = expected_original_sha256 {
-        if expected.len() != 64 || !expected.bytes().all(|b| b.is_ascii_hexdigit())
+        if expected.len() != 64
+            || !expected.bytes().all(|b| b.is_ascii_hexdigit())
             || digest(&original) != expected.to_ascii_lowercase()
         {
             return Err("original game DLL SHA-256 changed or is invalid; refusing install".into());
@@ -397,7 +403,8 @@ fn status_preflight(game: &Path, executable: &str) -> Result<(), String> {
         game.join(QUARANTINE),
         game.join("steam_api64.intimatr-stage.dll"),
         game.join("intimatr.stage.dll"),
-        game.join("config").join(format!("{}.intimatr-stage", config_name(executable))),
+        game.join("config")
+            .join(format!("{}.intimatr-stage", config_name(executable))),
         game.join("intimatr-launch-deployment.stage.json"),
     ] {
         require_absent(&path)?;
@@ -622,34 +629,50 @@ mod tests {
         let fx = Fixture::new();
         let second = fx.root.join("SecondBottle/drive_c/Games/Another Game");
         fs::create_dir_all(&second).unwrap();
-        fs::write(fx.root.join("SecondBottle/bottle.yml"), b"Name: SecondBottle\n").unwrap();
+        fs::write(
+            fx.root.join("SecondBottle/bottle.yml"),
+            b"Name: SecondBottle\n",
+        )
+        .unwrap();
         fs::write(second.join("Another Game.exe"), b"fixture executable").unwrap();
         fs::write(second.join(ORIGINAL), Fixture::dll(7)).unwrap();
         let source_config = fx.source.join("Another Game.exe.toml");
         fs::write(&source_config, b"[target]\nexecutable = \"Another Game.exe\"\n[ui]\nenabled = false\n[rpc]\nenabled = false\n").unwrap();
         let expected_sha = digest(&Fixture::dll(7));
         assert!(verify_game_dir(&second).is_ok());
-        assert!(install(
-            &second,
-            &fx.source.join("proxy.dll"),
-            &fx.source.join("intimatr.dll"),
-            &source_config,
-            "Another Game.exe",
-            Some(&expected_sha),
-        ).is_ok());
+        assert!(
+            install(
+                &second,
+                &fx.source.join("proxy.dll"),
+                &fx.source.join("intimatr.dll"),
+                &source_config,
+                "Another Game.exe",
+                Some(&expected_sha),
+            )
+            .is_ok()
+        );
         fx.install().unwrap();
-        assert_eq!(state_executable(&check_installed(&second).unwrap()).unwrap(), "Another Game.exe");
-        assert_eq!(state_executable(&check_installed(&fx.game).unwrap()).unwrap(), "Eastward.exe");
+        assert_eq!(
+            state_executable(&check_installed(&second).unwrap()).unwrap(),
+            "Another Game.exe"
+        );
+        assert_eq!(
+            state_executable(&check_installed(&fx.game).unwrap()).unwrap(),
+            "Eastward.exe"
+        );
         assert_eq!(fs::read(second.join(SAVED)).unwrap(), Fixture::dll(7));
         assert!(second.join("config/Another Game.exe.toml").exists());
-        assert!(install(
-            &second,
-            &fx.source.join("proxy.dll"),
-            &fx.source.join("intimatr.dll"),
-            &source_config,
-            "Another Game.exe",
-            Some(&digest(&Fixture::dll(8))),
-        ).is_err());
+        assert!(
+            install(
+                &second,
+                &fx.source.join("proxy.dll"),
+                &fx.source.join("intimatr.dll"),
+                &source_config,
+                "Another Game.exe",
+                Some(&digest(&Fixture::dll(8))),
+            )
+            .is_err()
+        );
         remove(&second).unwrap();
         assert_eq!(fs::read(second.join(ORIGINAL)).unwrap(), Fixture::dll(7));
         assert!(fx.game.join(SAVED).exists());
@@ -660,24 +683,30 @@ mod tests {
     fn generic_install_refuses_wrong_original_digest_and_wrong_config_target() {
         let fx = Fixture::new();
         let wrong_sha = digest(&Fixture::dll(40));
-        assert!(install(
-            &fx.game,
-            &fx.source.join("proxy.dll"),
-            &fx.source.join("intimatr.dll"),
-            &fx.source.join(CONFIG),
-            "Eastward.exe",
-            Some(&wrong_sha),
-        ).is_err());
+        assert!(
+            install(
+                &fx.game,
+                &fx.source.join("proxy.dll"),
+                &fx.source.join("intimatr.dll"),
+                &fx.source.join(CONFIG),
+                "Eastward.exe",
+                Some(&wrong_sha),
+            )
+            .is_err()
+        );
         assert!(!state_path(&fx.game).exists());
         let correct_sha = digest(&Fixture::dll(1));
-        assert!(install(
-            &fx.game,
-            &fx.source.join("proxy.dll"),
-            &fx.source.join("intimatr.dll"),
-            &fx.source.join(CONFIG),
-            "Different.exe",
-            Some(&correct_sha),
-        ).is_err());
+        assert!(
+            install(
+                &fx.game,
+                &fx.source.join("proxy.dll"),
+                &fx.source.join("intimatr.dll"),
+                &fx.source.join(CONFIG),
+                "Different.exe",
+                Some(&correct_sha),
+            )
+            .is_err()
+        );
         assert!(!fx.game.join(SAVED).exists());
     }
 
