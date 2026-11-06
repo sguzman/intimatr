@@ -55,7 +55,7 @@ fn write_rate(path: &Path, text: &str) -> Result<(), HudTelemetryError> {
     refuse_nonregular_existing_file(path)?;
     // The fixed filename lives in the already-approved game module directory.
     // Keep the payload short; MangoHud reads it as plain text from the host.
-    fs::write(path, text)?;
+    // MangoHud executes commands through a persistent shell. A terminating\n    // newline keeps successive samples from concatenating in its output.\n    fs::write(path, format!("{text}\\n"))?;
     Ok(())
 }
 

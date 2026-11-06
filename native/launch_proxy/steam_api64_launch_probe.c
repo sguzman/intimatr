@@ -31,6 +31,7 @@ static int await_hud_rate(HMODULE dll, const char *expected) {
             char text[32] = {0};
             size_t read = fread(text, 1, sizeof(text) - 1, file);
             fclose(file);
+            if (read && text[read - 1] == '\\n') text[read - 1] = '\\0';
             if (read && strcmp(text, expected) == 0) return 1;
         }
         Sleep(50);
