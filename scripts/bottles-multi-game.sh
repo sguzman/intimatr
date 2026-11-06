@@ -94,8 +94,7 @@ for i in "${!games[@]}"; do
     echo "Missing original steam_api64.dll: $game" >&2; exit 1;
   }
   if ! x86_64-w64-mingw32-objdump -p "$game/$exe" |
-      grep -Ei '^[[:space:]]*DLL Name: steam_api64\.dll[[:space:]]*
-    echo "Selected executable lacks static steam_api64.dll import: $game/$exe" >&2
+      grep -Ei '^[[:space:]]*DLL Name: steam_api64\.dll[[:space:]]*    echo "Selected executable lacks static steam_api64.dll import: $game/$exe" >&2
     exit 1
   fi
   checksums[i]="$(sha256sum "$game/steam_api64.dll" | cut -d' ' -f1)"
