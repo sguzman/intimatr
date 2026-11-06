@@ -120,3 +120,43 @@ cp config/Eastward.speed.toml "$dir/pilot-bundle/Eastward.speed.toml"
   sha256sum -c SHA256SUMS
 )
 echo "Flat local QA pilot bundle verified; no real Bottles game was installed"
+
+# Batch deployment must prepare two *different game identities* and restore
+# each original independently. Everything is a disposable Wine-shaped fixture.
+fixtures="$dir/batch-fixtures"
+first="$fixtures/FirstBottle/drive_c/Games/First Game"
+second="$fixtures/SecondBottle/drive_c/Games/Second Game"
+mkdir -p "$first" "$second"
+printf 'Name: FirstBottle\n' >"$fixtures/FirstBottle/bottle.yml"
+printf 'Name: SecondBottle\n' >"$fixtures/SecondBottle/bottle.yml"
+cp "$dir/steam_api64_launch_probe.exe" "$first/First Game.exe"
+cp "$dir/steam_api64_launch_probe.exe" "$second/Second Game.exe"
+cp "$dir/steam_api64_intimatr_original.dll" "$first/steam_api64.dll"
+cp "$dir/steam_api64_intimatr_original.dll" "$second/steam_api64.dll"
+jq -n --arg first "$first" --arg second "$second" \
+  '{version:1,games:[{game_dir:$first,executable:"First Game.exe"},
+                      {game_dir:$second,executable:"Second Game.exe"}]}' \
+  >"$fixtures/batch-manifest.json"
+absolute_manager="$(pwd)/target/release/intimatr-bottles"
+bash scripts/bottles-multi-game.sh plan "$fixtures/batch-manifest.json" "$absolute_manager" >"$fixtures/plan.log"
+test ! -e "$first/intimatr-launch-deployment.json"
+test ! -e "$second/intimatr-launch-deployment.json"
+bash scripts/bottles-multi-game.sh install "$fixtures/batch-manifest.json" "$absolute_manager" \
+  "$dir/intimatr.dll" --offline-single-player --games-closed >"$fixtures/install.log"
+test -e "$first/config/First Game.exe.toml"
+test -e "$second/config/Second Game.exe.toml"
+grep -q 'executable = "First Game.exe"' "$first/config/First Game.exe.toml"
+grep -q 'executable = "Second Game.exe"' "$second/config/Second Game.exe.toml"
+cmp "$first/steam_api64_intimatr_original.dll" "$dir/steam_api64_intimatr_original.dll"
+cmp "$second/steam_api64_intimatr_original.dll" "$dir/steam_api64_intimatr_original.dll"
+"$absolute_manager" launch-proxy status --game-dir "$first" | jq -e '.status == "installed"' >/dev/null
+"$absolute_manager" launch-proxy status --game-dir "$second" | jq -e '.status == "installed"' >/dev/null
+bash scripts/bottles-multi-game.sh remove "$fixtures/batch-manifest.json" "$absolute_manager" \
+  --offline-single-player --games-closed >"$fixtures/remove.log"
+cmp "$first/steam_api64.dll" "$dir/steam_api64_intimatr_original.dll"
+cmp "$second/steam_api64.dll" "$dir/steam_api64_intimatr_original.dll"
+test ! -e "$first/intimatr-launch-deployment.json"
+test ! -e "$second/intimatr-launch-deployment.json"
+test ! -e "$first/intimatr.dll"
+test ! -e "$second/intimatr.dll"
+echo "Two independent manifest-selected Bottles games installed and restored in disposable fixtures"
