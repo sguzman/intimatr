@@ -163,6 +163,13 @@ for path in "$first" "$second"; do
   grep -Fxq 'ram' "$path/MangoHud.conf"
   grep -Fxq 'vram' "$path/MangoHud.conf"
   test -f "$path/intimatr-mangohud.sha256"
+  # When the game DLL is not yet publishing telemetry, the overlay must
+  # show unavailable rather than a blank value or an error from cat.
+  hud_exec="$(sed -n 's/^exec=//p' "$path/MangoHud.conf")"
+  test "$(bash -c "$hud_exec")" = '--'
+  printf '2.00x\n' >"$path/intimatr-hud-rate.txt"
+  test "$(bash -c "$hud_exec")" = '2.00x'
+  rm -- "$path/intimatr-hud-rate.txt"
 done
 if bash scripts/bottles-hud.sh install "$fixtures/batch-manifest.json" \
   --offline-single-player --games-closed >"$fixtures/hud-duplicate.stdout" 2>"$fixtures/hud-duplicate.stderr"; then
