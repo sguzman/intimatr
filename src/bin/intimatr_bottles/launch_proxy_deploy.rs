@@ -1,4 +1,5 @@
-//! Explicit, reversible pilot for a single offline Eastward Bottles installation.
+//! Explicit, reversible startup proxy for selected offline Bottles games.
+//! Legacy version-1 Eastward deployments remain readable and removable.
 //! Never auto-selects games, invokes Wine, or touches a running Windows process.
 //! The original Steam API DLL is preserved byte-for-byte under a unique name.
 
@@ -29,6 +30,8 @@ struct Deployment {
     proxy_sha256: String,
     runtime_sha256: String,
     config_sha256: String,
+    #[serde(default)]
+    executable: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -99,6 +102,35 @@ fn write_new(path: &Path, bytes: &[u8]) -> Result<(), String> {
         .map_err(|error| format!("cannot write {}: {error}", path.display()))
 }
 
+fn valid_executable(executable: &str) -> bool {
+    executable.len() > 4
+        && executable.len() <= 128
+        && executable.to_ascii_lowercase().ends_with(".exe")
+        && !executable.starts_with('.')
+        && !executable.contains("..")
+        && executable
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, ' ' | '_' | '-' | '.'))
+}
+
+fn config_name(executable: &str) -> String {
+    format!("{executable}.toml")
+}
+
+fn state_executable(state: &Deployment) -> Result<&str, String> {
+    if state.version == 1 && state.executable.is_none() {
+        return Ok("Eastward.exe");
+    }
+    if state.version != 2 {
+        return Err("unsupported deployment marker version".into());
+    }
+    let executable = state.executable.as_deref().ok_or("deployment marker lacks executable identity")?;
+    if !valid_executable(executable) {
+        return Err("invalid executable identity in deployment marker".into());
+    }
+    Ok(executable)
+}
+
 fn verify_game_dir(raw: &Path) -> Result<PathBuf, String> {
     if !raw.is_absolute() {
         return Err("--game-dir requires an absolute Linux path".into());
@@ -111,31 +143,23 @@ fn verify_game_dir(raw: &Path) -> Result<PathBuf, String> {
         return Err("game directory must not be a symlink".into());
     }
     let game = fs::canonicalize(raw).map_err(|e| e.to_string())?;
-    if !game.is_dir()
-        || game.file_name().is_none_or(|name| name != "Eastward")
-        || game
-            .parent()
-            .and_then(Path::file_name)
-            .is_none_or(|name| name != "Program Files")
-        || game
-            .parent()
-            .and_then(Path::parent)
-            .and_then(Path::file_name)
-            .is_none_or(|name| name != "drive_c")
-    {
-        return Err("expected Eastward in a bottle's drive_c/Program Files/Eastward".into());
+    if !game.is_dir() {
+        return Err("game directory must be a directory".into());
     }
-    let prefix = game
-        .parent()
-        .and_then(Path::parent)
-        .and_then(Path::parent)
-        .ok_or("cannot resolve selected bottle prefix")?;
-    if prefix.file_name().is_none_or(|name| name != "Eastward")
-        || !prefix.join("bottle.yml").is_file()
-        || !prefix.join("drive_c").is_dir()
-        || !present(&game.join("Eastward.exe"))?
-    {
-        return Err("not an exact initialized Eastward bottle and game executable".into());
+    let drive = game
+        .ancestors()
+        .find(|dir| dir.file_name().is_some_and(|name| name == "drive_c"))
+        .ok_or("game directory must be inside a bottle's drive_c")?;
+    if drive == game {
+        return Err("game directory must be below drive_c".into());
+    }
+    let prefix = drive.parent().ok_or("cannot resolve selected bottle prefix")?;
+    if !present(&prefix.join("bottle.yml"))? || !drive.is_dir() {
+        return Err("selected directory is not inside an initialized Bottles prefix".into());
+    }
+    let canonical_drive = fs::canonicalize(drive).map_err(|e| e.to_string())?;
+    if canonical_drive != drive {
+        return Err("selected game drive_c cannot use a symlink".into());
     }
     Ok(game)
 }
@@ -168,19 +192,18 @@ fn load_state(game: &Path) -> Result<Deployment, String> {
     }
     let state: Deployment =
         serde_json::from_slice(&bytes).map_err(|e| format!("invalid deployment marker: {e}"))?;
-    if state.version != 1 {
-        return Err("unrecognized deployment marker version".into());
-    }
+    state_executable(&state)?;
     Ok(state)
 }
 
 fn check_installed(game: &Path) -> Result<Deployment, String> {
     let state = load_state(game)?;
+    let cfg = config_name(state_executable(&state)?);
     for (path, hash) in [
         (game.join(ORIGINAL), &state.proxy_sha256),
         (game.join(SAVED), &state.original_sha256),
         (game.join(RUNTIME), &state.runtime_sha256),
-        (game.join("config").join(CONFIG), &state.config_sha256),
+        (game.join("config").join(&cfg), &state.config_sha256),
     ] {
         if !same_file(&path, hash)? {
             return Err(format!(
@@ -236,29 +259,47 @@ fn status(game: &Path) -> Result<(), String> {
     )
 }
 
-fn install(game: &Path, proxy: &Path, runtime: &Path, config: &Path) -> Result<(), String> {
-    status_preflight(game)?;
+fn install(
+    game: &Path,
+    proxy: &Path,
+    runtime: &Path,
+    config: &Path,
+    executable: &str,
+    expected_original_sha256: Option<&str>,
+) -> Result<(), String> {
+    if !valid_executable(executable) || !present(&game.join(executable))? {
+        return Err("selected game executable name is unsafe or missing".into());
+    }
+    status_preflight(game, executable)?;
     let original = read_file(&game.join(ORIGINAL))?;
     let proxy_bytes = read_file(proxy)?;
     let runtime_bytes = read_file(runtime)?;
     let config_bytes = read_file(config)?;
     check_pe64_dll(&original)?;
+    if let Some(expected) = expected_original_sha256 {
+        if expected.len() != 64 || !expected.bytes().all(|b| b.is_ascii_hexdigit())
+            || digest(&original) != expected.to_ascii_lowercase()
+        {
+            return Err("original game DLL SHA-256 changed or is invalid; refusing install".into());
+        }
+    }
     check_pe64_dll(&proxy_bytes)?;
     check_pe64_dll(&runtime_bytes)?;
     let config_string =
         std::str::from_utf8(&config_bytes).map_err(|_| "launch config is not UTF-8")?;
     let parsed = AppConfig::from_toml_str(config_string)
         .map_err(|e| format!("invalid launch configuration: {e}"))?;
-    if parsed.target.executable != "Eastward.exe" {
-        return Err("launch config must target Eastward.exe exactly".into());
+    if parsed.target.executable != executable {
+        return Err("launch config does not target the selected executable exactly".into());
     }
 
     let state = Deployment {
-        version: 1,
+        version: 2,
         original_sha256: digest(&original),
         proxy_sha256: digest(&proxy_bytes),
         runtime_sha256: digest(&runtime_bytes),
         config_sha256: digest(&config_bytes),
+        executable: Some(executable.to_owned()),
     };
     let cfg_dir = game.join("config");
     let created_config_dir = if cfg_dir.exists() {
@@ -278,7 +319,8 @@ fn install(game: &Path, proxy: &Path, runtime: &Path, config: &Path) -> Result<(
     };
     let staged_proxy = game.join("steam_api64.intimatr-stage.dll");
     let staged_runtime = game.join("intimatr.stage.dll");
-    let staged_config = cfg_dir.join("Eastward.exe.toml.intimatr-stage");
+    let filename = config_name(executable);
+    let staged_config = cfg_dir.join(format!("{filename}.intimatr-stage"));
     let staged_state = game.join("intimatr-launch-deployment.stage.json");
     let marker = state_path(game);
     let result = (|| -> Result<(), String> {
@@ -296,7 +338,7 @@ fn install(game: &Path, proxy: &Path, runtime: &Path, config: &Path) -> Result<(
         let state_bytes = serde_json::to_vec_pretty(&state).map_err(|e| e.to_string())?;
         write_new(&staged_state, &state_bytes)?;
         fs::rename(&staged_runtime, game.join(RUNTIME)).map_err(|e| e.to_string())?;
-        fs::rename(&staged_config, cfg_dir.join(CONFIG)).map_err(|e| e.to_string())?;
+        fs::rename(&staged_config, cfg_dir.join(&filename)).map_err(|e| e.to_string())?;
         fs::rename(game.join(ORIGINAL), game.join(SAVED)).map_err(|e| e.to_string())?;
         fs::rename(&staged_proxy, game.join(ORIGINAL)).map_err(|e| e.to_string())?;
         fs::rename(&staged_state, &marker).map_err(|e| e.to_string())?;
@@ -316,7 +358,7 @@ fn install(game: &Path, proxy: &Path, runtime: &Path, config: &Path) -> Result<(
         }
         for (path, bytes_hash) in [
             (game.join(RUNTIME), &state.runtime_sha256),
-            (cfg_dir.join(CONFIG), &state.config_sha256),
+            (cfg_dir.join(&filename), &state.config_sha256),
             (staged_proxy.clone(), &state.proxy_sha256),
             (staged_runtime.clone(), &state.runtime_sha256),
             (staged_config.clone(), &state.config_sha256),
@@ -342,7 +384,7 @@ fn install(game: &Path, proxy: &Path, runtime: &Path, config: &Path) -> Result<(
     )
 }
 
-fn status_preflight(game: &Path) -> Result<(), String> {
+fn status_preflight(game: &Path, executable: &str) -> Result<(), String> {
     if present(&state_path(game))? || !present(&game.join(ORIGINAL))? {
         return Err(
             "installation requires a pristine original DLL and no deployment marker".into(),
@@ -351,11 +393,11 @@ fn status_preflight(game: &Path) -> Result<(), String> {
     for path in [
         game.join(SAVED),
         game.join(RUNTIME),
-        game.join("config").join(CONFIG),
+        game.join("config").join(config_name(executable)),
         game.join(QUARANTINE),
         game.join("steam_api64.intimatr-stage.dll"),
         game.join("intimatr.stage.dll"),
-        game.join("config").join("Eastward.exe.toml.intimatr-stage"),
+        game.join("config").join(format!("{}.intimatr-stage", config_name(executable))),
         game.join("intimatr-launch-deployment.stage.json"),
     ] {
         require_absent(&path)?;
@@ -365,6 +407,7 @@ fn status_preflight(game: &Path) -> Result<(), String> {
 
 fn remove(game: &Path) -> Result<(), String> {
     let state = check_installed(game)?;
+    let filename = config_name(state_executable(&state)?);
     let original = game.join(ORIGINAL);
     let saved = game.join(SAVED);
     let quarantined = game.join(QUARANTINE);
@@ -384,7 +427,7 @@ fn remove(game: &Path) -> Result<(), String> {
     for path in [
         quarantined,
         game.join(RUNTIME),
-        game.join("config").join(CONFIG),
+        game.join("config").join(&filename),
         state_path(game),
     ] {
         fs::remove_file(&path).map_err(|e| {
@@ -409,6 +452,8 @@ pub(super) fn run_launch_proxy(args: Vec<String>) -> Result<(), String> {
     let mut proxy = None;
     let mut dll = None;
     let mut config = None;
+    let mut exe = None;
+    let mut expected_sha = None;
     let mut offline = false;
     let mut closed = false;
     while let Some(arg) = iter.next() {
@@ -425,6 +470,8 @@ pub(super) fn run_launch_proxy(args: Vec<String>) -> Result<(), String> {
                     "--proxy" if proxy.is_none() => proxy = Some(value),
                     "--dll" if dll.is_none() => dll = Some(value),
                     "--config" if config.is_none() => config = Some(value),
+                    "--exe" if exe.is_none() => exe = Some(value),
+                    "--original-sha256" if expected_sha.is_none() => expected_sha = Some(value),
                     _ => {
                         return Err(format!(
                             "unexpected or repeated launch-proxy argument: {arg}"
@@ -436,15 +483,31 @@ pub(super) fn run_launch_proxy(args: Vec<String>) -> Result<(), String> {
     }
     let game = verify_game_dir(Path::new(game_dir.as_deref().ok_or("missing --game-dir")?))?;
     match action.as_str() {
-        "status" if !offline && !closed && proxy.is_none() && dll.is_none() && config.is_none() => status(&game),
-        "install" if offline && closed => install(
-            &game,
-            Path::new(proxy.as_deref().ok_or("install needs --proxy")?),
-            Path::new(dll.as_deref().ok_or("install needs --dll")?),
-            Path::new(config.as_deref().ok_or("install needs --config")?),
-        ),
-        "remove" if offline && closed && proxy.is_none() && dll.is_none() && config.is_none() => remove(&game),
-        _ => Err("usage: launch-proxy (status --game-dir DIR | install --game-dir DIR --proxy DLL --dll INTIMATR_DLL --config EASTWARD_TOML --offline-single-player --game-closed | remove --game-dir DIR --offline-single-player --game-closed)".into()),
+        "status" if !offline && !closed && proxy.is_none() && dll.is_none() && config.is_none() && exe.is_none() && expected_sha.is_none() => status(&game),
+        "install" if offline && closed => {
+            let selected = match exe {
+                Some(value) => {
+                    if expected_sha.is_none() {
+                        return Err("generic install requires --original-sha256".into());
+                    }
+                    value
+                },
+                None if game.file_name().is_some_and(|name| name == "Eastward") => {
+                    "Eastward.exe".to_owned()
+                },
+                None => return Err("generic install requires --exe and --original-sha256".into()),
+            };
+            install(
+                &game,
+                Path::new(proxy.as_deref().ok_or("install needs --proxy")?),
+                Path::new(dll.as_deref().ok_or("install needs --dll")?),
+                Path::new(config.as_deref().ok_or("install needs --config")?),
+                &selected,
+                expected_sha.as_deref(),
+            )
+        },
+        "remove" if offline && closed && proxy.is_none() && dll.is_none() && config.is_none() && exe.is_none() && expected_sha.is_none() => remove(&game),
+        _ => Err("usage: launch-proxy (status --game-dir DIR | install --game-dir DIR --proxy DLL --dll INTIMATR_DLL --config EXE_TOML [--exe GAME.exe --original-sha256 SHA256] --offline-single-player --game-closed | remove --game-dir DIR --offline-single-player --game-closed)".into()),
     }
 }
 
@@ -495,6 +558,8 @@ mod tests {
                 &self.source.join("proxy.dll"),
                 &self.source.join("intimatr.dll"),
                 &self.source.join(CONFIG),
+                "Eastward.exe",
+                None,
             )
         }
     }
@@ -550,6 +615,83 @@ mod tests {
         fs::write(fx.game.join("config").join(CONFIG), b"existing settings").unwrap();
         assert!(fx.install().is_err());
         assert!(verify_game_dir(&fx.source).is_err());
+    }
+
+    #[test]
+    fn multiple_independent_games_preserve_distinct_original_dlls_and_configs() {
+        let fx = Fixture::new();
+        let second = fx.root.join("SecondBottle/drive_c/Games/Another Game");
+        fs::create_dir_all(&second).unwrap();
+        fs::write(fx.root.join("SecondBottle/bottle.yml"), b"Name: SecondBottle\n").unwrap();
+        fs::write(second.join("Another Game.exe"), b"fixture executable").unwrap();
+        fs::write(second.join(ORIGINAL), Fixture::dll(7)).unwrap();
+        let source_config = fx.source.join("Another Game.exe.toml");
+        fs::write(&source_config, b"[target]\nexecutable = \"Another Game.exe\"\n[ui]\nenabled = false\n[rpc]\nenabled = false\n").unwrap();
+        let expected_sha = digest(&Fixture::dll(7));
+        assert!(verify_game_dir(&second).is_ok());
+        assert!(install(
+            &second,
+            &fx.source.join("proxy.dll"),
+            &fx.source.join("intimatr.dll"),
+            &source_config,
+            "Another Game.exe",
+            Some(&expected_sha),
+        ).is_ok());
+        fx.install().unwrap();
+        assert_eq!(state_executable(&check_installed(&second).unwrap()).unwrap(), "Another Game.exe");
+        assert_eq!(state_executable(&check_installed(&fx.game).unwrap()).unwrap(), "Eastward.exe");
+        assert_eq!(fs::read(second.join(SAVED)).unwrap(), Fixture::dll(7));
+        assert!(second.join("config/Another Game.exe.toml").exists());
+        assert!(install(
+            &second,
+            &fx.source.join("proxy.dll"),
+            &fx.source.join("intimatr.dll"),
+            &source_config,
+            "Another Game.exe",
+            Some(&digest(&Fixture::dll(8))),
+        ).is_err());
+        remove(&second).unwrap();
+        assert_eq!(fs::read(second.join(ORIGINAL)).unwrap(), Fixture::dll(7));
+        assert!(fx.game.join(SAVED).exists());
+        remove(&fx.game).unwrap();
+    }
+
+    #[test]
+    fn generic_install_refuses_wrong_original_digest_and_wrong_config_target() {
+        let fx = Fixture::new();
+        let wrong_sha = digest(&Fixture::dll(40));
+        assert!(install(
+            &fx.game,
+            &fx.source.join("proxy.dll"),
+            &fx.source.join("intimatr.dll"),
+            &fx.source.join(CONFIG),
+            "Eastward.exe",
+            Some(&wrong_sha),
+        ).is_err());
+        assert!(!state_path(&fx.game).exists());
+        let correct_sha = digest(&Fixture::dll(1));
+        assert!(install(
+            &fx.game,
+            &fx.source.join("proxy.dll"),
+            &fx.source.join("intimatr.dll"),
+            &fx.source.join(CONFIG),
+            "Different.exe",
+            Some(&correct_sha),
+        ).is_err());
+        assert!(!fx.game.join(SAVED).exists());
+    }
+
+    #[test]
+    fn legacy_v1_deployment_marker_remains_readable() {
+        let fx = Fixture::new();
+        fx.install().unwrap();
+        let mut v: serde_json::Value =
+            serde_json::from_slice(&fs::read(state_path(&fx.game)).unwrap()).unwrap();
+        v["version"] = serde_json::json!(1);
+        v.as_object_mut().unwrap().remove("executable");
+        fs::write(state_path(&fx.game), serde_json::to_vec_pretty(&v).unwrap()).unwrap();
+        assert!(check_installed(&fx.game).is_ok());
+        remove(&fx.game).unwrap();
     }
 
     #[cfg(unix)]
