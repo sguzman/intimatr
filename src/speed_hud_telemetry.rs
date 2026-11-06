@@ -68,7 +68,15 @@ impl HudTelemetryWorker {
     /// Never enabled by default; the launcher must opt in with an exact 1.
     /// Failure must never prevent the game from booting.
     pub fn start(module_directory: &Path) -> Result<Option<Self>, HudTelemetryError> {
-        if std::env::var(OPT_IN).ok().as_deref() != Some("1") {
+        // Reuse the established explicit startup opt-in for the common
+        // Bottles speed HUD. A dedicated telemetry opt-in also works without
+        // arming hooks and correctly displays "--".
+        if std::env::var(OPT_IN).ok().as_deref() != Some("1")
+            && std::env::var("INTIMATR_EXPERIMENTAL_STARTUP_TIMERS")
+                .ok()
+                .as_deref()
+                != Some("1")
+        {
             return Ok(None);
         }
         let path = module_directory.join(NAME);
