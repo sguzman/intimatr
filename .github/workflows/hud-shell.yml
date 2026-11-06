@@ -1,0 +1,33 @@
+name: HUD shell safety
+
+on:
+  push:
+    paths:
+      - 'scripts/bottles-hud.sh'
+      - 'scripts/test-bottles-hud.sh'
+      - '.github/workflows/hud-shell.yml'
+  pull_request:
+    paths:
+      - 'scripts/bottles-hud.sh'
+      - 'scripts/test-bottles-hud.sh'
+      - '.github/workflows/hud-shell.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  hud-shell:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify bash syntax and isolated HUD rollback
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v jq
+          command -v sha256sum
+          bash -n scripts/bottles-hud.sh
+          bash -n scripts/test-bottles-hud.sh
+          bash scripts/test-bottles-hud.sh
