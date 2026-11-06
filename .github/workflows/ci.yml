@@ -1066,7 +1066,6 @@ jobs:
           printf 'legacy_layout=0\ncustom_text=Speed\n' >"$hud_config"
           if INTIMATR_MOCK_BOTTLES_JSON="$(pwd)/target/wine-attach/mocks/hud-allowlisted-env.json" \
               target/release/intimatr-bottles profile-launch "${preflight_args[@]}" --launch \
-
               >target/wine-attach/preflight-ambiguous.stdout \
               2>target/wine-attach/preflight-ambiguous.stderr; then
             echo "ERROR: read-only preflight also accepted --launch" >&2
