@@ -21,6 +21,7 @@ use crate::{
     rpc::{self, PostActionHandler, RpcServerError, RpcServerHandle},
     speed_commands::SpeedPreviewExecutor,
     speed_hotkey_worker::SpeedHotkeyWorker,
+    speed_hud_telemetry::HudTelemetryWorker,
     speed_profile_load::wrap_explicit_preview_from_env,
     ui::{self, UiError, UiHandle},
 };
@@ -47,6 +48,8 @@ pub struct RuntimeContext {
     _rpc_server: Option<RpcServerHandle>,
     #[cfg(windows)]
     _speed_hotkey_worker: Option<SpeedHotkeyWorker>,
+    #[cfg(windows)]
+    _hud_telemetry: Option<HudTelemetryWorker>,
     _logging_guard: LoggingGuard,
 }
 
@@ -104,6 +107,11 @@ pub fn shutdown() -> Result<(), RuntimeError> {
                 && let Err(error) = worker.stop()
             {
                 warn!(error = %error, "failed to stop focused speed preview on shutdown");
+            }
+            if let Some(mut worker) = context._hud_telemetry.take()
+                && let Err(error) = worker.stop()
+            {
+                warn!(error = %error, "failed to stop HUD telemetry during shutdown");
             }
             context.command_executor.shutdown();
         }
@@ -246,6 +254,16 @@ fn bootstrap_inner(
     #[cfg(windows)]
     let debugger_ui =
         start_debugger_ui_if_enabled(&config, &module_directory, Arc::clone(&command_executor))?;
+    // A host overlay reads only the observed, already-installed virtual rate.
+    // This publisher never enables timer hooks or touches render APIs.
+    #[cfg(windows)]
+    let hud_telemetry = match HudTelemetryWorker::start(&module_directory) {
+        Ok(worker) => worker,
+        Err(error) => {
+            warn!(error = %error, "opt-in Intimatr HUD telemetry unavailable");
+            None
+        }
+    };
 
     Ok(RuntimeContext {
         config,
@@ -264,6 +282,8 @@ fn bootstrap_inner(
         _rpc_server: rpc_server,
         #[cfg(windows)]
         _speed_hotkey_worker: hotkey_worker,
+        #[cfg(windows)]
+        _hud_telemetry: hud_telemetry,
         _logging_guard: logging_guard,
     })
 }

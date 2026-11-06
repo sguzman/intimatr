@@ -43,6 +43,8 @@ pub mod speed_hook_lifecycle;
 #[cfg(windows)]
 pub mod speed_hotkey_worker;
 pub mod speed_hotkeys;
+#[cfg(windows)]
+pub mod speed_hud_telemetry;
 pub mod speed_input;
 #[cfg(windows)]
 pub mod speed_input_windows;
