@@ -29,6 +29,25 @@ cargo bench --bench scanner
 
 See `docs/performance.md` for benchmark shape and interpretation.
 
+## Experimental Wine/Bottles speed control
+
+The separate Linux/Wine expansion adds virtual-clock speed controls for
+explicitly selected **64-bit, offline single-player** games. A compatible
+Steam-API forwarding proxy can load the Windows DLL during a normal game
+launch; the native Linux manager can inspect candidates, install a separately
+built proxy for each selected game, and restore owned original files. These
+operations are **not** a blanket loader for every Bottles game. Static PE
+imports and a successful install do not prove live gameplay acceleration.
+
+An optional MangoHud overlay shows FPS, frame time, CPU/GPU usage, memory, and
+the installed virtual-clock multiplier. The displayed rate is not a measured
+gameplay-speed ratio, and unsupported or inactive timer hooks report `--`.
+
+- [Multi-game Bottles installation and rollback](docs/bottles-multi-game.md)
+- [Per-game MangoHud performance overlay](docs/performance-hud.md)
+- [Speed profiles and activation requirements](docs/speed-profiles.md)
+- [Compatibility roadmap and verified limitations](docs/speed-control-roadmap.md)
+
 ## Per-game configuration
 
 Each executable gets exactly one TOML file named after the executable, including the `.exe` suffix:
