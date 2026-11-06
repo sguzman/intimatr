@@ -75,16 +75,14 @@ jq -e --arg first "$first" --arg second "$second" '
   ([.games[] | select(.game_dir == $first and .speed_sample_state == "fresh"
     and .observed_installed_clock_rate == "2.00x")] | length == 1)
   and ([.games[] | select(.game_dir == $second and .speed_sample_state == "expired"
-    and .observed_installed_clock_rate == null)] | length == 1)'
-  "$tmp/diagnose-mixed.json" >/dev/null
+    and .observed_installed_clock_rate == null)] | length == 1)' "$tmp/diagnose-mixed.json" >/dev/null
 rm -f -- "$first/intimatr-hud-rate.txt" "$second/intimatr-hud-rate.txt"
 ln -s "$tmp/diagnose-empty.json" "$first/intimatr-hud-rate.txt"
 bash scripts/bottles-hud.sh diagnose "$manifest" >"$tmp/diagnose-unsafe.json"
 jq -e --arg first "$first" '
   [.games[] | select(.game_dir == $first
     and .speed_sample_state == "unsafe_or_invalid"
-    and .observed_installed_clock_rate == null)] | length == 1'
-  "$tmp/diagnose-unsafe.json" >/dev/null
+    and .observed_installed_clock_rate == null)] | length == 1' "$tmp/diagnose-unsafe.json" >/dev/null
 rm -- "$first/intimatr-hud-rate.txt"
 
 for dir in "$first" "$second"; do
@@ -114,8 +112,7 @@ grep -q 'MangoHud config was modified' "$tmp/tampered.err"
 bash scripts/bottles-hud.sh diagnose "$manifest" >"$tmp/diagnose-tampered.json"
 jq -e --arg second "$second" '
   [.games[] | select(.game_dir == $second
-    and .managed_config_state == "modified")] | length == 1'
-  "$tmp/diagnose-tampered.json" >/dev/null
+    and .managed_config_state == "modified")] | length == 1' "$tmp/diagnose-tampered.json" >/dev/null
 test -f "$first/MangoHud.conf"
 test -f "$second/MangoHud.conf"
 cp -- "$tmp/second-original.conf" "$second/MangoHud.conf"
