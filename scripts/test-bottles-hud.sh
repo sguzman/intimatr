@@ -2,6 +2,9 @@
 # Standalone read-only/temporary-fixture regression for the MangoHud adapter.
 # No Wine, graphical session, game installation, sudo, or Rust build required.
 set -euo pipefail
+# Preserve the failing operation and location without relying on a CI rerun
+# with global shell tracing, which could hide the original cause in noise.
+trap 'result=$?; echo "HUD shell fixture failed at line $LINENO: $BASH_COMMAND (exit $result)" >&2' ERR
 
 command -v jq >/dev/null || { echo "jq is required" >&2; exit 2; }
 command -v sha256sum >/dev/null || { echo "sha256sum is required" >&2; exit 2; }
