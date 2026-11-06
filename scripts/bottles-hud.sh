@@ -131,21 +131,8 @@ vram
 procmem
 custom_text_center=INTIMATR
 custom_text=Speed
-# Telemetry refreshes every 2s while active; abandon values older than 6s.
-# Escape '
-toggle_hud=Shift_R+F12
-EOF
-  ) || { echo "Cannot create MangoHud config in: $game" >&2; exit 1; }
-  checksum="$(sha256sum "$output" | cut -d' ' -f1)"
-  printf '%s\n' "$checksum" >"$game/$marker" || {
-    rm -f -- "$output"
-    echo "Failed to write ownership marker" >&2
-    exit 1
-  }
-  echo "Configured Intimatr HUD for: $game"
-done
-echo "Enable MangoHud in Bottles for the selected games. With startup timing opted in, the DLL writes observed speed to the game-specific rate file."
- here so the shell command runs in MangoHud, not at install time.
+# Telemetry writes at least every 2s. Reject samples older than 6s.
+# Command substitutions are escaped so they run inside MangoHud, not here.
 exec=mtime=\$(stat -c %Y '$game/$rate' 2>/dev/null) && now=\$(date +%s) && [ \$((now - mtime)) -ge 0 ] && [ \$((now - mtime)) -le 6 ] && [ -s '$game/$rate' ] && cat '$game/$rate' 2>/dev/null || printf '%s\n' '--'
 toggle_hud=Shift_R+F12
 EOF
