@@ -44,13 +44,25 @@ for file in bin/intimatr-bottles wine/intimatr.dll wine/intimatr-speed.exe \
   wine/wine-process-list.exe wine/wine-game-attach-helper.exe \
   config/speed-overrides.example.toml \
   config/ExampleGame.exe.toml README.md docs/linux-wine-build.md \
-  docs/rpc.md docs/speed-control-roadmap.md VERSION.txt SHA256SUMS.txt; do
+  docs/rpc.md docs/speed-control-roadmap.md \
+  docs/bottles-multi-game.md docs/performance-hud.md docs/speed-profiles.md \
+  config/bottles-proxy-template.toml \
+  scripts/bottles-discover.sh scripts/bottles-multi-game.sh \
+  scripts/bottles-hud.sh scripts/generate-steam-api64-forwarders.sh \
+  native/launch_proxy/steam_api64_bridge.c VERSION.txt SHA256SUMS.txt; do
   test -s "$root/$file" || { echo "Missing release entry: $file" >&2; exit 1; }
 done
 (
   cd "$root"
   sha256sum -c SHA256SUMS.txt
 )
+for script in bottles-discover.sh bottles-multi-game.sh bottles-hud.sh generate-steam-api64-forwarders.sh; do
+  test -x "$root/scripts/$script" || {
+    echo "Packaged deployment script is not executable: $script" >&2
+    exit 1
+  }
+  bash -n "$root/scripts/$script"
+done
 grep -Fxq "Version: $version" "$root/VERSION.txt"
 file "$root/bin/intimatr-bottles" | grep -q 'ELF 64-bit'
 file "$root/wine/intimatr.dll" | grep -Eq 'PE32[+].*DLL.*x86-64'
