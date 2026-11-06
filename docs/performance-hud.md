@@ -75,6 +75,11 @@ Then, with those selected games closed:
 bash scripts/bottles-hud.sh install /absolute/selection.json --offline-single-player --games-closed
 ```
 
+Game directories containing apostrophes, double quotes, dollar signs and
+shell-looking filename text are supported: the rate-file path is escaped
+as one POSIX shell argument, never evaluated as a command. Embedded
+newlines and tabs remain invalid.
+
 This creates only `MangoHud.conf` and an ownership SHA-256 marker beside
 each selected game executable. If a later selected game cannot be configured,
 the installer rolls back any unchanged HUD files it created earlier in the

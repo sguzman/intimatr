@@ -29,7 +29,7 @@ jq -e '
   all(.games[];
     type == "object" and
     (.game_dir | type == "string" and startswith("/") and
-       (test("[\\t\\r\\n\\x22\\x27]") | not)) and
+       (test("[\\t\\r\\n]") | not)) and
     (.executable | type == "string" and
        test("^[A-Za-z0-9_][A-Za-z0-9 ._-]{0,123}\\.[eE][xX][eE]$") and
        (contains("..") | not))
@@ -45,6 +45,15 @@ done < <(jq -r '.games[] | [.game_dir, .executable] | @tsv' "$manifest")
 marker="intimatr-mangohud.sha256"
 config="MangoHud.conf"
 rate="intimatr-hud-rate.txt"
+
+# MangoHud exec runs under /bin/sh. Escape the complete path as a single
+# POSIX shell argument. Dollar expressions and quotes stay literal filename
+# characters; tab/newline are rejected by the manifest schema.
+quote_posix_argument() {
+  local value="$1"
+  value="${value//\'/\'\\\'\'}"
+  printf "'%s'" "$value"
+}
 
 # Fully validate every item before modifying one. Never overwrite user
 # settings, or an already-installed config from another tool.
@@ -226,8 +235,8 @@ rollback_install() {
 }
 trap rollback_install EXIT
 for game in "${games[@]}"; do
-  # Quote paths as an argument to MangoHud's exec shell. Manifest validation
-  # rejects both quote types, controls, and embedded newlines.
+  # Quote the game-specific rate path without evaluating filename text.
+  quoted_rate_path="$(quote_posix_argument "$game/$rate")"
   output="$game/$config"
   (
     set -C
@@ -249,7 +258,7 @@ custom_text_center=INTIMATR
 custom_text=Speed
 # Telemetry writes at least every 2s. Reject samples older than 6s.
 # Command substitutions are escaped so they run inside MangoHud, not here.
-exec=mtime=\$(stat -c %Y '$game/$rate' 2>/dev/null) && now=\$(date +%s) && [ \$((now - mtime)) -ge 0 ] && [ \$((now - mtime)) -le 6 ] && [ -s '$game/$rate' ] && cat '$game/$rate' 2>/dev/null || printf '%s\n' '--'
+exec=mtime=\$(stat -c %Y ${quoted_rate_path} 2>/dev/null) && now=\$(date +%s) && [ \$((now - mtime)) -ge 0 ] && [ \$((now - mtime)) -le 6 ] && [ -s ${quoted_rate_path} ] && cat ${quoted_rate_path} 2>/dev/null || printf '%s\n' '--'
 toggle_hud=Shift_R+F12
 EOF
   ) || { echo "Cannot create MangoHud config in: $game" >&2; exit 1; }

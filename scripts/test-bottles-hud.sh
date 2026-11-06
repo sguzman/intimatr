@@ -126,4 +126,33 @@ for dir in "$first" "$second"; do
   test ! -e "$dir/MangoHud.conf"
   test ! -e "$dir/intimatr-mangohud.sha256"
 done
-echo "HUD shell fixture: two-game rollback, unchanged ownership, stale-rate fallback, and cleanup verified"
+# A legitimate game directory may contain quotes, dollars or shell-looking text.
+# Nothing inside that directory's name can run as a shell command.
+quoted="$tmp/It's \"Quoted\" \$(touch\${IFS}pwned) Game"
+mkdir -p "$quoted"
+printf 'fixture\n' >"$quoted/Quoted Game.exe"
+printf '{}\n' >"$quoted/intimatr-launch-deployment.json"
+printf 'fixture\n' >"$quoted/intimatr.dll"
+jq -n --arg path "$quoted" \
+  '{version:1,games:[{game_dir:$path,executable:"Quoted Game.exe"}]}' \
+  >"$tmp/quoted-manifest.json"
+(
+  cd "$tmp"
+  bash "$OLDPWD/scripts/bottles-hud.sh" install "$tmp/quoted-manifest.json" \
+    --offline-single-player --games-closed >"$tmp/quoted-install.log"
+  cmd="$(sed -n 's/^exec=//p' "$quoted/MangoHud.conf")"
+  test "$(sh -c "$cmd")" = '--'
+  printf '1.75x\n' >"$quoted/intimatr-hud-rate.txt"
+  test "$(sh -c "$cmd")" = '1.75x'
+  touch -d '12 seconds ago' "$quoted/intimatr-hud-rate.txt"
+  test "$(sh -c "$cmd")" = '--'
+  test ! -e "$tmp/pwned"
+  bash "$OLDPWD/scripts/bottles-hud.sh" diagnose "$tmp/quoted-manifest.json" \
+    >"$tmp/quoted-status.json"
+  jq -e '.games[0].managed_config_state == "owned_unchanged"' \
+    "$tmp/quoted-status.json" >/dev/null
+  bash "$OLDPWD/scripts/bottles-hud.sh" remove "$tmp/quoted-manifest.json" \
+    --offline-single-player --games-closed >"$tmp/quoted-remove.log"
+  test ! -e "$quoted/MangoHud.conf"
+)
+echo "HUD shell fixture: two-game rollback, ownership, safely quoted paths, stale-rate fallback and cleanup verified"
