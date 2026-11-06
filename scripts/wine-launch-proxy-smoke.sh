@@ -149,6 +149,30 @@ grep -q 'executable = "First Game.exe"' "$first/config/First Game.exe.toml"
 grep -q 'executable = "Second Game.exe"' "$second/config/Second Game.exe.toml"
 cmp "$first/steam_api64_intimatr_original.dll" "$dir/steam_api64_intimatr_original.dll"
 cmp "$second/steam_api64_intimatr_original.dll" "$dir/steam_api64_intimatr_original.dll"
+# The separate MangoHud adapter installs no render hook. Validate the compact
+# metrics layout and independent speed-file paths under the two game dirs.
+bash scripts/bottles-hud.sh plan "$fixtures/batch-manifest.json" >"$fixtures/hud-plan.log"
+bash scripts/bottles-hud.sh install "$fixtures/batch-manifest.json" \
+  --offline-single-player --games-closed >"$fixtures/hud-install.log"
+grep -Fq "exec=cat '$first/intimatr-hud-rate.txt'" "$first/MangoHud.conf"
+grep -Fq "exec=cat '$second/intimatr-hud-rate.txt'" "$second/MangoHud.conf"
+for path in "$first" "$second"; do
+  grep -Fxq 'fps' "$path/MangoHud.conf"
+  grep -Fxq 'cpu_stats' "$path/MangoHud.conf"
+  grep -Fxq 'gpu_stats' "$path/MangoHud.conf"
+  grep -Fxq 'ram' "$path/MangoHud.conf"
+  grep -Fxq 'vram' "$path/MangoHud.conf"
+  test -f "$path/intimatr-mangohud.sha256"
+done
+if bash scripts/bottles-hud.sh install "$fixtures/batch-manifest.json" \
+  --offline-single-player --games-closed >"$fixtures/hud-duplicate.stdout" 2>"$fixtures/hud-duplicate.stderr"; then
+  echo "ERROR: duplicate MangoHud config deployment was allowed" >&2
+  exit 1
+fi
+bash scripts/bottles-hud.sh remove "$fixtures/batch-manifest.json" \
+  --offline-single-player --games-closed >"$fixtures/hud-remove.log"
+test ! -e "$first/MangoHud.conf"
+test ! -e "$second/MangoHud.conf"
 "$absolute_manager" launch-proxy status --game-dir "$first" | jq -e '.status == "installed"' >/dev/null
 "$absolute_manager" launch-proxy status --game-dir "$second" | jq -e '.status == "installed"' >/dev/null
 bash scripts/bottles-multi-game.sh remove "$fixtures/batch-manifest.json" "$absolute_manager" \
