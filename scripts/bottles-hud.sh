@@ -4,7 +4,7 @@
 set -euo pipefail
 
 usage() {
-  echo "Usage: bash scripts/bottles-hud.sh (plan MANIFEST_JSON | install MANIFEST_JSON --offline-single-player --games-closed | remove MANIFEST_JSON --offline-single-player --games-closed)" >&2
+  echo "Usage: bash scripts/bottles-hud.sh (plan MANIFEST_JSON | status MANIFEST_JSON | install MANIFEST_JSON --offline-single-player --games-closed | remove MANIFEST_JSON --offline-single-player --games-closed)" >&2
   exit 2
 }
 
@@ -14,7 +14,7 @@ manifest="$2"
 shift 2
 [[ "$manifest" == /* && -f "$manifest" && ! -L "$manifest" ]] || usage
 case "$action" in
-  plan) [[ $# == 0 ]] || usage ;;
+  plan|status) [[ $# == 0 ]] || usage ;;
   install|remove)
     [[ $# == 2 && "$1" == --offline-single-player && "$2" == --games-closed ]] || usage
     ;;
@@ -53,8 +53,11 @@ for i in "${!games[@]}"; do
   exe="${exes[i]}"
   [[ -d "$game" && ! -L "$game" && -f "$game/$exe" && ! -L "$game/$exe" ]] ||
     { echo "Invalid game/executable: $game/$exe" >&2; exit 1; }
-  [[ -f "$game/intimatr-launch-deployment.json" && -f "$game/intimatr.dll" ]] ||
-    { echo "Intimatr proxy not found in: $game" >&2; exit 1; }
+  # HUD removal remains possible after the separate DLL proxy is uninstalled.
+  if [[ "$action" == plan || "$action" == install ]]; then
+    [[ -f "$game/intimatr-launch-deployment.json" && -f "$game/intimatr.dll" ]] ||
+      { echo "Intimatr proxy not found in: $game" >&2; exit 1; }
+  fi
   if [[ "$action" == install ]]; then
     [[ ! -e "$game/$config" && ! -L "$game/$config" && ! -e "$game/$marker" && ! -L "$game/$marker" ]] ||
       { echo "Refusing existing MangoHud configuration or marker: $game" >&2; exit 1; }
@@ -68,6 +71,27 @@ for i in "${!games[@]}"; do
   fi
 done
 
+if [[ "$action" == status ]]; then
+  for game in "${games[@]}"; do
+    if [[ ! -e "$game/$config" && ! -L "$game/$config" &&
+          ! -e "$game/$marker" && ! -L "$game/$marker" ]]; then
+      echo "HUD absent: $game"
+    elif [[ -f "$game/$config" && ! -L "$game/$config" &&
+            -f "$game/$marker" && ! -L "$game/$marker" ]]; then
+      expected="$(cat "$game/$marker")"
+      observed="$(sha256sum "$game/$config" | cut -d' ' -f1)"
+      if [[ "$expected" == "$observed" ]]; then
+        echo "HUD owned (unchanged): $game"
+      else
+        echo "HUD modified (refusing automatic removal): $game"
+      fi
+    else
+      echo "HUD unmanaged or incomplete: $game"
+    fi
+  done
+  echo "Status is read-only; no games or HUD configs were modified."
+  exit 0
+fi
 if [[ "$action" == plan ]]; then
   for i in "${!games[@]}"; do
     echo "HUD candidate: ${exes[i]} in ${games[i]}"

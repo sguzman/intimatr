@@ -1,6 +1,6 @@
 # Intimatr Milestones
 
-**Current expansion baseline (2026-11-06): 19/110 weighted points (17% rounded).** This includes 16 points verified on the original 100-point speed roadmap plus 3 points for the separately verified MangoHud telemetry channel. The newly requested HUD extends scope by 10 points; earlier 16/100 entries below are historical checkpoints, not current full-scope percentages. The latest batch HUD and release-packaging changes are pending CI and receive no additional credit yet.
+**Current expansion baseline (2026-11-06): 23/110 weighted points (21% rounded).** This includes 16 points verified on the original 100-point speed roadmap plus 7 HUD points (telemetry, two-game reversible config, distributable packaging). The newly requested HUD extends scope by 10 points; earlier 16/100 entries below are historical checkpoints. All three CI jobs passed at [run 42248857757](https://github.com/sguzman/intimatr/actions/runs/42248857757). Further HUD teardown and MIT packaging improvements are uncredited until their new CI passes.
 
 Work is ordered by dependency: later phases should build on the shared core instead of bypassing it.
 
@@ -165,11 +165,11 @@ Work is ordered by dependency: later phases should build on the shared core inst
 - [ ] INT-1703 🏁 End-to-end owner acceptance checkpoint.
 
 ## 18. Optional in-game performance HUD 🎛️
-**Status:** active (3/10 added points verified). **Weight:** 10 points added to the original 100-point expansion, yielding a 110-point full-scope denominator.
+**Status:** active (7/10 added points verified). **Weight:** 10 points added to the original 100-point expansion, yielding a 110-point full-scope denominator.
 - [x] INT-1801 🖧 Read-only installed-hook-rate export to MangoHud (3 pts; Windows/Wine fixture tests passed, CI 42230898473).
-- [ ] INT-1802 🎛️ Reversible per-game MangoHud configs and live/missing rate regression (3 pts; implemented, latest CI pending).
+- [x] INT-1802 🎛️ Reversible per-game MangoHud configs and live/missing rate regression (3 pts; two-game Wine fixture, CI 42248857757).
 - [ ] INT-1803 🍾 Actual Bottles/Wayland/MangoHud overlay and speed-change QA (3 pts; native-game evidence outstanding).
-- [ ] INT-1804 📦 Self-contained Linux/Wine release including batch proxy and HUD tools (1 pt; packaging updated, verification pending).
+- [x] INT-1804 📦 Self-contained Linux/Wine release including batch proxy and HUD tools (1 pt; archive verified, CI 42248857757).
 
 **Expanded roadmap and precise task acceptance criteria:** [Speed Control and Bottles Integration Roadmap](docs/speed-control-roadmap.md).
 

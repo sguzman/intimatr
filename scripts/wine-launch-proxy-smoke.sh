@@ -171,19 +171,36 @@ for path in "$first" "$second"; do
   test "$(bash -c "$hud_exec")" = '2.00x'
   rm -- "$path/intimatr-hud-rate.txt"
 done
+bash scripts/bottles-hud.sh status "$fixtures/batch-manifest.json" >"$fixtures/hud-owned-status.log"
+test "$(grep -c '^HUD owned (unchanged): ' "$fixtures/hud-owned-status.log")" -eq 2
 if bash scripts/bottles-hud.sh install "$fixtures/batch-manifest.json" \
   --offline-single-player --games-closed >"$fixtures/hud-duplicate.stdout" 2>"$fixtures/hud-duplicate.stderr"; then
   echo "ERROR: duplicate MangoHud config deployment was allowed" >&2
   exit 1
 fi
+# A tampered config must prevent the entire batch from being removed.
+cp -- "$second/MangoHud.conf" "$fixtures/second-hud-original.conf"
+printf '# local customization\n' >>"$second/MangoHud.conf"
+if bash scripts/bottles-hud.sh remove "$fixtures/batch-manifest.json" \
+  --offline-single-player --games-closed >"$fixtures/hud-tampered.stdout" 2>"$fixtures/hud-tampered.stderr"; then
+  echo "ERROR: modified MangoHud config removed without consent" >&2
+  exit 1
+fi
+grep -q 'MangoHud config was modified' "$fixtures/hud-tampered.stderr"
+test -f "$first/MangoHud.conf" && test -f "$second/MangoHud.conf"
+bash scripts/bottles-hud.sh status "$fixtures/batch-manifest.json" >"$fixtures/hud-modified-status.log"
+grep -Fq "HUD modified (refusing automatic removal): $second" "$fixtures/hud-modified-status.log"
+cp -- "$fixtures/second-hud-original.conf" "$second/MangoHud.conf"
+# Exercise both cleanup orders: remove DLL proxies before the independent HUD.
+bash scripts/bottles-multi-game.sh remove "$fixtures/batch-manifest.json" "$absolute_manager" \
+  --offline-single-player --games-closed >"$fixtures/remove.log"
+test -f "$first/MangoHud.conf" && test -f "$second/MangoHud.conf"
 bash scripts/bottles-hud.sh remove "$fixtures/batch-manifest.json" \
   --offline-single-player --games-closed >"$fixtures/hud-remove.log"
 test ! -e "$first/MangoHud.conf"
 test ! -e "$second/MangoHud.conf"
-"$absolute_manager" launch-proxy status --game-dir "$first" | jq -e '.status == "installed"' >/dev/null
-"$absolute_manager" launch-proxy status --game-dir "$second" | jq -e '.status == "installed"' >/dev/null
-bash scripts/bottles-multi-game.sh remove "$fixtures/batch-manifest.json" "$absolute_manager" \
-  --offline-single-player --games-closed >"$fixtures/remove.log"
+bash scripts/bottles-hud.sh status "$fixtures/batch-manifest.json" >"$fixtures/hud-absent-status.log"
+test "$(grep -c '^HUD absent: ' "$fixtures/hud-absent-status.log")" -eq 2
 cmp "$first/steam_api64.dll" "$dir/steam_api64_intimatr_original.dll"
 cmp "$second/steam_api64.dll" "$dir/steam_api64_intimatr_original.dll"
 test ! -e "$first/intimatr-launch-deployment.json"

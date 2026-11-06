@@ -46,6 +46,13 @@ games, check the candidates:
 bash scripts/bottles-hud.sh plan /absolute/selection.json
 ```
 
+To inspect installed, absent, or locally modified HUD configurations without
+changing anything, run:
+
+```sh
+bash scripts/bottles-hud.sh status /absolute/selection.json
+```
+
 Then, with those selected games closed:
 
 ```sh
@@ -56,7 +63,10 @@ This creates only `MangoHud.conf` and an ownership SHA-256 marker beside
 each selected game executable. It refuses existing configs rather than
 overwriting user's prior MangoHud settings. The config is specific to that
 game's install directory, so it does not change global HUD preferences or
-affect other games.
+affect other games. MangoHud normally discovers a `MangoHud.conf` beside the
+application; an explicit `MANGOHUD_CONFIGFILE` or `MANGOHUD_CONFIG` override
+can take precedence, so check those variables if the per-game layout is
+not showing.
 
 Enable MangoHud for the selected bottle using its **Monitor Performance /
 MangoHud** setting, or launch the Vulkan game with the `MANGOHUD=1` environment
@@ -102,4 +112,6 @@ bash scripts/bottles-hud.sh remove /absolute/selection.json --offline-single-pla
 
 If `MangoHud.conf` has been modified since the script created it,
 removal refuses to delete it. The Intimatr DLL and its original-DLL backup
-are untouched by HUD removal.
+are untouched by HUD removal. An unchanged, Intimatr-owned HUD can also be
+removed *after* the managed DLL proxy has been removed; the HUD cleanup does
+not depend on the proxy still being installed.

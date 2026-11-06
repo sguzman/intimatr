@@ -18,7 +18,7 @@ mkdir -p dist
 for file in "$native" "$windows/intimatr.dll" "$windows/intimatr-speed.exe" \
   "$windows/wine-process-list.exe" "$windows/wine-game-attach-helper.exe" \
   config/speed-overrides.example.toml \
-  config/ExampleGame.exe.toml README.md docs/linux-wine-build.md \
+  config/ExampleGame.exe.toml README.md LICENSE docs/linux-wine-build.md \
   docs/rpc.md docs/speed-control-roadmap.md \
   docs/bottles-multi-game.md docs/performance-hud.md docs/speed-profiles.md \
   config/bottles-proxy-template.toml \
@@ -45,6 +45,7 @@ install -m 0644 config/speed-overrides.example.toml "$root/config/"
 install -m 0644 config/ExampleGame.exe.toml "$root/config/"
 install -m 0644 config/bottles-proxy-template.toml "$root/config/"
 install -m 0644 README.md "$root/README.md"
+install -m 0644 LICENSE "$root/LICENSE"
 for script in bottles-discover.sh bottles-multi-game.sh bottles-hud.sh generate-steam-api64-forwarders.sh; do
   install -m 0755 "scripts/$script" "$root/scripts/$script"
 done
@@ -72,7 +73,7 @@ EOF
     scripts/bottles-discover.sh scripts/bottles-multi-game.sh \
     scripts/bottles-hud.sh scripts/generate-steam-api64-forwarders.sh \
     native/launch_proxy/steam_api64_bridge.c \
-    README.md docs/linux-wine-build.md docs/rpc.md \
+    README.md LICENSE docs/linux-wine-build.md docs/rpc.md \
     docs/speed-control-roadmap.md docs/bottles-multi-game.md \
     docs/performance-hud.md docs/speed-profiles.md VERSION.txt > SHA256SUMS.txt
 )

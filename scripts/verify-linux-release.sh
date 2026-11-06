@@ -43,7 +43,7 @@ fi
 for file in bin/intimatr-bottles wine/intimatr.dll wine/intimatr-speed.exe \
   wine/wine-process-list.exe wine/wine-game-attach-helper.exe \
   config/speed-overrides.example.toml \
-  config/ExampleGame.exe.toml README.md docs/linux-wine-build.md \
+  config/ExampleGame.exe.toml README.md LICENSE docs/linux-wine-build.md \
   docs/rpc.md docs/speed-control-roadmap.md \
   docs/bottles-multi-game.md docs/performance-hud.md docs/speed-profiles.md \
   config/bottles-proxy-template.toml \
@@ -63,6 +63,7 @@ for script in bottles-discover.sh bottles-multi-game.sh bottles-hud.sh generate-
   }
   bash -n "$root/scripts/$script"
 done
+grep -Fq 'MIT License' "$root/LICENSE"
 grep -Fxq "Version: $version" "$root/VERSION.txt"
 file "$root/bin/intimatr-bottles" | grep -q 'ELF 64-bit'
 file "$root/wine/intimatr.dll" | grep -Eq 'PE32[+].*DLL.*x86-64'
