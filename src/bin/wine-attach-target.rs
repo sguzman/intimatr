@@ -373,8 +373,14 @@ mod target {
                             std::fs::write(&verified, b"four_timers_verified").map_err(
                                 |error| format!("cannot publish attach status: {error}"),
                             )?;
+                            // The host still performs independent status,
+                            // stop and race checks after the six measured-rate
+                            // gates. The old 10s final-release timeout could
+                            // expire before that work completed on loaded Wine
+                            // runners. Keep the fixture bound to 60s, but do
+                            // not change production DLL or timing behavior.
                             let mut released = false;
-                            for _ in 0..400 {
+                            for _ in 0..2400 {
                                 if release.is_file() {
                                     released = true;
                                     break;
