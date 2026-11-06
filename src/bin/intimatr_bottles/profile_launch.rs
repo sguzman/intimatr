@@ -40,6 +40,7 @@ struct ProfileLaunchOptions {
     experimental_four_timers: bool,
     check_only: bool,
     mangohud: bool,
+    managed_mangohud: bool,
     mangohud_config: Option<String>,
 }
 
@@ -56,6 +57,7 @@ impl ProfileLaunchOptions {
         let mut check_only = false;
         let mut experimental_four_timers = false;
         let mut mangohud = false;
+        let mut managed_mangohud = false;
         let mut mangohud_config = None;
         let mut iter = args.iter();
         while let Some(flag) = iter.next() {
@@ -80,11 +82,16 @@ impl ProfileLaunchOptions {
                     mangohud = true;
                     continue;
                 }
+                "--managed-mangohud" if !managed_mangohud => {
+                    managed_mangohud = true;
+                    continue;
+                }
                 "--offline-single-player"
                 | "--launch"
                 | "--check"
                 | "--experimental-four-timers"
-                | "--mangohud" => {
+                | "--mangohud"
+                | "--managed-mangohud" => {
                     return Err(format!("duplicate acknowledgment {flag}"));
                 }
                 _ => {}
@@ -134,6 +141,11 @@ impl ProfileLaunchOptions {
                 return Err("--mangohud-config requires --mangohud and an absolute path".into());
             }
         }
+        if managed_mangohud && (!mangohud || mangohud_config.is_some()) {
+            return Err(
+                "--managed-mangohud requires --mangohud and excludes --mangohud-config".into(),
+            );
+        }
         let bottles_cli = bottles_cli.unwrap_or_else(|| "bottles-cli".to_owned());
         if Path::new(&bottles_cli)
             .file_name()
@@ -151,6 +163,7 @@ impl ProfileLaunchOptions {
             experimental_four_timers,
             check_only,
             mangohud,
+            managed_mangohud,
             mangohud_config,
         })
     }
@@ -185,7 +198,7 @@ fn verify_registered_program(
 fn verified_managed_mangohud_config(
     prefix: &Path,
     windows_executable: &str,
-    selected_path: &str,
+    selected_path: Option<&Path>,
 ) -> Result<PathBuf, String> {
     // Non-C: mappings are consulted only after the user explicitly selects
     // the HUD config; no global Z: guessing during ordinary launches.
@@ -194,7 +207,7 @@ fn verified_managed_mangohud_config(
         .parent()
         .ok_or("selected executable has no parent directory")?;
     let config = directory.join("MangoHud.conf");
-    if Path::new(selected_path) != config {
+    if selected_path.is_some_and(|path| path != config) {
         return Err("managed MangoHud config must be beside the exact selected executable".into());
     }
     let marker = directory.join("intimatr-mangohud.sha256");
@@ -267,11 +280,28 @@ pub(super) fn run_profile_launch(args: Vec<String>) -> Result<(), String> {
     }
     verify_registered_program(&registered, &options.program, &options.executable)?;
     verify_registered_program_environment(&program_json, &options.program)?;
-    let managed_hud = options
-        .mangohud_config
-        .as_deref()
-        .map(|path| verified_managed_mangohud_config(&prefix, &options.executable, path))
-        .transpose()?;
+    // Explicit auto-selection derives the path only from the exact registered
+    // executable resolved in this verified bottle. No name/basename search,
+    // global config fallback, or arbitrary host path is ever consulted.
+    let managed_hud = if options.managed_mangohud {
+        Some(verified_managed_mangohud_config(
+            &prefix,
+            &options.executable,
+            None,
+        )?)
+    } else {
+        options
+            .mangohud_config
+            .as_deref()
+            .map(|path| {
+                verified_managed_mangohud_config(
+                    &prefix,
+                    &options.executable,
+                    Some(Path::new(path)),
+                )
+            })
+            .transpose()?
+    };
 
     if options.experimental_four_timers {
         verify_named_program_environment(
@@ -335,6 +365,7 @@ pub(super) fn run_profile_launch(args: Vec<String>) -> Result<(), String> {
             "mangohud_vulkan_activation_requested": options.mangohud,
             "mangohud_telemetry_export_requested": options.mangohud,
             "mangohud_managed_config_checksum_verified": managed_hud.is_some(),
+            "mangohud_managed_config_auto_selected": options.managed_mangohud,
             "mangohud_managed_config_host_path": managed_hud,
             "bottles_run_invoked": false,
             "game_process_started_verified": false,
@@ -414,6 +445,7 @@ pub(super) fn run_profile_launch(args: Vec<String>) -> Result<(), String> {
         "mangohud_vulkan_activation_requested": options.mangohud,
         "mangohud_telemetry_export_requested": options.mangohud,
         "mangohud_managed_config_verified_before_launch": managed_hud.is_some(),
+        "mangohud_managed_config_auto_selected": options.managed_mangohud,
         "mangohud_managed_config_host_path": managed_hud,
         "mangohud_rendering_verified_in_game": false,
         "dll_auto_loaded": false,
@@ -479,6 +511,12 @@ mod tests {
             Some("/tmp/MangoHud.conf")
         );
         assert!(ProfileLaunchOptions::parse(&hud).unwrap().mangohud);
+        let auto_managed = [hud.clone(), args(&["--managed-mangohud"])].concat();
+        assert!(
+            ProfileLaunchOptions::parse(&auto_managed)
+                .unwrap()
+                .managed_mangohud
+        );
         assert!(!ProfileLaunchOptions::parse(&allowed).unwrap().mangohud);
         assert!(
             ProfileLaunchOptions::parse(&opted_in)
@@ -499,6 +537,9 @@ mod tests {
             [checked.clone(), args(&["--launch"])].concat(),
             [opted_in.clone(), args(&["--experimental-four-timers"])].concat(),
             [hud.clone(), args(&["--mangohud"])].concat(),
+            [allowed.clone(), args(&["--managed-mangohud"])].concat(),
+            [auto_managed.clone(), args(&["--managed-mangohud"])].concat(),
+            [configured.clone(), args(&["--managed-mangohud"])].concat(),
             [
                 allowed.clone(),
                 args(&["--mangohud-config", "/tmp/MangoHud.conf"]),

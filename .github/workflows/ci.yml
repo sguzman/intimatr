@@ -1004,6 +1004,20 @@ jobs:
           grep -q 'checksum changed' target/wine-attach/hud-tampered.stderr
           test ! -e "$INTIMATR_MOCK_LAUNCH_RECEIPT"
           printf 'legacy_layout=0\ncustom_text=Speed\n' >"$hud_config"
+          # Auto selection must use the exact chosen registered executable,
+          # with the same unchanged ownership marker and environment gates.
+          MANGOHUD_CONFIG='fps_only' \
+            INTIMATR_MOCK_BOTTLES_JSON="$(pwd)/target/wine-attach/mocks/hud-allowlisted-env.json" \
+            target/release/intimatr-bottles profile-launch "${launch_args[@]}" --mangohud \
+            --managed-mangohud >target/wine-attach/hud-auto-report.json
+          jq -e --arg path "$hud_config" '
+            .mangohud_managed_config_verified_before_launch == true
+            and .mangohud_managed_config_auto_selected == true
+            and .mangohud_managed_config_host_path == $path
+            and .mangohud_rendering_verified_in_game == false' \
+            target/wine-attach/hud-auto-report.json >/dev/null
+          test "$(sed -n '3p' "${INTIMATR_MOCK_LAUNCH_RECEIPT}.hud")" = "$hud_config"
+          rm -- "$INTIMATR_MOCK_LAUNCH_RECEIPT" "${INTIMATR_MOCK_LAUNCH_RECEIPT}.hud"
           # The caller's generic config must not override the owned layout.
           MANGOHUD_CONFIG='fps_only' \
             INTIMATR_MOCK_BOTTLES_JSON="$(pwd)/target/wine-attach/mocks/hud-allowlisted-env.json" \
@@ -1023,8 +1037,7 @@ jobs:
             --program 'Selected standalone offline test fixture'
             --profile "$WINEPREFIX/drive_c/intimatr-ci-speed.toml"
             --bottles-cli target/wine-attach/mocks/bottles-cli
-            --offline-single-player --check --mangohud
-            --mangohud-config "$hud_config"
+            --offline-single-player --check --mangohud --managed-mangohud
           )
           INTIMATR_MOCK_BOTTLES_JSON="$(pwd)/target/wine-attach/mocks/hud-allowlisted-env.json" \
             target/release/intimatr-bottles profile-launch "${preflight_args[@]}" \
@@ -1032,13 +1045,28 @@ jobs:
           jq -e '.operation == "read_only_registered_bottles_profile_launch_preflight"
             and .source_game_policy_verified == true
             and .mangohud_managed_config_checksum_verified == true
+            and .mangohud_managed_config_auto_selected == true
             and .mangohud_rendering_verified_in_game == false
             and .bottles_run_invoked == false
             and .game_process_started_verified == false' \
             target/wine-attach/hud-read-only-preflight.json >/dev/null
           test ! -e "$INTIMATR_MOCK_LAUNCH_RECEIPT"
+          # Force the auto-selected path to reject a modified file. It must not
+          # silently fall back to a global HUD config or launch the game.
+          printf '# tamper auto\n' >>"$hud_config"
+          if INTIMATR_MOCK_BOTTLES_JSON="$(pwd)/target/wine-attach/mocks/hud-allowlisted-env.json" \
+              target/release/intimatr-bottles profile-launch "${preflight_args[@]}" \
+              >target/wine-attach/hud-auto-tampered.stdout \
+              2>target/wine-attach/hud-auto-tampered.stderr; then
+            echo "ERROR: managed HUD auto preflight accepted tampered config" >&2
+            exit 1
+          fi
+          grep -q 'checksum changed' target/wine-attach/hud-auto-tampered.stderr
+          test ! -e "$INTIMATR_MOCK_LAUNCH_RECEIPT"
+          printf 'legacy_layout=0\ncustom_text=Speed\n' >"$hud_config"
           if INTIMATR_MOCK_BOTTLES_JSON="$(pwd)/target/wine-attach/mocks/hud-allowlisted-env.json" \
               target/release/intimatr-bottles profile-launch "${preflight_args[@]}" --launch \
+
               >target/wine-attach/preflight-ambiguous.stdout \
               2>target/wine-attach/preflight-ambiguous.stderr; then
             echo "ERROR: read-only preflight also accepted --launch" >&2

@@ -82,10 +82,13 @@ an explicit `--mangohud` option to request MangoHud and HUD telemetry for
 that selected invocation. This requires allowlisting the relevant environment
 variables in restricted Bottles environments and does not itself install
 the per-game HUD config. The `--experimental-four-timers` opt-in is separate.
-The optional `--mangohud-config /absolute/game/directory/MangoHud.conf`
-verifies and selects the exact managed HUD file for the registered game
-through `MANGOHUD_CONFIGFILE`; it requires `--mangohud` and does not change
-global settings. A CLI success report does not confirm an actual game process
+The opt-in `--mangohud --managed-mangohud` finds the installed,
+unchanged per-game HUD automatically from the exact registered executable.
+The alternative `--mangohud --mangohud-config
+/absolute/game/directory/MangoHud.conf` lets the owner select its host path
+explicitly. Both routes enforce the same checksum and environment checks
+before setting `MANGOHUD_CONFIGFILE` for this game only. Both can be
+checked without starting Wine using `--check` instead of `--launch`. A CLI success report does not confirm an actual game process
 or overlay.
 See [performance HUD setup](performance-hud.md).
 

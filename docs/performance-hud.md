@@ -98,8 +98,15 @@ arguments. It does **not** arm timer hooks unless the independent
 `--experimental-four-timers` acknowledgment is also supplied.
 
 For deterministic use of the installed **Intimatr per-game layout**, add
-`--mangohud-config /absolute/game/directory/MangoHud.conf` alongside
-`--mangohud`. The manager verifies the exact registered executable's
+`--mangohud --managed-mangohud` to the selected game's command.
+This resolves `MangoHud.conf` automatically from the **exact registered
+Windows executable** in the selected verified bottle, including a mapped
+drive only when its link resolves safely. It never guesses from a basename or
+falls back to an unrelated global HUD configuration. If the file is missing,
+modified, symlinked or unmanaged, it refuses launch. For an explicit host
+path instead, continue to use `--mangohud-config
+/absolute/game/directory/MangoHud.conf` with `--mangohud`; these selection
+forms are mutually exclusive. The manager verifies the exact registered executable's
 directory, the unchanged Intimatr ownership SHA-256 marker, and the selected
 bottle/program environment permissions for `MANGOHUD_CONFIGFILE`. It clears
 any inherited host `MANGOHUD_CONFIG` override for this invocation and
