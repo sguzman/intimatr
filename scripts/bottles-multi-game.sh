@@ -94,7 +94,65 @@ for i in "${!games[@]}"; do
     echo "Missing original steam_api64.dll: $game" >&2; exit 1;
   }
   if ! x86_64-w64-mingw32-objdump -p "$game/$exe" |
-      grep -Eiq '^[[:space:]]*DLL Name: steam_api64\.dll[[:space:]]*$'; then
+      grep -Ei '^[[:space:]]*DLL Name: steam_api64\.dll[[:space:]]*
+    echo "Selected executable lacks static steam_api64.dll import: $game/$exe" >&2
+    exit 1
+  fi
+  checksums[i]="$(sha256sum "$game/steam_api64.dll" | cut -d' ' -f1)"
+done
+
+if [[ "$action" == plan ]]; then
+  for i in "${!games[@]}"; do
+    printf 'Candidate (read only): %s | %s | original SHA256 %s\n' "${games[i]}" "${exes[i]}" "${checksums[i]}"
+  done
+  echo "Preflight only. No game files or Wine processes were changed."
+  exit 0
+fi
+
+if [[ "$action" == remove ]]; then
+  for i in "${!games[@]}"; do
+    echo "Restoring original DLL: ${games[i]}"
+    "$manager" launch-proxy remove --game-dir "${games[i]}" --offline-single-player --game-closed
+  done
+  echo "Removal attempted for every selected game; check reports above."
+  exit 0
+fi
+
+# Build each game's own forwarder before mutating ANY selected game.
+temp="$(mktemp -d "${TMPDIR:-/tmp}/intimatr-bottles-batch.XXXXXXXX")"
+trap 'rm -rf -- "$temp"' EXIT
+printf 'LIBRARY intimatr.dll\nEXPORTS\nintimatr_lifecycle_state\n' >"$temp/intimatr_import.def"
+x86_64-w64-mingw32-dlltool --def "$temp/intimatr_import.def" \
+  --dllname intimatr.dll --output-lib "$temp/libintimatr.dll.a"
+for i in "${!games[@]}"; do
+  game="${games[i]}"
+  exe="${exes[i]}"
+  mkdir -p "$temp/$i"
+  INTIMATR_OBJDUMP=x86_64-w64-mingw32-objdump \
+    bash "$generator" "$game/steam_api64.dll" "$temp/$i/forwarders.def"
+  x86_64-w64-mingw32-gcc -shared -o "$temp/$i/steam_api64.dll" \
+    "$bridge" "$temp/$i/forwarders.def" "$temp/libintimatr.dll.a"
+  x86_64-w64-mingw32-objdump -p "$temp/$i/steam_api64.dll" >"$temp/$i/headers.txt"
+  grep -Fq 'DLL Name: intimatr.dll' "$temp/$i/headers.txt"
+  grep -Fq 'steam_api64_intimatr_original.' "$temp/$i/headers.txt"
+  sed "s/__INTIMATR_GAME_EXE__/$exe/g" "$template" >"$temp/$i/$exe.toml"
+  echo "Prepared independent proxy for $exe ($(grep -c '=steam_api64_intimatr_original\.' "$temp/$i/forwarders.def") exports)"
+done
+
+# Each operation is reversible on its own. If an install fails, previously
+# installed games remain explicitly reported, not silently rolled back.
+for i in "${!games[@]}"; do
+  echo "Installing selected offline game: ${games[i]}"
+  "$manager" launch-proxy install \
+    --game-dir "${games[i]}" --exe "${exes[i]}" \
+    --original-sha256 "${checksums[i]}" \
+    --proxy "$temp/$i/steam_api64.dll" \
+    --dll "$runtime" \
+    --config "$temp/$i/${exes[i]}.toml" \
+    --offline-single-player --game-closed
+done
+echo "All selected proxies installed. Speed needs an accepted launch profile and startup opt-in; installer does not arm timers or start games."
+ >/dev/null; then
     echo "Selected executable lacks static steam_api64.dll import: $game/$exe" >&2
     exit 1
   fi
