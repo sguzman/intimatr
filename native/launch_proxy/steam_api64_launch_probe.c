@@ -17,11 +17,11 @@ static int await_hud_rate(HMODULE dll, const char *expected) {
     char path[MAX_PATH];
     DWORD length = GetModuleFileNameA(dll, path, MAX_PATH);
     if (length == 0 || length >= MAX_PATH) return 0;
-    char *backslash = strrchr(path, '\\\\');
+    char *backslash = strrchr(path, '\\');
     char *slash = strrchr(path, '/');
     char *last = backslash > slash ? backslash : slash;
     if (!last) return 0;
-    last[1] = '\\0';
+    last[1] = '\0';
     if (strlen(path) + strlen("intimatr-hud-rate.txt") >= MAX_PATH) return 0;
     strcat(path, "intimatr-hud-rate.txt");
     for (int i = 0; i < 50; ++i) {
