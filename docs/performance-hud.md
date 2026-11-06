@@ -53,6 +53,22 @@ changing anything, run:
 bash scripts/bottles-hud.sh status /absolute/selection.json
 ```
 
+To inspect the same selected games without starting Wine, render hooks,
+or modifying files, generate an independent **JSON diagnostic report**:
+
+```sh
+bash scripts/bottles-hud.sh diagnose /absolute/selection.json
+```
+
+The report distinguishes owned, modified, absent or incomplete HUD configs,
+and reports whether each `intimatr-hud-rate.txt` sample is fresh (up to six
+seconds old), expired, missing, future-dated or unsafe. Stale or unsafe
+samples never return a displayed speed value. It also reports whether the
+host `mangohud` command is visible on `PATH`, not whether the Vulkan layer
+loaded. The flags `in_game_rendering_verified` and
+`gameplay_speed_verified` always remain `false`: neither a host-side
+timestamp nor a configuration file can establish those facts.
+
 Then, with those selected games closed:
 
 ```sh

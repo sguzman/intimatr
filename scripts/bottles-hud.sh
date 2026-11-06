@@ -4,7 +4,7 @@
 set -euo pipefail
 
 usage() {
-  echo "Usage: bash scripts/bottles-hud.sh (plan MANIFEST_JSON | status MANIFEST_JSON | install MANIFEST_JSON --offline-single-player --games-closed | remove MANIFEST_JSON --offline-single-player --games-closed)" >&2
+  echo "Usage: bash scripts/bottles-hud.sh (plan MANIFEST_JSON | status MANIFEST_JSON | diagnose MANIFEST_JSON | install MANIFEST_JSON --offline-single-player --games-closed | remove MANIFEST_JSON --offline-single-player --games-closed)" >&2
   exit 2
 }
 
@@ -14,7 +14,7 @@ manifest="$2"
 shift 2
 [[ "$manifest" == /* && -f "$manifest" && ! -L "$manifest" ]] || usage
 case "$action" in
-  plan|status) [[ $# == 0 ]] || usage ;;
+  plan|status|diagnose) [[ $# == 0 ]] || usage ;;
   install|remove)
     [[ $# == 2 && "$1" == --offline-single-player && "$2" == --games-closed ]] || usage
     ;;
@@ -70,6 +70,80 @@ for i in "${!games[@]}"; do
       { echo "MangoHud config was modified; refusing removal: $game" >&2; exit 1; }
   fi
 done
+
+# Diagnostics report *host-side* configuration and a bounded speed sample
+# only. No renderer, process, timer-hook, or gameplay assertion is possible.
+if [[ "$action" == diagnose ]]; then
+  now="$(date +%s)"
+  mangohud_present=false
+  if command -v mangohud >/dev/null; then mangohud_present=true; fi
+  declare -a records=()
+  for i in "${!games[@]}"; do
+    game="${games[i]}"
+    executable="${exes[i]}"
+    config_state="absent"
+    if [[ -e "$game/$config" || -L "$game/$config" ||
+          -e "$game/$marker" || -L "$game/$marker" ]]; then
+      config_state="unmanaged_or_incomplete"
+      if [[ -f "$game/$config" && ! -L "$game/$config" &&
+            -f "$game/$marker" && ! -L "$game/$marker" ]]; then
+        expected="$(cat -- "$game/$marker" 2>/dev/null)" || expected=""
+        observed="$(sha256sum -- "$game/$config" 2>/dev/null | cut -d' ' -f1)" || observed=""
+        config_state="modified"
+        if [[ "$expected" =~ ^[0-9a-fA-F]{64}$ &&
+              "$expected" == "$observed" ]]; then
+          config_state="owned_unchanged"
+        fi
+      fi
+    fi
+
+    sample="$game/$rate"
+    speed_state="missing"
+    speed_value=""
+    age_seconds=""
+    if [[ -e "$sample" || -L "$sample" ]]; then
+      speed_state="unsafe_or_invalid"
+      if [[ -f "$sample" && ! -L "$sample" ]]; then
+        sample_size="$(stat -c %s -- "$sample" 2>/dev/null)" || sample_size=""
+        sample_mtime="$(stat -c %Y -- "$sample" 2>/dev/null)" || sample_mtime=""
+        if [[ "$sample_size" =~ ^[0-9]+$ && "$sample_mtime" =~ ^[0-9]+$ &&
+              "$sample_size" -ge 1 && "$sample_size" -le 16 ]]; then
+          candidate="$(cat -- "$sample" 2>/dev/null)" || candidate=""
+          if [[ "$candidate" =~ ^([0-9]+[.][0-9]{2}x|--)$ ]]; then
+            age_seconds="$((now - sample_mtime))"
+            if (( age_seconds < 0 )); then
+              speed_state="future_timestamp"
+            elif (( age_seconds > 6 )); then
+              speed_state="expired"
+            else
+              speed_state="fresh"
+              speed_value="$candidate"
+            fi
+          fi
+        fi
+      fi
+    fi
+    records+=("$(jq -nc --arg directory "$game" --arg executable "$executable" \
+      --arg config_state "$config_state" --arg speed_state "$speed_state" \
+      --arg speed_value "$speed_value" --arg age "$age_seconds" \
+      '{game_dir:$directory, executable:$executable,
+        managed_config_state:$config_state,
+        speed_sample_state:$speed_state,
+        speed_sample_age_seconds:(if $age=="" then null else ($age|tonumber) end),
+        observed_installed_clock_rate:(if $speed_value=="" then null else $speed_value end),
+        in_game_rendering_verified:false, gameplay_speed_verified:false}')")
+  done
+  printf '%s\n' "${records[@]}" | jq -s --argjson now "$now" \
+    --argjson mangohud "$mangohud_present" \
+    '{operation:"read_only_bottles_hud_diagnostics",
+      inspected_at_unix_seconds:$now,
+      mangohud_command_present_on_host:$mangohud,
+      in_game_rendering_verified:false,
+      gameplay_speed_verified:false,
+      files_modified:false,
+      games:.}'
+  exit 0
+fi
 
 if [[ "$action" == status ]]; then
   for game in "${games[@]}"; do

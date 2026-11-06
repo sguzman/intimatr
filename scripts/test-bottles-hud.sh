@@ -54,6 +54,36 @@ bash scripts/bottles-hud.sh install "$manifest" \
 bash scripts/bottles-hud.sh status "$manifest" >"$tmp/owned.log"
 test "$(grep -c '^HUD owned (unchanged): ' "$tmp/owned.log")" -eq 2
 
+# A read-only diagnostic has no access to game processes or Vulkan frames.
+bash scripts/bottles-hud.sh diagnose "$manifest" >"$tmp/diagnose-empty.json"
+jq -e '.operation == "read_only_bottles_hud_diagnostics"
+  and .files_modified == false
+  and .in_game_rendering_verified == false
+  and .gameplay_speed_verified == false
+  and (.games | length) == 2
+  and all(.games[]; .managed_config_state == "owned_unchanged"
+    and .speed_sample_state == "missing"
+    and .observed_installed_clock_rate == null)' "$tmp/diagnose-empty.json" >/dev/null
+printf '2.00x\n' >"$first/intimatr-hud-rate.txt"
+printf '0.50x\n' >"$second/intimatr-hud-rate.txt"
+touch -d '12 seconds ago' "$second/intimatr-hud-rate.txt"
+bash scripts/bottles-hud.sh diagnose "$manifest" >"$tmp/diagnose-mixed.json"
+jq -e --arg first "$first" --arg second "$second" '
+  ([.games[] | select(.game_dir == $first and .speed_sample_state == "fresh"
+    and .observed_installed_clock_rate == "2.00x")] | length == 1)
+  and ([.games[] | select(.game_dir == $second and .speed_sample_state == "expired"
+    and .observed_installed_clock_rate == null)] | length == 1)'
+  "$tmp/diagnose-mixed.json" >/dev/null
+rm -f -- "$first/intimatr-hud-rate.txt" "$second/intimatr-hud-rate.txt"
+ln -s "$tmp/diagnose-empty.json" "$first/intimatr-hud-rate.txt"
+bash scripts/bottles-hud.sh diagnose "$manifest" >"$tmp/diagnose-unsafe.json"
+jq -e --arg first "$first" '
+  [.games[] | select(.game_dir == $first
+    and .speed_sample_state == "unsafe_or_invalid"
+    and .observed_installed_clock_rate == null)] | length == 1'
+  "$tmp/diagnose-unsafe.json" >/dev/null
+rm -- "$first/intimatr-hud-rate.txt"
+
 for dir in "$first" "$second"; do
   grep -Fxq fps "$dir/MangoHud.conf"
   grep -Fxq cpu_stats "$dir/MangoHud.conf"
@@ -78,6 +108,11 @@ if bash scripts/bottles-hud.sh remove "$manifest" \
   exit 1
 fi
 grep -q 'MangoHud config was modified' "$tmp/tampered.err"
+bash scripts/bottles-hud.sh diagnose "$manifest" >"$tmp/diagnose-tampered.json"
+jq -e --arg second "$second" '
+  [.games[] | select(.game_dir == $second
+    and .managed_config_state == "modified")] | length == 1'
+  "$tmp/diagnose-tampered.json" >/dev/null
 test -f "$first/MangoHud.conf"
 test -f "$second/MangoHud.conf"
 cp -- "$tmp/second-original.conf" "$second/MangoHud.conf"
