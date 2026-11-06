@@ -19,7 +19,8 @@ static int await_hud_rate(HMODULE dll, const char *expected) {
     if (length == 0 || length >= MAX_PATH) return 0;
     char *backslash = strrchr(path, '\\');
     char *slash = strrchr(path, '/');
-    char *last = backslash > slash ? backslash : slash;
+    char *last = backslash;
+    if (slash && (!last || slash > last)) last = slash;
     if (!last) return 0;
     last[1] = '\0';
     if (strlen(path) + strlen("intimatr-hud-rate.txt") >= MAX_PATH) return 0;
