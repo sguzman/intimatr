@@ -323,6 +323,7 @@ jobs:
             "run -b Fixture -p Selected standalone offline test fixture")
               test -n "${INTIMATR_MOCK_LAUNCH_RECEIPT:-}" || exit 4
               printf '%s\n' "${INTIMATR_SPEED_PROFILE:-missing}" > "$INTIMATR_MOCK_LAUNCH_RECEIPT"
+              printf '%s\n' "${MANGOHUD:-missing}" "${INTIMATR_HUD_TELEMETRY:-missing}" > "${INTIMATR_MOCK_LAUNCH_RECEIPT}.hud"
               # With this opt-in, the mock launches our disposable Wine PE
               # *synchronously*, retaining the native CLI process until
               # the game fixture exits. No real Bottles is present in CI.
@@ -936,6 +937,48 @@ jobs:
           fi
           grep -q 'explicitly overrides INTIMATR_SPEED_PROFILE' target/wine-attach/launch-overridden.stderr
           test ! -e "$INTIMATR_MOCK_LAUNCH_RECEIPT"
+          # The optional performance HUD must require its own explicit
+          # permission in both the selected bottle and selected program.
+          # Mock only the Bottles CLI: no Vulkan renderer or real game is
+          # present here, so a successful handoff is not in-game HUD QA.
+          if target/release/intimatr-bottles profile-launch "${launch_args[@]}" --mangohud \
+              >target/wine-attach/hud-denied.stdout 2>target/wine-attach/hud-denied.stderr; then
+            echo "ERROR: restricted bottle allowed unlisted MangoHud environment" >&2
+            exit 1
+          fi
+          grep -q 'must allowlist MANGOHUD' target/wine-attach/hud-denied.stderr
+          test ! -e "$INTIMATR_MOCK_LAUNCH_RECEIPT"
+          jq -n '{"Fixture":{"Limit_System_Environment":true,"Environment_Variables":{},
+            "Inherited_Environment_Variables":["INTIMATR_SPEED_PROFILE","MANGOHUD","INTIMATR_HUD_TELEMETRY"]}}' \
+            >target/wine-attach/mocks/hud-allowlisted-env.json
+          jq -n --arg path "$game_fixture_windows" '[{
+            "name":"Selected standalone offline test fixture",
+            "executable":"wine-attach-target.exe",
+            "path":$path,
+            "environment":{"MANGOHUD":"0"}
+          }]' >target/wine-attach/mocks/hud-overridden-program.json
+          if INTIMATR_MOCK_BOTTLES_JSON="$(pwd)/target/wine-attach/mocks/hud-allowlisted-env.json" \
+              INTIMATR_MOCK_PROGRAMS_JSON="$(pwd)/target/wine-attach/mocks/hud-overridden-program.json" \
+              target/release/intimatr-bottles profile-launch "${launch_args[@]}" --mangohud \
+              >target/wine-attach/hud-shadowed.stdout 2>target/wine-attach/hud-shadowed.stderr; then
+            echo "ERROR: selected game environment overrode MangoHud opt-in" >&2
+            exit 1
+          fi
+          grep -q 'overrides MANGOHUD' target/wine-attach/hud-shadowed.stderr
+          test ! -e "$INTIMATR_MOCK_LAUNCH_RECEIPT"
+          INTIMATR_MOCK_BOTTLES_JSON="$(pwd)/target/wine-attach/mocks/hud-allowlisted-env.json" \
+            target/release/intimatr-bottles profile-launch "${launch_args[@]}" --mangohud \
+              >target/wine-attach/hud-launch-report.json
+          jq -e '.mangohud_vulkan_activation_requested == true
+            and .mangohud_telemetry_export_requested == true
+            and .mangohud_rendering_verified_in_game == false
+            and .experimental_startup_timer_activation_requested == false
+            and .game_process_started_verified == false' \
+            target/wine-attach/hud-launch-report.json > /dev/null
+          grep -Fx "$profile_windows_path" "$INTIMATR_MOCK_LAUNCH_RECEIPT"
+          test "$(sed -n '1p' "${INTIMATR_MOCK_LAUNCH_RECEIPT}.hud")" = '1'
+          test "$(sed -n '2p' "${INTIMATR_MOCK_LAUNCH_RECEIPT}.hud")" = '1'
+          rm -- "$INTIMATR_MOCK_LAUNCH_RECEIPT" "${INTIMATR_MOCK_LAUNCH_RECEIPT}.hud"
           # The selected game is launched by the *mock Bottles CLI* called
           # by profile-launch. The Windows PE observes its own launch
           # environment before the exact-PID attach/timer regression runs.

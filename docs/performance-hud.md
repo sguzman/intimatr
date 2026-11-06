@@ -68,12 +68,28 @@ application; an explicit `MANGOHUD_CONFIGFILE` or `MANGOHUD_CONFIG` override
 can take precedence, so check those variables if the per-game layout is
 not showing.
 
-Enable MangoHud for the selected bottle using its **Monitor Performance /
-MangoHud** setting, or launch the Vulkan game with the `MANGOHUD=1` environment
-variable. If Bottles restricts host environment variables, `MANGOHUD` must
-be explicitly permitted in its inherited environment. OpenGL can need
+For an individually registered offline game, the native `intimatr-bottles
+profile-launch` command can now accept the additional `--mangohud` flag.
+This passes `MANGOHUD=1` and `INTIMATR_HUD_TELEMETRY=1` **only to the
+selected Bottles launch**, after requiring both variables to be allowed by
+the selected bottle and not overridden by the selected registered program.
+Use it with the existing required `--config`, `--bottle`, `--exe`,
+`--program`, `--profile`, `--offline-single-player`, and `--launch`
+arguments. It does **not** arm timer hooks unless the independent
+`--experimental-four-timers` acknowledgment is also supplied.
+
+Alternatively, enable MangoHud for the selected bottle using its **Monitor
+Performance / MangoHud** setting, or launch the Vulkan game with the
+`MANGOHUD=1` environment variable. If Bottles restricts host environment variables, `MANGOHUD`
+and `INTIMATR_HUD_TELEMETRY` must be explicitly permitted in its inherited
+environment for `--mangohud`. OpenGL can need
 the `mangohud` command wrapper; plain `MANGOHUD=1` is only guaranteed for
 Vulkan. If running under Gamescope, use its own supported MangoHud integration.
+A successful `profile-launch --mangohud` report means Bottles accepted the
+launch command, **not** that the game started, MangoHud rendered, or the
+telemetry reached the game. Existing `MANGOHUD_CONFIG` or
+`MANGOHUD_CONFIGFILE` overrides may supersede the installed game-local
+layout and require separate verification.
 
 For speed telemetry, launch with both:
 

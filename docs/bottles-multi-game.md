@@ -76,6 +76,15 @@ environment inheritance is restricted. Launch the game from a graphical session
 and verify *actual gameplay speed*. Do not interpret a successful
 `bottles-cli` exit as proof the game launched.
 
-Adding a verified per-game launch shortcut, shared policy management, and GUI
-Bottles integration is the next phase; this first bulk stage automates
-discovery, compilation, deployment, inventory, and rollback only.
+For a registered game with a separately exported, verified Windows-visible
+speed profile, the native `intimatr-bottles profile-launch` command supports
+an explicit `--mangohud` option to request MangoHud and HUD telemetry for
+that selected invocation. This requires allowlisting the relevant environment
+variables in restricted Bottles environments and does not itself install
+the per-game HUD config. The `--experimental-four-timers` opt-in is separate.
+A CLI success report does not confirm an actual game process or overlay.
+See [performance HUD setup](performance-hud.md).
+
+Adding a fully verified per-game launch shortcut and GUI Bottles integration
+remains open; this bulk stage automates discovery, compilation, deployment,
+inventory, and rollback only.

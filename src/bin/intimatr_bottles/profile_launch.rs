@@ -31,6 +31,7 @@ struct ProfileLaunchOptions {
     profile: String,
     bottles_cli: String,
     experimental_four_timers: bool,
+    mangohud: bool,
 }
 
 impl ProfileLaunchOptions {
@@ -44,6 +45,7 @@ impl ProfileLaunchOptions {
         let mut offline = false;
         let mut launch = false;
         let mut experimental_four_timers = false;
+        let mut mangohud = false;
         let mut iter = args.iter();
         while let Some(flag) = iter.next() {
             match flag.as_str() {
@@ -59,7 +61,11 @@ impl ProfileLaunchOptions {
                     experimental_four_timers = true;
                     continue;
                 }
-                "--offline-single-player" | "--launch" | "--experimental-four-timers" => {
+                "--mangohud" if !mangohud => {
+                    mangohud = true;
+                    continue;
+                }
+                "--offline-single-player" | "--launch" | "--experimental-four-timers" | "--mangohud" => {
                     return Err(format!("duplicate acknowledgment {flag}"));
                 }
                 _ => {}
@@ -116,6 +122,7 @@ impl ProfileLaunchOptions {
             profile,
             bottles_cli,
             experimental_four_timers,
+            mangohud,
         })
     }
 }
@@ -197,6 +204,11 @@ pub(super) fn run_profile_launch(args: Vec<String>) -> Result<(), String> {
             "INTIMATR_EXPERIMENTAL_STARTUP_TIMERS",
         )?;
     }
+    if options.mangohud {
+        for variable in ["MANGOHUD", "INTIMATR_HUD_TELEMETRY"] {
+            verify_named_program_environment(&program_json, &options.program, variable)?;
+        }
+    }
 
     // The selected bottle may restrict inherited host variables. This audit
     // must pass before any game launch and does not attest runtime delivery.
@@ -208,6 +220,11 @@ pub(super) fn run_profile_launch(args: Vec<String>) -> Result<(), String> {
             &options.bottle,
             "INTIMATR_EXPERIMENTAL_STARTUP_TIMERS",
         )?;
+    }
+    if options.mangohud {
+        for variable in ["MANGOHUD", "INTIMATR_HUD_TELEMETRY"] {
+            verify_named_bottle_environment(&inventory_json, &options.bottle, variable)?;
+        }
     }
 
     // Bottles' documented run command has no per-launch environment option.
@@ -224,6 +241,13 @@ pub(super) fn run_profile_launch(args: Vec<String>) -> Result<(), String> {
         .env_remove("INTIMATR_EXPERIMENTAL_STARTUP_TIMERS");
     if options.experimental_four_timers {
         command.env("INTIMATR_EXPERIMENTAL_STARTUP_TIMERS", "1");
+    }
+    // Vulkan MangoHud activation is opt-in and scoped to this exact launch.
+    // The telemetry publisher itself does not arm any timing hooks.
+    if options.mangohud {
+        command
+            .env("MANGOHUD", "1")
+            .env("INTIMATR_HUD_TELEMETRY", "1");
     }
     let output = command
         .output()
@@ -257,6 +281,9 @@ pub(super) fn run_profile_launch(args: Vec<String>) -> Result<(), String> {
         "profile_reached_game_verified": false,
         "experimental_startup_timer_activation_requested": options.experimental_four_timers,
         "experimental_startup_timer_activation_verified_in_game": false,
+        "mangohud_vulkan_activation_requested": options.mangohud,
+        "mangohud_telemetry_export_requested": options.mangohud,
+        "mangohud_rendering_verified_in_game": false,
         "dll_auto_loaded": false,
         "gameplay_speed_verified": false,
         "bottle_configuration_modified": false,
@@ -302,6 +329,11 @@ mod tests {
             "Offline Game"
         );
         let opted_in = [allowed.clone(), args(&["--experimental-four-timers"])].concat();
+        let hud = [allowed.clone(), args(&["--mangohud"])].concat();
+        assert!(ProfileLaunchOptions::parse(&hud).unwrap().mangohud);
+        assert!(
+            !ProfileLaunchOptions::parse(&allowed).unwrap().mangohud
+        );
         assert!(
             ProfileLaunchOptions::parse(&opted_in)
                 .unwrap()
@@ -318,6 +350,7 @@ mod tests {
             [base.clone(), args(&["--offline-single-player"])].concat(),
             [allowed.clone(), args(&["--launch"])].concat(),
             [opted_in.clone(), args(&["--experimental-four-timers"])].concat(),
+            [hud.clone(), args(&["--mangohud"])].concat(),
             [allowed.clone(), args(&["--profile", "/tmp/other.toml"])].concat(),
             [allowed.clone(), args(&["--unknown", "value"])].concat(),
         ] {
