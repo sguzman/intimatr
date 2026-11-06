@@ -65,7 +65,10 @@ impl ProfileLaunchOptions {
                     mangohud = true;
                     continue;
                 }
-                "--offline-single-player" | "--launch" | "--experimental-four-timers" | "--mangohud" => {
+                "--offline-single-player"
+                | "--launch"
+                | "--experimental-four-timers"
+                | "--mangohud" => {
                     return Err(format!("duplicate acknowledgment {flag}"));
                 }
                 _ => {}
@@ -331,9 +334,7 @@ mod tests {
         let opted_in = [allowed.clone(), args(&["--experimental-four-timers"])].concat();
         let hud = [allowed.clone(), args(&["--mangohud"])].concat();
         assert!(ProfileLaunchOptions::parse(&hud).unwrap().mangohud);
-        assert!(
-            !ProfileLaunchOptions::parse(&allowed).unwrap().mangohud
-        );
+        assert!(!ProfileLaunchOptions::parse(&allowed).unwrap().mangohud);
         assert!(
             ProfileLaunchOptions::parse(&opted_in)
                 .unwrap()
