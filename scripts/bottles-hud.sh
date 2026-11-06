@@ -114,6 +114,7 @@ fi
 # files rather than deleting another process's work.
 umask 077
 declare -a installed_this_run=()
+declare -a installed_hashes=()
 pending_config=""
 pending_checksum=""
 rollback_install() {
@@ -129,13 +130,15 @@ rollback_install() {
         echo "Preserving modified or unverifiable partial HUD config: $pending_config" >&2
       fi
     fi
-    local game expected observed
-    for game in "${installed_this_run[@]}"; do
+    local game expected observed wanted i
+    for i in "${!installed_this_run[@]}"; do
+      game="${installed_this_run[i]}"
+      wanted="${installed_hashes[i]}"
       if [[ -f "$game/$config" && ! -L "$game/$config" &&
             -f "$game/$marker" && ! -L "$game/$marker" ]]; then
         expected="$(cat -- "$game/$marker")" || expected=""
         observed="$(sha256sum -- "$game/$config" | cut -d' ' -f1)" || observed=""
-        if [[ -n "$expected" && "$expected" == "$observed" ]]; then
+        if [[ -n "$wanted" && "$wanted" == "$expected" && "$wanted" == "$observed" ]]; then
           rm -f -- "$game/$config" "$game/$marker" || true
           echo "Rolled back unchanged HUD config: $game" >&2
         else
@@ -184,6 +187,7 @@ EOF
     exit 1
   }
   installed_this_run+=("$game")
+  installed_hashes+=("$checksum")
   pending_config=""
   pending_checksum=""
   echo "Configured Intimatr HUD for: $game"
