@@ -38,6 +38,7 @@ struct ProfileLaunchOptions {
     profile: String,
     bottles_cli: String,
     experimental_four_timers: bool,
+    check_only: bool,
     mangohud: bool,
     mangohud_config: Option<String>,
 }
@@ -52,6 +53,7 @@ impl ProfileLaunchOptions {
         let mut bottles_cli = None;
         let mut offline = false;
         let mut launch = false;
+        let mut check_only = false;
         let mut experimental_four_timers = false;
         let mut mangohud = false;
         let mut mangohud_config = None;
@@ -66,6 +68,10 @@ impl ProfileLaunchOptions {
                     launch = true;
                     continue;
                 }
+                "--check" if !check_only => {
+                    check_only = true;
+                    continue;
+                }
                 "--experimental-four-timers" if !experimental_four_timers => {
                     experimental_four_timers = true;
                     continue;
@@ -76,6 +82,7 @@ impl ProfileLaunchOptions {
                 }
                 "--offline-single-player"
                 | "--launch"
+                | "--check"
                 | "--experimental-four-timers"
                 | "--mangohud" => {
                     return Err(format!("duplicate acknowledgment {flag}"));
@@ -103,9 +110,9 @@ impl ProfileLaunchOptions {
                 }
             }
         }
-        if !offline || !launch {
+        if !offline || launch == check_only {
             return Err(
-                "profile-launch requires --offline-single-player and --launch acknowledgments"
+                "profile-launch requires --offline-single-player and exactly one of --launch or --check"
                     .into(),
             );
         }
@@ -142,6 +149,7 @@ impl ProfileLaunchOptions {
             profile,
             bottles_cli,
             experimental_four_timers,
+            check_only,
             mangohud,
             mangohud_config,
         })
@@ -308,6 +316,42 @@ pub(super) fn run_profile_launch(args: Vec<String>) -> Result<(), String> {
         }
     }
 
+    // Preflight performs every launch validation but never runs the selected
+    // program. It does not claim the game actually inherits any variable.
+    if options.check_only {
+        let report = serde_json::json!({
+            "operation": "read_only_registered_bottles_profile_launch_preflight",
+            "selected_bottle": options.bottle,
+            "registered_program": options.program,
+            "registered_windows_executable": options.executable,
+            "verified_bottle_prefix": prefix,
+            "windows_launch_profile": windows_profile,
+            "source_game_policy_verified": true,
+            "profile_file_matching_source_verified": true,
+            "bottles_environment_policy_preflight_passed": true,
+            "registered_program_environment_preflight_passed": true,
+            "bottles_reported_profile_environment_mode": environment_mode,
+            "experimental_startup_timer_activation_requested": options.experimental_four_timers,
+            "mangohud_vulkan_activation_requested": options.mangohud,
+            "mangohud_telemetry_export_requested": options.mangohud,
+            "mangohud_managed_config_checksum_verified": managed_hud.is_some(),
+            "mangohud_managed_config_host_path": managed_hud,
+            "bottles_run_invoked": false,
+            "game_process_started_verified": false,
+            "profile_reached_game_verified": false,
+            "mangohud_rendering_verified_in_game": false,
+            "gameplay_speed_verified": false,
+            "bottle_configuration_modified": false,
+            "attachment_attempted": false,
+        });
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&report)
+                .map_err(|error| format!("cannot encode profile launch preflight: {error}"))?
+        );
+        return Ok(());
+    }
+
     // Bottles' documented run command has no per-launch environment option.
     // Supply a process-local variable without modifying the bottle's
     // persistent settings. The CLI exit status is NOT gameplay verification.
@@ -412,6 +456,10 @@ mod tests {
         ]);
         let mut allowed = base.clone();
         allowed.extend(args(&["--offline-single-player", "--launch"]));
+        let mut checked = base.clone();
+        checked.extend(args(&["--offline-single-player", "--check"]));
+        assert!(ProfileLaunchOptions::parse(&checked).unwrap().check_only);
+        assert!(!ProfileLaunchOptions::parse(&allowed).unwrap().check_only);
         assert_eq!(
             ProfileLaunchOptions::parse(&allowed).unwrap().program,
             "Offline Game"
@@ -447,6 +495,8 @@ mod tests {
             [base.clone(), args(&["--launch"])].concat(),
             [base.clone(), args(&["--offline-single-player"])].concat(),
             [allowed.clone(), args(&["--launch"])].concat(),
+            [checked.clone(), args(&["--check"])].concat(),
+            [checked.clone(), args(&["--launch"])].concat(),
             [opted_in.clone(), args(&["--experimental-four-timers"])].concat(),
             [hud.clone(), args(&["--mangohud"])].concat(),
             [

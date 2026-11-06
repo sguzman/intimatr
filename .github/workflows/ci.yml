@@ -1015,6 +1015,36 @@ jobs:
             target/wine-attach/hud-managed-report.json >/dev/null
           test "$(sed -n '3p' "${INTIMATR_MOCK_LAUNCH_RECEIPT}.hud")" = "$hud_config"
           rm -- "$INTIMATR_MOCK_LAUNCH_RECEIPT" "${INTIMATR_MOCK_LAUNCH_RECEIPT}.hud"
+          # Exercise the same selected HUD and policy path in read-only mode.
+          # A successful preflight MUST NOT call mocked 'bottles-cli run'.
+          preflight_args=(
+            --config "$(pwd)/target/wine-attach/host-speed-rules.toml"
+            --bottle Fixture --exe "$game_fixture_windows"
+            --program 'Selected standalone offline test fixture'
+            --profile "$WINEPREFIX/drive_c/intimatr-ci-speed.toml"
+            --bottles-cli target/wine-attach/mocks/bottles-cli
+            --offline-single-player --check --mangohud
+            --mangohud-config "$hud_config"
+          )
+          INTIMATR_MOCK_BOTTLES_JSON="$(pwd)/target/wine-attach/mocks/hud-allowlisted-env.json" \
+            target/release/intimatr-bottles profile-launch "${preflight_args[@]}" \
+              >target/wine-attach/hud-read-only-preflight.json
+          jq -e '.operation == "read_only_registered_bottles_profile_launch_preflight"
+            and .source_game_policy_verified == true
+            and .mangohud_managed_config_checksum_verified == true
+            and .mangohud_rendering_verified_in_game == false
+            and .bottles_run_invoked == false
+            and .game_process_started_verified == false' \
+            target/wine-attach/hud-read-only-preflight.json >/dev/null
+          test ! -e "$INTIMATR_MOCK_LAUNCH_RECEIPT"
+          if INTIMATR_MOCK_BOTTLES_JSON="$(pwd)/target/wine-attach/mocks/hud-allowlisted-env.json" \
+              target/release/intimatr-bottles profile-launch "${preflight_args[@]}" --launch \
+              >target/wine-attach/preflight-ambiguous.stdout \
+              2>target/wine-attach/preflight-ambiguous.stderr; then
+            echo "ERROR: read-only preflight also accepted --launch" >&2
+            exit 1
+          fi
+          test ! -e "$INTIMATR_MOCK_LAUNCH_RECEIPT"
           # The selected game is launched by the *mock Bottles CLI* called
           # by profile-launch. The Windows PE observes its own launch
           # environment before the exact-PID attach/timer regression runs.

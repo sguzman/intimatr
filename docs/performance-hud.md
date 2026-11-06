@@ -69,7 +69,7 @@ can take precedence, so check those variables if the per-game layout is
 not showing.
 
 For an individually registered offline game, the native `intimatr-bottles
-profile-launch` command can now accept the additional `--mangohud` flag.
+profile-launch` command accepts the additional `--mangohud` flag.
 This passes `MANGOHUD=1` and `INTIMATR_HUD_TELEMETRY=1` **only to the
 selected Bottles launch**, after requiring both variables to be allowed by
 the selected bottle and not overridden by the selected registered program.
@@ -87,6 +87,14 @@ any inherited host `MANGOHUD_CONFIG` override for this invocation and
 rejects explicit conflicting Bottles/program values. A registered game on a
 non-C: Wine drive is resolved only for this explicit selection through that
 bottle's verified drive mapping. This must follow the separate HUD install.
+
+Before launching a selected game, replace `--launch` with `--check` on
+the exact same `profile-launch` command (keeping all other selection,
+profile, and HUD flags). This performs the full read-only game/config/
+environment preflight and returns a JSON report with
+`"bottles_run_invoked": false`. It verifies *readiness*, not MangoHud
+rendering or gameplay speed. The options are mutually exclusive;
+`--check --launch` is rejected.
 
 Alternatively, enable MangoHud for the selected bottle using its **Monitor
 Performance / MangoHud** setting, or launch the Vulkan game with the
