@@ -19,7 +19,12 @@ for file in "$native" "$windows/intimatr.dll" "$windows/intimatr-speed.exe" \
   "$windows/wine-process-list.exe" "$windows/wine-game-attach-helper.exe" \
   config/speed-overrides.example.toml \
   config/ExampleGame.exe.toml README.md docs/linux-wine-build.md \
-  docs/rpc.md docs/speed-control-roadmap.md; do
+  docs/rpc.md docs/speed-control-roadmap.md \
+  docs/bottles-multi-game.md docs/performance-hud.md docs/speed-profiles.md \
+  config/bottles-proxy-template.toml \
+  scripts/bottles-discover.sh scripts/bottles-multi-game.sh \
+  scripts/bottles-hud.sh scripts/generate-steam-api64-forwarders.sh \
+  native/launch_proxy/steam_api64_bridge.c; do
   if [[ ! -s "$file" || ! -f "$file" ]]; then
     echo "Required Linux/Wine release input missing or empty: $file" >&2
     exit 1
@@ -29,7 +34,8 @@ done
 stage="$(mktemp -d)"
 trap 'rm -rf -- "$stage"' EXIT
 root="$stage/$name"
-mkdir -p "$root/bin" "$root/wine" "$root/config" "$root/docs"
+mkdir -p "$root/bin" "$root/wine" "$root/config" "$root/docs" \
+  "$root/scripts" "$root/native/launch_proxy"
 install -m 0755 "$native" "$root/bin/intimatr-bottles"
 install -m 0644 "$windows/intimatr.dll" "$root/wine/intimatr.dll"
 install -m 0644 "$windows/intimatr-speed.exe" "$root/wine/intimatr-speed.exe"
@@ -37,8 +43,14 @@ install -m 0644 "$windows/wine-process-list.exe" "$root/wine/wine-process-list.e
 install -m 0644 "$windows/wine-game-attach-helper.exe" "$root/wine/wine-game-attach-helper.exe"
 install -m 0644 config/speed-overrides.example.toml "$root/config/"
 install -m 0644 config/ExampleGame.exe.toml "$root/config/"
+install -m 0644 config/bottles-proxy-template.toml "$root/config/"
 install -m 0644 README.md "$root/README.md"
-for doc in linux-wine-build.md rpc.md speed-control-roadmap.md; do
+for script in bottles-discover.sh bottles-multi-game.sh bottles-hud.sh generate-steam-api64-forwarders.sh; do
+  install -m 0755 "scripts/$script" "$root/scripts/$script"
+done
+install -m 0644 native/launch_proxy/steam_api64_bridge.c "$root/native/launch_proxy/"
+for doc in linux-wine-build.md rpc.md speed-control-roadmap.md \
+  bottles-multi-game.md performance-hud.md speed-profiles.md; do
   install -m 0644 "docs/$doc" "$root/docs/$doc"
 done
 cat > "$root/VERSION.txt" <<EOF
@@ -47,7 +59,7 @@ Version: $version
 Linux: x86_64 ELF
 Wine: x86_64 Windows GNU PE
 Scope: offline/single-player testing only
-Status: experimental explicit offline-game attach; real-game compatibility and hook lifecycle NOT verified
+Status: experimental opt-in offline-game attach and startup proxy; multi-game/HUD field QA incomplete
 EOF
 (
   cd "$root"
@@ -56,8 +68,13 @@ EOF
     wine/intimatr.dll wine/intimatr-speed.exe wine/wine-process-list.exe \
     wine/wine-game-attach-helper.exe \
     config/speed-overrides.example.toml config/ExampleGame.exe.toml \
+    config/bottles-proxy-template.toml \
+    scripts/bottles-discover.sh scripts/bottles-multi-game.sh \
+    scripts/bottles-hud.sh scripts/generate-steam-api64-forwarders.sh \
+    native/launch_proxy/steam_api64_bridge.c \
     README.md docs/linux-wine-build.md docs/rpc.md \
-    docs/speed-control-roadmap.md VERSION.txt > SHA256SUMS.txt
+    docs/speed-control-roadmap.md docs/bottles-multi-game.md \
+    docs/performance-hud.md docs/speed-profiles.md VERSION.txt > SHA256SUMS.txt
 )
 tar -czf "$archive" -C "$stage" "$name"
 (
