@@ -651,9 +651,9 @@ mod tests {
 
     #[test]
     fn shutdown_requires_observed_stopped_not_merely_stopping() {
-        assert_eq!(shutdown_status_complete(3).unwrap(), false);
-        assert_eq!(shutdown_status_complete(4).unwrap(), false);
-        assert_eq!(shutdown_status_complete(5).unwrap(), true);
+        assert!(!shutdown_status_complete(3).unwrap());
+        assert!(!shutdown_status_complete(4).unwrap());
+        assert!(shutdown_status_complete(5).unwrap());
         for code in [0, 1, 2, 6, 7, u32::MAX] {
             assert!(
                 shutdown_status_complete(code).is_err(),
