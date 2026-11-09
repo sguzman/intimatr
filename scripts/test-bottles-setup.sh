@@ -28,6 +28,9 @@ set -euo pipefail
 case "$1" in
   bottle-env)
     printf '%s\n' "$*" >>"$MOCK_EVENTS"
+    if [[ -n "${MOCK_MUTATE_MANIFEST:-}" ]]; then
+      printf '%s\n' '{"version":1,"games":[{"game_dir":"/outside","executable":"Outside.exe"}]}' > "$MOCK_MUTATE_MANIFEST"
+    fi
     printf '{"operation":"mock_bottle_env","files_modified":false}\n'
     ;;
   launch-proxy)
@@ -66,6 +69,17 @@ test ! -e "$game/intimatr-mangohud.sha256"
 bash scripts/bottles-setup.sh status "$manifest" "$manager" >"$tmp/status.log"
 grep -Fxq 'bottle-env status --bottle Eastward' "$MOCK_EVENTS"
 grep -Fq 'DLL owned and verified:' "$tmp/status.log"
+
+# A concurrent edit to the source manifest after preflight must never switch
+# the selection seen by downstream HUD/DLL installers in the same invocation.
+cp -- "$manifest" "$tmp/mutable-selection.json"
+MOCK_MUTATE_MANIFEST="$tmp/mutable-selection.json" \
+  bash scripts/bottles-setup.sh plan "$tmp/mutable-selection.json" "$manager" \
+  >"$tmp/snapshot-plan.log"
+grep -Fq "DLL owned and verified: $game" "$tmp/snapshot-plan.log"
+grep -Fq 'Selection: 1 games; 0 new DLLs; 1 new HUD configs.' "$tmp/snapshot-plan.log"
+jq -e '.games[0].game_dir == "/outside"' "$tmp/mutable-selection.json" >/dev/null
+test ! -e "$game/MangoHud.conf"
 
 # A mutation without all acknowledgments must fail before writing.
 if bash scripts/bottles-setup.sh apply "$manifest" "$manager" --all-bottles \
