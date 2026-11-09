@@ -87,6 +87,23 @@ if bash "$script" apply "$manifest" "$manager" "$source" \
 fi
 test ! -e "$game/MangoHud.conf"
 
+# A prior interrupted profile stage must block a new combined apply
+# even when its base setup stage had already reached complete.
+unfinished="$(mktemp -d "$tmp/root/.intimatr-setup.XXXXXXXX")"
+printf 'profiles-started\n' >"$unfinished/full-profile-stage"
+before_count="$(grep -c '^bottle-env apply ' "$MOCK_EVENTS" || true)"
+if bash "$script" apply "$manifest" "$manager" "$source" \
+  --offline-single-player --games-closed --bottles-closed \
+  >"$tmp/prior-incomplete.out" 2>"$tmp/prior-incomplete.err"; then
+  echo "Combined setup ignored unresolved earlier profile journal" >&2
+  exit 1
+fi
+grep -Fq 'Unfinished combined profile stage (profiles-started)' "$tmp/prior-incomplete.err"
+test "$before_count" -eq "$(grep -c '^bottle-env apply ' "$MOCK_EVENTS" || true)"
+test ! -e "$game/MangoHud.conf"
+rm -- "$unfinished/full-profile-stage"
+rmdir -- "$unfinished"
+
 # Full combined apply installs only the missing owned HUD and game profile.
 bash "$script" apply "$manifest" "$manager" "$source" \
   --offline-single-player --games-closed --bottles-closed >"$tmp/applied.out"
