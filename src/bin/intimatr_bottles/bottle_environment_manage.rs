@@ -31,8 +31,8 @@ struct Options {
     action: String,
     bottles: Vec<String>,
     allow: Vec<String>,
-    closed: bool,
 }
+
 
 fn valid_variable(name: &str) -> bool {
     let mut chars = name.chars();
@@ -97,7 +97,7 @@ impl Options {
             return Err("apply/restore require --bottles-closed; plan/status must be read-only".into());
         }
         bottles.sort_unstable();
-        Ok(Self { action, bottles, allow, closed })
+        Ok(Self { action, bottles, allow })
     }
 }
 
@@ -151,8 +151,8 @@ fn block_list(config: &str) -> Result<(usize, Vec<String>), String> {
             }
         } else if raw.starts_with("- ") {
             let item = &raw[2..];
-            let unquoted = if (item.starts_with('\'') && item.ends_with('\''))
-                || (item.starts_with('"') && item.ends_with('"'))
+            let unquoted = if item.len() >= 2 && ((item.starts_with('\'') && item.ends_with('\''))
+                || (item.starts_with('"') && item.ends_with('"')))
             {
                 &item[1..item.len() - 1]
             } else {
@@ -240,7 +240,7 @@ fn prepare(
     let config = prefix.join("bottle.yml");
     let initial = regular_bytes(&config)?;
     let text = std::str::from_utf8(&initial).map_err(|_| "Bottles YAML is not UTF-8")?;
-    let requested = if limited { allow } else { &[] };
+    let requested: &[String] = if limited { allow.as_slice() } else { &[] };
     let (updated, missing) = render(text, requested, &inherited)?;
     Ok(Selection {
         name: name.to_owned(),
@@ -432,9 +432,9 @@ mod tests {
     fn preserves_unrelated_yaml_bytes() {
         let (updated, missing) = render(CONFIG, &["HOME".into(), "MANGOHUD".into()],
             &["HOME".into(), "PATH".into()]).unwrap();
-        assert_eq!(missing, ["MANGOHUD"]);
+        assert_eq!(missing, vec!["MANGOHUD".to_owned()]);
         assert_eq!(updated, CONFIG.replace("- PATH\n", "- PATH\n- MANGOHUD\n"));
-        assert_eq!(block_list(&updated).unwrap().1, ["HOME", "PATH", "MANGOHUD"]);
+        assert_eq!(block_list(&updated).unwrap().1, vec!["HOME".to_owned(), "PATH".to_owned(), "MANGOHUD".to_owned()]);
     }
     #[test]
     fn refuses_inventory_drift_and_nested_yaml() {
