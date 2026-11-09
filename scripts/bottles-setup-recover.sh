@@ -26,7 +26,7 @@ else
   [[ $# == 3 && "$1" == --offline-single-player &&
     "$2" == --games-closed && "$3" == --bottles-closed ]] || usage
 fi
-for cmd in jq realpath sha256sum bottles-cli; do
+for cmd in jq realpath sha256sum cmp bottles-cli; do
   command -v "$cmd" >/dev/null || { echo "Missing required command: $cmd" >&2; exit 2; }
 done
 here="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
@@ -43,10 +43,19 @@ root="$(realpath -e -- "$root_raw")"
 [[ "$(stat -c %u -- "$journal")" == "$EUID" &&
    "$(stat -c %a -- "$journal")" == 700 ]] ||
   { echo "Journal permissions or owner are unsafe" >&2; exit 1; }
-for file in metadata.json selection.json new-dll.json new-hud.json env-before.jsonl stage; do
+for file in metadata.json selection.json new-dll.json new-hud.json env-before.jsonl snapshots.sha256 stage; do
   [[ -f "$journal/$file" && ! -L "$journal/$file" ]] ||
     { echo "Missing or linked journal file: $file" >&2; exit 1; }
 done
+# The selected recovery target and its before-state inventory are frozen at
+# setup time. Verify exact bytes, in fixed filename order, without trusting
+# paths or commands contained in the checksum file itself. Stage and
+# rollback-source-stage remain mutable atomic markers.
+(
+  cd -- "$journal"
+  sha256sum -- metadata.json selection.json new-dll.json new-hud.json \
+    env-before.jsonl | cmp -s - snapshots.sha256
+) || { echo "BLOCKED: Journal snapshot checksum mismatch; refusing recovery" >&2; exit 1; }
 jq -e --arg root "$root" \
   'type == "object" and .version == 1 and .root == $root and
    (.all_bottles | type == "boolean")' "$journal/metadata.json" >/dev/null ||
