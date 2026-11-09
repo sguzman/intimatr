@@ -26,7 +26,7 @@ for tool in jq realpath sha256sum bottles-cli; do
   command -v "$tool" >/dev/null || { echo "Missing $tool" >&2; exit 2; }
 done
 
-all_bottles=false; offline=false; games_closed=false; bottles_closed=false; runtime=""
+all_bottles=false; offline=false; games_closed=false; bottles_closed=false; runtime=""; full_before=""
 while (( $# )); do
   case "$1" in
     --all-bottles)
@@ -45,6 +45,11 @@ while (( $# )); do
       [[ "$action" == apply && -z "$runtime" && $# -ge 2 &&
          "$2" == /* && -f "$2" && ! -L "$2" ]] || usage
       runtime="$2"; shift 2 ;;
+    --full-profiles-before)
+      # Internal combined-setup handoff, never used by plan or status.
+      [[ "$action" == apply && -z "$full_before" && $# -ge 2 &&
+         "$2" == /* && -f "$2" && ! -L "$2" ]] || usage
+      full_before="$2"; shift 2 ;;
     *) usage ;;
   esac
 done
@@ -244,6 +249,40 @@ jq -s -e 'all(.[]; .operation == "status" and
   { echo "Native manager returned invalid environment recovery inventory; refusing all edits. Journal: $journal" >&2; exit 1; }
 jq -n --arg root "$root" --argjson all_bottles "$all_bottles" \
   '{version:1,root:$root,all_bottles:$all_bottles}' >"$journal/metadata.json"
+if [[ -n "$full_before" ]]; then
+  # A combined setup must publish its profile before-state IN THE BASE
+  # JOURNAL before any environment, DLL, or HUD mutation. A crash after base
+  # apply can then recover the base changes without guessing whether
+  # profile preparation had begun.
+  cp -- "$full_before" "$journal/full-profiles-before.json"
+  jq -e --slurpfile selected "$journal/selection.json" '
+    type == "object" and .version == 1 and
+    (.games | type == "array" and length > 0 and length <= 32) and
+    ([.games[].game_dir] | length == (unique | length)) and
+    ([.games[].game_dir] | sort) == ([$selected[0].games[].game_dir] | sort) and
+    all(.games[]; (.game_dir | type == "string" and startswith("/")) and
+      (.preexisting | type == "boolean"))
+  ' "$journal/full-profiles-before.json" >/dev/null ||
+    { echo "Invalid combined profile before-state; no Bottles files changed. Journal: $journal" >&2; exit 1; }
+  while IFS= read -r record; do
+    game="$(jq -er .game_dir <<<"$record")"
+    expected="$(jq -r .preexisting <<<"$record")"
+    present=false
+    if [[ -e "$game/.intimatr-managed-launch" ||
+          -L "$game/.intimatr-managed-launch" ]]; then
+      present=true
+    fi
+    [[ "$present" == "$expected" ]] ||
+      { echo "Profile state changed before base apply: $game; journal: $journal" >&2; exit 1; }
+  done < <(jq -c '.games[]' "$journal/full-profiles-before.json")
+  (
+    cd -- "$journal"
+    sha256sum -- full-profiles-before.json >full-profiles-before.sha256
+  )
+  # No game profile may be attributed to this invocation in pending stage.
+  # Later full setup marks profiles-started just before profile mutation.
+  printf '%s\n' profiles-pending >"$journal/full-profile-stage"
+fi
 # Freeze the exact setup inventory. The stage marker is intentionally NOT
 # checksummed, because it advances atomically after every completed phase.
 # Recovery refuses a stale/edited selection, ownership snapshot or metadata.
