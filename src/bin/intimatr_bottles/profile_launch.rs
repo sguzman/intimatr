@@ -261,7 +261,10 @@ fn resolve_mangohud_wrapper() -> Result<PathBuf, String> {
             }
         }
     }
-    Err("MangoHud --dlsym requested, but no executable native mangohud wrapper was found on PATH".into())
+    Err(
+        "MangoHud --dlsym requested, but no executable native mangohud wrapper was found on PATH"
+            .into(),
+    )
 }
 
 pub(super) fn run_profile_launch(args: Vec<String>) -> Result<(), String> {
