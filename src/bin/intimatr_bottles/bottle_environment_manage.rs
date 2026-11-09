@@ -30,6 +30,7 @@ const MAX_CONFIG: usize = 1_048_576;
 struct Options {
     action: String,
     bottles: Vec<String>,
+    all: bool,
     allow: Vec<String>,
 }
 
@@ -51,9 +52,14 @@ impl Options {
         }
         let (mut bottles, mut allow) = (Vec::new(), Vec::new());
         let mut closed = false;
+        let mut all = false;
         while let Some(flag) = args.next() {
             if flag == "--bottles-closed" && !closed {
                 closed = true;
+                continue;
+            }
+            if flag == "--all" && !all {
+                all = true;
                 continue;
             }
             let value = args
@@ -85,8 +91,8 @@ impl Options {
                 _ => return Err(format!("unsupported flag or value: {flag}")),
             }
         }
-        if bottles.is_empty() {
-            return Err("select at least one --bottle NAME explicitly".into());
+        if all == !bottles.is_empty() {
+            return Err("select either --all or one or more --bottle NAME values".into());
         }
         let mut unique_bottles = BTreeSet::new();
         if bottles
@@ -112,6 +118,7 @@ impl Options {
         Ok(Self {
             action,
             bottles,
+            all,
             allow,
         })
     }
@@ -428,7 +435,12 @@ pub(super) fn run_bottle_env(args: Vec<String>) -> Result<(), String> {
     let inventory: Value = serde_json::from_str(&list).map_err(|e| e.to_string())?;
     let root = bottles_json_with_command("bottles-cli", &["info", "bottles-path"])?;
     let mut selections = Vec::new();
-    for name in &options.bottles {
+    let selected_names = if options.all {
+        names.clone()
+    } else {
+        options.bottles.clone()
+    };
+    for name in &selected_names {
         if !names.contains(name) {
             return Err(format!(
                 "selected bottle not present in native Bottles: {name}"
@@ -600,6 +612,25 @@ mod tests {
         ])
         .unwrap();
         assert_eq!(parsed.bottles.len(), 2);
+        assert!(!parsed.all);
+        let all = Options::parse(vec![
+            "plan".into(),
+            "--all".into(),
+            "--preset".into(),
+            "intimatr-hud".into(),
+        ])
+        .unwrap();
+        assert!(all.all);
+        assert!(all.bottles.is_empty());
+        assert!(Options::parse(vec![
+            "plan".into(),
+            "--all".into(),
+            "--bottle".into(),
+            "Eastward".into(),
+            "--preset".into(),
+            "intimatr-hud".into(),
+        ])
+        .is_err());
         assert!(parsed.allow.contains(&"LD_PRELOAD".to_owned()));
         assert!(
             Options::parse(vec![
