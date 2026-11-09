@@ -25,7 +25,7 @@ bash scripts/bottles-full-setup.sh plan "/absolute/reviewed-selection.json" "$HO
 # Supply --runtime PATH only when one of the selected games needs a new DLL.
 bash scripts/bottles-full-setup.sh apply "/absolute/reviewed-selection.json" "$HOME/.cargo/bin/intimatr-bottles" "/absolute/source-policy.toml" --runtime "/absolute/x64/intimatr.dll" --offline-single-player --games-closed --bottles-closed
 
-bash scripts/bottles-full-setup.sh status "/absolute/reviewed-selection.json" "$HOME/.cargo/bin/intimatr-bottles" "/absolute/source-policy.toml"
+bash scripts/bottles-full-setup.sh status "/absolute/reviewed-selection.json" "$HOME/.cargo/bin/intimatr-bottles"
 ```
 
 The discovery manifest supplies exact native registrations and an initial
