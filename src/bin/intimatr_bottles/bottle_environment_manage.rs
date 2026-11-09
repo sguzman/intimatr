@@ -33,7 +33,6 @@ struct Options {
     allow: Vec<String>,
 }
 
-
 fn valid_variable(name: &str) -> bool {
     let mut chars = name.chars();
     matches!(chars.next(), Some('A'..='Z') | Some('_'))
@@ -44,7 +43,9 @@ fn valid_variable(name: &str) -> bool {
 impl Options {
     fn parse(args: Vec<String>) -> Result<Self, String> {
         let mut args = args.into_iter();
-        let action = args.next().ok_or("expected plan, status, apply, or restore")?;
+        let action = args
+            .next()
+            .ok_or("expected plan, status, apply, or restore")?;
         if !["plan", "status", "apply", "restore"].contains(&action.as_str()) {
             return Err("expected plan, status, apply, or restore".into());
         }
@@ -61,7 +62,8 @@ impl Options {
                 .ok_or_else(|| format!("missing value after {flag}"))?;
             match flag.as_str() {
                 "--bottle" => {
-                    if value == "." || value == ".." || value.contains('/') || value.contains('\\') {
+                    if value == "." || value == ".." || value.contains('/') || value.contains('\\')
+                    {
                         return Err("unsafe bottle name".into());
                     }
                     bottles.push(value);
@@ -69,10 +71,15 @@ impl Options {
                 "--allow" if action != "restore" => allow.push(value),
                 "--preset" if action != "restore" && value == "intimatr-hud" => {
                     allow.extend(
-                        ["INTIMATR_SPEED_PROFILE", "INTIMATR_EXPERIMENTAL_STARTUP_TIMERS",
-                         "MANGOHUD", "INTIMATR_HUD_TELEMETRY",
-                         "MANGOHUD_CONFIGFILE", "LD_PRELOAD"]
-                            .map(str::to_owned),
+                        [
+                            "INTIMATR_SPEED_PROFILE",
+                            "INTIMATR_EXPERIMENTAL_STARTUP_TIMERS",
+                            "MANGOHUD",
+                            "INTIMATR_HUD_TELEMETRY",
+                            "MANGOHUD_CONFIGFILE",
+                            "LD_PRELOAD",
+                        ]
+                        .map(str::to_owned),
                     );
                 }
                 _ => return Err(format!("unsupported flag or value: {flag}")),
@@ -82,7 +89,10 @@ impl Options {
             return Err("select at least one --bottle NAME explicitly".into());
         }
         let mut unique_bottles = BTreeSet::new();
-        if bottles.iter().any(|name| !unique_bottles.insert(name.clone())) {
+        if bottles
+            .iter()
+            .any(|name| !unique_bottles.insert(name.clone()))
+        {
             return Err("duplicate bottle selection".into());
         }
         if allow.iter().any(|name| !valid_variable(name)) {
@@ -94,10 +104,16 @@ impl Options {
             return Err("specify --preset intimatr-hud or at least one --allow NAME".into());
         }
         if matches!(action.as_str(), "apply" | "restore") != closed {
-            return Err("apply/restore require --bottles-closed; plan/status must be read-only".into());
+            return Err(
+                "apply/restore require --bottles-closed; plan/status must be read-only".into(),
+            );
         }
         bottles.sort_unstable();
-        Ok(Self { action, bottles, allow })
+        Ok(Self {
+            action,
+            bottles,
+            allow,
+        })
     }
 }
 
@@ -118,16 +134,23 @@ fn regular_bytes(path: &Path) -> Result<Vec<u8>, String> {
     let meta = fs::symlink_metadata(path)
         .map_err(|e| format!("cannot inspect {}: {e}", path.display()))?;
     if !meta.is_file() || meta.file_type().is_symlink() || meta.len() > MAX_CONFIG as u64 {
-        return Err(format!("refusing linked, nonregular, or oversized file: {}", path.display()));
+        return Err(format!(
+            "refusing linked, nonregular, or oversized file: {}",
+            path.display()
+        ));
     }
     fs::read(path).map_err(|e| format!("cannot read {}: {e}", path.display()))
 }
 
 fn write_new(path: &Path, bytes: &[u8]) -> Result<(), String> {
     let mut file = OpenOptions::new()
-        .write(true).create_new(true).mode(0o600).open(path)
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(path)
         .map_err(|e| format!("refusing to create {}: {e}", path.display()))?;
-    file.write_all(bytes).and_then(|()| file.sync_all())
+    file.write_all(bytes)
+        .and_then(|()| file.sync_all())
         .map_err(|e| format!("cannot write {}: {e}", path.display()))
 }
 
@@ -151,8 +174,9 @@ fn block_list(config: &str) -> Result<(usize, Vec<String>), String> {
             }
         } else if raw.starts_with("- ") {
             let item = &raw[2..];
-            let unquoted = if item.len() >= 2 && ((item.starts_with('\'') && item.ends_with('\''))
-                || (item.starts_with('"') && item.ends_with('"')))
+            let unquoted = if item.len() >= 2
+                && ((item.starts_with('\'') && item.ends_with('\''))
+                    || (item.starts_with('"') && item.ends_with('"')))
             {
                 &item[1..item.len() - 1]
             } else {
@@ -182,12 +206,20 @@ fn block_list(config: &str) -> Result<(usize, Vec<String>), String> {
     Ok((end, vars))
 }
 
-fn render(config: &str, allow: &[String], expected: &[String]) -> Result<(String, Vec<String>), String> {
+fn render(
+    config: &str,
+    allow: &[String],
+    expected: &[String],
+) -> Result<(String, Vec<String>), String> {
     let (end, existing) = block_list(config)?;
     if existing != expected {
         return Err("Bottles YAML inherited list differs from native Bottles inventory".into());
     }
-    let missing = allow.iter().filter(|name| !existing.contains(name)).cloned().collect::<Vec<_>>();
+    let missing = allow
+        .iter()
+        .filter(|name| !existing.contains(name))
+        .cloned()
+        .collect::<Vec<_>>();
     let mut updated = String::with_capacity(config.len() + missing.len() * 32);
     updated.push_str(&config[..end]);
     for name in &missing {
@@ -217,20 +249,38 @@ fn prepare(
     bottles_root: &str,
 ) -> Result<Selection, String> {
     let record = inventory
-        .get("bottles").or_else(|| inventory.get("Bottles")).unwrap_or(inventory)
-        .get(name).and_then(Value::as_object)
+        .get("bottles")
+        .or_else(|| inventory.get("Bottles"))
+        .unwrap_or(inventory)
+        .get(name)
+        .and_then(Value::as_object)
         .ok_or_else(|| format!("missing native Bottles settings for {name}"))?;
-    let limited = record.get("Limit_System_Environment").and_then(Value::as_bool)
+    let limited = record
+        .get("Limit_System_Environment")
+        .and_then(Value::as_bool)
         .ok_or("native Bottles inventory lacks Limit_System_Environment boolean")?;
-    let inherited = record.get("Inherited_Environment_Variables").and_then(Value::as_array)
+    let inherited = record
+        .get("Inherited_Environment_Variables")
+        .and_then(Value::as_array)
         .ok_or("native Bottles inventory lacks inherited environment list")?
         .iter()
-        .map(|v| v.as_str().map(str::to_owned).ok_or("non-string inherited variable"))
+        .map(|v| {
+            v.as_str()
+                .map(str::to_owned)
+                .ok_or("non-string inherited variable")
+        })
         .collect::<Result<Vec<_>, _>>()?;
-    let overrides = record.get("Environment_Variables").and_then(Value::as_object)
+    let overrides = record
+        .get("Environment_Variables")
+        .and_then(Value::as_object)
         .ok_or("native Bottles inventory lacks explicit environment map")?;
-    if allow.iter().any(|name| overrides.keys().any(|key| key.eq_ignore_ascii_case(name))) {
-        return Err(format!("bottle {name} explicitly overrides a requested variable"));
+    if allow
+        .iter()
+        .any(|name| overrides.keys().any(|key| key.eq_ignore_ascii_case(name)))
+    {
+        return Err(format!(
+            "bottle {name} explicitly overrides a requested variable"
+        ));
     }
     let root = parse_bottles_root(bottles_root).map_err(|e| e.to_string())?;
     let prefix = root.join(name);
@@ -319,7 +369,9 @@ fn apply(selected: &Selection) -> Result<(), String> {
         return Err(err);
     }
     let result = (|| -> Result<(), String> {
-        let permissions = fs::metadata(&selected.config).map_err(|e| e.to_string())?.permissions();
+        let permissions = fs::metadata(&selected.config)
+            .map_err(|e| e.to_string())?
+            .permissions();
         fs::set_permissions(&selected.staged, permissions).map_err(|e| e.to_string())?;
         if regular_bytes(&selected.config)? != selected.initial {
             return Err("Bottles configuration changed during staging".into());
@@ -343,19 +395,25 @@ fn restore(selected: &Selection) -> Result<(), String> {
     }
     let current_hash = digest(&regular_bytes(&selected.config)?);
     if current_hash != state.installed_sha256 && current_hash != state.original_sha256 {
-        return Err("Bottles settings changed after Intimatr apply; refusing destructive restore".into());
+        return Err(
+            "Bottles settings changed after Intimatr apply; refusing destructive restore".into(),
+        );
     }
     if current_hash == state.installed_sha256 {
         if fs::symlink_metadata(&selected.staged).is_ok() {
             return Err("stale Intimatr environment staged file found".into());
         }
         write_new(&selected.staged, &original)?;
-        let permissions = fs::metadata(&selected.config).map_err(|e| e.to_string())?.permissions();
+        let permissions = fs::metadata(&selected.config)
+            .map_err(|e| e.to_string())?
+            .permissions();
         if let Err(e) = fs::set_permissions(&selected.staged, permissions)
             .and_then(|()| fs::rename(&selected.staged, &selected.config))
         {
             let _ = fs::remove_file(&selected.staged);
-            return Err(format!("cannot restore original Bottles configuration: {e}"));
+            return Err(format!(
+                "cannot restore original Bottles configuration: {e}"
+            ));
         }
     }
     fs::remove_file(&selected.marker).map_err(|e| e.to_string())?;
@@ -372,7 +430,9 @@ pub(super) fn run_bottle_env(args: Vec<String>) -> Result<(), String> {
     let mut selections = Vec::new();
     for name in &options.bottles {
         if !names.contains(name) {
-            return Err(format!("selected bottle not present in native Bottles: {name}"));
+            return Err(format!(
+                "selected bottle not present in native Bottles: {name}"
+            ));
         }
         selections.push(prepare(name, &options.allow, &inventory, &root)?);
     }
@@ -380,14 +440,19 @@ pub(super) fn run_bottle_env(args: Vec<String>) -> Result<(), String> {
     for selected in &selections {
         let current = status(selected)?;
         if options.action == "apply" && !selected.missing.is_empty() && current != "unmanaged" {
-            return Err(format!("{}: prior managed/environment edit ({current}); restore first",
-                selected.name));
+            return Err(format!(
+                "{}: prior managed/environment edit ({current}); restore first",
+                selected.name
+            ));
         }
         if options.action == "restore" && current == "unmanaged" {
             return Err(format!("{}: nothing owned to restore", selected.name));
         }
         if options.action == "restore" && current == "modified_since_intimatr" {
-            return Err(format!("{}: settings changed since apply; refusing restore", selected.name));
+            return Err(format!(
+                "{}: settings changed since apply; refusing restore",
+                selected.name
+            ));
         }
         if options.action == "apply" && fs::symlink_metadata(&selected.staged).is_ok() {
             return Err(format!("{}: stale staged file found", selected.name));
@@ -397,26 +462,35 @@ pub(super) fn run_bottle_env(args: Vec<String>) -> Result<(), String> {
         let before = status(selected)?;
         match options.action.as_str() {
             "plan" | "status" => {
-                println!("{}", serde_json::json!({
-                    "bottle":selected.name, "operation":options.action,
-                    "ownership":before, "allowlist_entries_to_add":selected.missing,
-                    "files_modified":false
-                }));
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "bottle":selected.name, "operation":options.action,
+                        "ownership":before, "allowlist_entries_to_add":selected.missing,
+                        "files_modified":false
+                    })
+                );
             }
             "apply" => {
                 apply(selected)?;
-                println!("{}", serde_json::json!({
-                    "bottle":selected.name, "operation":"apply",
-                    "added":selected.missing, "ownership":status(selected)?,
-                    "only_bottle_environment_modified":!selected.missing.is_empty()
-                }));
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "bottle":selected.name, "operation":"apply",
+                        "added":selected.missing, "ownership":status(selected)?,
+                        "only_bottle_environment_modified":!selected.missing.is_empty()
+                    })
+                );
             }
             "restore" => {
                 restore(selected)?;
-                println!("{}", serde_json::json!({
-                    "bottle":selected.name, "operation":"restore",
-                    "ownership":"unmanaged", "original_bottle_yml_restored":true
-                }));
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "bottle":selected.name, "operation":"restore",
+                        "ownership":"unmanaged", "original_bottle_yml_restored":true
+                    })
+                );
             }
             _ => unreachable!(),
         }
@@ -430,11 +504,18 @@ mod tests {
     const CONFIG: &str = "Name: Test\nLimit_System_Environment: true\nInherited_Environment_Variables:\n- HOME\n- PATH\nEnvironment_Variables: {}\n";
     #[test]
     fn preserves_unrelated_yaml_bytes() {
-        let (updated, missing) = render(CONFIG, &["HOME".into(), "MANGOHUD".into()],
-            &["HOME".into(), "PATH".into()]).unwrap();
+        let (updated, missing) = render(
+            CONFIG,
+            &["HOME".into(), "MANGOHUD".into()],
+            &["HOME".into(), "PATH".into()],
+        )
+        .unwrap();
         assert_eq!(missing, vec!["MANGOHUD".to_owned()]);
         assert_eq!(updated, CONFIG.replace("- PATH\n", "- PATH\n- MANGOHUD\n"));
-        assert_eq!(block_list(&updated).unwrap().1, vec!["HOME".to_owned(), "PATH".to_owned(), "MANGOHUD".to_owned()]);
+        assert_eq!(
+            block_list(&updated).unwrap().1,
+            vec!["HOME".to_owned(), "PATH".to_owned(), "MANGOHUD".to_owned()]
+        );
     }
     #[test]
     fn refuses_inventory_drift_and_nested_yaml() {
@@ -444,15 +525,38 @@ mod tests {
     #[test]
     fn selection_is_explicit_and_reversible() {
         let parsed = Options::parse(vec![
-            "apply".into(), "--bottle".into(), "Eastward".into(),
-            "--bottle".into(), "Other".into(), "--preset".into(),
-            "intimatr-hud".into(), "--bottles-closed".into(),
-        ]).unwrap();
+            "apply".into(),
+            "--bottle".into(),
+            "Eastward".into(),
+            "--bottle".into(),
+            "Other".into(),
+            "--preset".into(),
+            "intimatr-hud".into(),
+            "--bottles-closed".into(),
+        ])
+        .unwrap();
         assert_eq!(parsed.bottles.len(), 2);
         assert!(parsed.allow.contains(&"LD_PRELOAD".to_owned()));
-        assert!(Options::parse(vec!["apply".into(), "--bottle".into(), "Game".into(),
-            "--allow".into(), "MANGOHUD".into()]).is_err());
-        assert!(Options::parse(vec!["apply".into(), "--bottle".into(), "..".into(),
-            "--allow".into(), "MANGOHUD".into(), "--bottles-closed".into()]).is_err());
+        assert!(
+            Options::parse(vec![
+                "apply".into(),
+                "--bottle".into(),
+                "Game".into(),
+                "--allow".into(),
+                "MANGOHUD".into()
+            ])
+            .is_err()
+        );
+        assert!(
+            Options::parse(vec![
+                "apply".into(),
+                "--bottle".into(),
+                "..".into(),
+                "--allow".into(),
+                "MANGOHUD".into(),
+                "--bottles-closed".into()
+            ])
+            .is_err()
+        );
     }
 }
