@@ -284,9 +284,40 @@ test -f "$game/MangoHud.conf"
 test -f "$game/.intimatr-managed-launch/speed.toml"
 sed -i '$d' "$game/.intimatr-managed-launch/speed.toml"
 test "$profile_sha" = "$(sha256sum <"$game/.intimatr-managed-launch/speed.toml" | cut -d' ' -f1)"
+# Model a killed rollback AFTER it deleted the newly managed profile but
+# BEFORE it reached base HUD/DLL/environment recovery. A retry must skip the
+# already removed profile and finish only the remaining owned base work.
+bash scripts/bottles-managed-launch.sh remove "$game" --games-closed \
+  >"$tmp/partial-profile-removal.out"
+test ! -e "$game/.intimatr-managed-launch"
+printf 'rollback-started\n' >"${journals[0]}/full-profile-stage"
+bash scripts/bottles-full-recover.sh status "${journals[0]}" "$manager" \
+  >"$tmp/interrupted-rollback-status.out"
+grep -Fq 'Eligible new profiles: 0; pre-existing preserved: 0; profile blockers: 0; base blockers: 0.' \
+  "$tmp/interrupted-rollback-status.out"
 bash scripts/bottles-full-recover.sh rollback "${journals[0]}" "$manager" \
   --offline-single-player --games-closed --bottles-closed >"$tmp/full-rollback.out"
 grep -Fq 'Combined recovery complete' "$tmp/full-rollback.out"
+# A retry after the base stage was also completed must be an idempotent
+# no-op; it must never revive an already deleted profile.
+printf 'rollback-started\n' >"${journals[0]}/full-profile-stage"
+bash scripts/bottles-full-recover.sh rollback "${journals[0]}" "$manager" \
+  --offline-single-player --games-closed --bottles-closed >"$tmp/retry-reverted.out"
+grep -Fq 'Combined recovery complete' "$tmp/retry-reverted.out"
+test ! -e "$game/.intimatr-managed-launch"
+bash scripts/bottles-full-recover.sh rollback "${journals[0]}" "$manager" \
+  --offline-single-player --games-closed --bottles-closed >"$tmp/again-reverted.out"
+grep -Fq 'already reverted' "$tmp/again-reverted.out"
+# Even a marker forged to "reverted" must not conceal an active base stage.
+printf 'complete\n' >"${journals[0]}/stage"
+if bash scripts/bottles-full-recover.sh rollback "${journals[0]}" "$manager" \
+  --offline-single-player --games-closed --bottles-closed \
+  >"$tmp/false-reverted.out" 2>"$tmp/false-reverted.err"; then
+  echo "Combined rollback accepted reverted profile marker with active base stage" >&2
+  exit 1
+fi
+grep -Fq 'combined journal says reverted but base is complete' "$tmp/false-reverted.err"
+printf 'reverted\n' >"${journals[0]}/stage"
 test "$(cat "${journals[0]}/full-profile-stage")" = reverted
 test "$(cat "${journals[0]}/stage")" = reverted
 test ! -e "$game/.intimatr-managed-launch"
