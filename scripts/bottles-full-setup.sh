@@ -226,8 +226,38 @@ mark_full_stage profiles-started
 stage=profile-preparation
 bash "$profiles" prepare "$manifest" "$manager" "$source" \
   --offline-single-player --games-closed
-mark_full_stage profiles-complete
 source_unchanged
+# Freeze the exact completed profile identities, including the inode of each
+# private managed directory. A user can remove/recreate a valid Intimatr
+# profile after setup; that later profile must not be attributed to this
+# attempt merely because it passes the generic ownership checksum.
+[[ ! -e "$journal/full-profiles-after.json" &&
+   ! -e "$journal/full-profiles-after.sha256" ]] ||
+  { echo "Combined journal already contains a profile after-state" >&2; exit 1; }
+: >"$tmp/profiles-after.jsonl"
+while IFS= read -r game; do
+  managed="$game/.intimatr-managed-launch"
+  [[ -d "$managed" && ! -L "$managed" &&
+     -f "$managed/snapshots.sha256" && ! -L "$managed/snapshots.sha256" ]] ||
+    { echo "Incomplete or replaced managed profile after batch: $game" >&2; exit 1; }
+  bash "$here/scripts/bottles-managed-launch.sh" status "$game" >/dev/null ||
+    { echo "Cannot verify completed managed profile: $game" >&2; exit 1; }
+  ownership_hash="$(sha256sum <"$managed/snapshots.sha256" | cut -d' ' -f1)"
+  directory_identity="$(stat -c '%d:%i' -- "$managed")"
+  jq -nc --arg game_dir "$game" --arg snapshot_sha256 "$ownership_hash" \
+    --arg directory_identity "$directory_identity" \
+    '{game_dir:$game_dir,snapshot_sha256:$snapshot_sha256,
+      directory_identity:$directory_identity}' >>"$tmp/profiles-after.jsonl"
+done < <(jq -r '.games[].game_dir' "$manifest")
+jq -s '{version:1,games:.}' "$tmp/profiles-after.jsonl" \
+  >"$journal/.full-profiles-after-next"
+mv -- "$journal/.full-profiles-after-next" "$journal/full-profiles-after.json"
+(
+  cd -- "$journal"
+  sha256sum -- full-profiles-after.json >.full-profiles-after-sha-next
+  mv -- .full-profiles-after-sha-next full-profiles-after.sha256
+)
+mark_full_stage profiles-complete
 stage=complete
 echo "Combined setup complete: environments, selected DLLs/HUD and all reviewed launch profiles."
 echo "No Wine process or game launched. Live overlay and speed still require QA."
