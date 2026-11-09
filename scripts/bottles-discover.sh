@@ -59,7 +59,8 @@ while IFS= read -r candidate; do
       --arg windows_executable "$windows_executable" \
       '{game_dir:$game_dir,executable:$executable,bottle:$bottle,
         registered_program:$registered_program,
-        windows_executable:$windows_executable}' >>"$temp/selected.jsonl"
+        windows_executable:$windows_executable,
+        renderer:"auto"}' >>"$temp/selected.jsonl"
   fi
 done <"$temp/candidates.jsonl"
 
