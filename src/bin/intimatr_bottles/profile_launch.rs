@@ -41,6 +41,7 @@ struct ProfileLaunchOptions {
     check_only: bool,
     mangohud: bool,
     managed_mangohud: bool,
+    mangohud_dlsym: bool,
     mangohud_config: Option<String>,
 }
 
@@ -58,6 +59,7 @@ impl ProfileLaunchOptions {
         let mut experimental_four_timers = false;
         let mut mangohud = false;
         let mut managed_mangohud = false;
+        let mut mangohud_dlsym = false;
         let mut mangohud_config = None;
         let mut iter = args.iter();
         while let Some(flag) = iter.next() {
@@ -86,12 +88,17 @@ impl ProfileLaunchOptions {
                     managed_mangohud = true;
                     continue;
                 }
+                "--mangohud-dlsym" if !mangohud_dlsym => {
+                    mangohud_dlsym = true;
+                    continue;
+                }
                 "--offline-single-player"
                 | "--launch"
                 | "--check"
                 | "--experimental-four-timers"
                 | "--mangohud"
-                | "--managed-mangohud" => {
+                | "--managed-mangohud"
+                | "--mangohud-dlsym" => {
                     return Err(format!("duplicate acknowledgment {flag}"));
                 }
                 _ => {}
@@ -141,6 +148,9 @@ impl ProfileLaunchOptions {
                 return Err("--mangohud-config requires --mangohud and an absolute path".into());
             }
         }
+        if mangohud_dlsym && !mangohud {
+            return Err("--mangohud-dlsym requires --mangohud".into());
+        }
         if managed_mangohud && (!mangohud || mangohud_config.is_some()) {
             return Err(
                 "--managed-mangohud requires --mangohud and excludes --mangohud-config".into(),
@@ -164,6 +174,7 @@ impl ProfileLaunchOptions {
             check_only,
             mangohud,
             managed_mangohud,
+            mangohud_dlsym,
             mangohud_config,
         })
     }
@@ -233,6 +244,27 @@ fn verified_managed_mangohud_config(
         return Err("MangoHud config checksum changed; refusing launch".into());
     }
     Ok(config)
+}
+
+/// Resolve a host-side MangoHud wrapper for an explicit OpenGL/dlsym launch.
+fn resolve_mangohud_wrapper() -> Result<PathBuf, String> {
+    use std::os::unix::fs::PermissionsExt;
+    let path = std::env::var_os("PATH").ok_or("native MangoHud wrapper requires PATH")?;
+    for directory in std::env::split_paths(&path) {
+        if !directory.is_absolute() {
+            continue;
+        }
+        let candidate = directory.join("mangohud");
+        if let Ok(meta) = fs::metadata(&candidate) {
+            if meta.is_file() && meta.permissions().mode() & 0o111 != 0 {
+                return Ok(candidate);
+            }
+        }
+    }
+    Err(
+        "MangoHud --dlsym requested, but no executable native mangohud wrapper was found on PATH"
+            .into(),
+    )
 }
 
 pub(super) fn run_profile_launch(args: Vec<String>) -> Result<(), String> {
@@ -321,6 +353,12 @@ pub(super) fn run_profile_launch(args: Vec<String>) -> Result<(), String> {
         }
     }
 
+    if options.mangohud_dlsym {
+        // OpenGL requires MangoHud's native preloader. An overridden LD_PRELOAD
+        // would silently disable the requested wrapper.
+        verify_named_program_environment(&program_json, &options.program, "LD_PRELOAD")?;
+    }
+
     // The selected bottle may restrict inherited host variables. This audit
     // must pass before any game launch and does not attest runtime delivery.
     let inventory_json = bottles_json_with_command(&options.bottles_cli, &["list", "bottles"])?;
@@ -346,6 +384,15 @@ pub(super) fn run_profile_launch(args: Vec<String>) -> Result<(), String> {
         }
     }
 
+    if options.mangohud_dlsym {
+        verify_named_bottle_environment(&inventory_json, &options.bottle, "LD_PRELOAD")?;
+    }
+    let mangohud_wrapper = if options.mangohud_dlsym {
+        Some(resolve_mangohud_wrapper()?)
+    } else {
+        None
+    };
+
     // Preflight performs every launch validation but never runs the selected
     // program. It does not claim the game actually inherits any variable.
     if options.check_only {
@@ -367,6 +414,8 @@ pub(super) fn run_profile_launch(args: Vec<String>) -> Result<(), String> {
             "mangohud_managed_config_checksum_verified": managed_hud.is_some(),
             "mangohud_managed_config_auto_selected": options.managed_mangohud,
             "mangohud_managed_config_host_path": managed_hud,
+            "mangohud_dlsym_wrapper_requested": options.mangohud_dlsym,
+            "mangohud_dlsym_wrapper_host_path": mangohud_wrapper,
             "bottles_run_invoked": false,
             "game_process_started_verified": false,
             "profile_reached_game_verified": false,
@@ -386,7 +435,13 @@ pub(super) fn run_profile_launch(args: Vec<String>) -> Result<(), String> {
     // Bottles' documented run command has no per-launch environment option.
     // Supply a process-local variable without modifying the bottle's
     // persistent settings. The CLI exit status is NOT gameplay verification.
-    let mut command = Command::new(&options.bottles_cli);
+    let mut command = if let Some(wrapper) = &mangohud_wrapper {
+        let mut command = Command::new(wrapper);
+        command.arg("--dlsym").arg(&options.bottles_cli);
+        command
+    } else {
+        Command::new(&options.bottles_cli)
+    };
     command
         .arg("run")
         .arg("-b")
@@ -447,6 +502,8 @@ pub(super) fn run_profile_launch(args: Vec<String>) -> Result<(), String> {
         "mangohud_managed_config_verified_before_launch": managed_hud.is_some(),
         "mangohud_managed_config_auto_selected": options.managed_mangohud,
         "mangohud_managed_config_host_path": managed_hud,
+        "mangohud_dlsym_wrapper_requested": options.mangohud_dlsym,
+        "mangohud_dlsym_wrapper_host_path": mangohud_wrapper,
         "mangohud_rendering_verified_in_game": false,
         "dll_auto_loaded": false,
         "gameplay_speed_verified": false,
@@ -511,6 +568,8 @@ mod tests {
             Some("/tmp/MangoHud.conf")
         );
         assert!(ProfileLaunchOptions::parse(&hud).unwrap().mangohud);
+        let dlsym = [hud.clone(), args(&["--mangohud-dlsym"])].concat();
+        assert!(ProfileLaunchOptions::parse(&dlsym).unwrap().mangohud_dlsym);
         let auto_managed = [hud.clone(), args(&["--managed-mangohud"])].concat();
         assert!(
             ProfileLaunchOptions::parse(&auto_managed)
@@ -538,6 +597,8 @@ mod tests {
             [opted_in.clone(), args(&["--experimental-four-timers"])].concat(),
             [hud.clone(), args(&["--mangohud"])].concat(),
             [allowed.clone(), args(&["--managed-mangohud"])].concat(),
+            [allowed.clone(), args(&["--mangohud-dlsym"])].concat(),
+            [dlsym.clone(), args(&["--mangohud-dlsym"])].concat(),
             [auto_managed.clone(), args(&["--managed-mangohud"])].concat(),
             [configured.clone(), args(&["--managed-mangohud"])].concat(),
             [
