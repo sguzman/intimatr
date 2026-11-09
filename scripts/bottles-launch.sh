@@ -114,68 +114,10 @@ if [[ "$renderer" == auto ]]; then
   imports="$(x86_64-w64-mingw32-objdump -p "$chosen/$exe")" ||
     { echo "Cannot inspect selected PE renderer imports" >&2; exit 1; }
   gl=false; vk=false; dx=false
-  if grep -Eiq '^[[:space:]]*DLL Name:[[:space:]]*opengl32\.dll[[:space:]]*
-  else
-    echo "Renderer is ambiguous or dynamically loaded. Use --renderer opengl or --renderer vulkan after inspecting this game; no renderer was assumed." >&2
-    exit 1
-  fi
-  echo "Renderer hint from selected PE static imports: $renderer (not in-game verification)." >&2
-fi
-
-args=(profile-launch --config "$source" --bottle "$bottle"
-  --exe "$windows_executable" --program "$program"
-  --profile "$profile" --offline-single-player
-  --mangohud --managed-mangohud)
-[[ "$timers" == false ]] || args+=(--experimental-four-timers)
-[[ "$renderer" != opengl ]] || args+=(--mangohud-dlsym)
-if [[ "$action" == check ]]; then args+=(--check); else args+=(--launch); fi
-
-# All security and policy validation remains inside the existing native
-# profile-launch implementation, including owned HUD and delivered profile.
-exec "$manager" "${args[@]}"
- <<<"$imports"; then gl=true; fi
-  if grep -Eiq '^[[:space:]]*DLL Name:[[:space:]]*vulkan-1\.dll[[:space:]]*
-  else
-    echo "Renderer is ambiguous or dynamically loaded. Use --renderer opengl or --renderer vulkan after inspecting this game; no renderer was assumed." >&2
-    exit 1
-  fi
-  echo "Renderer hint from selected PE static imports: $renderer (not in-game verification)." >&2
-fi
-
-args=(profile-launch --config "$source" --bottle "$bottle"
-  --exe "$windows_executable" --program "$program"
-  --profile "$profile" --offline-single-player
-  --mangohud --managed-mangohud)
-[[ "$timers" == false ]] || args+=(--experimental-four-timers)
-[[ "$renderer" != opengl ]] || args+=(--mangohud-dlsym)
-if [[ "$action" == check ]]; then args+=(--check); else args+=(--launch); fi
-
-# All security and policy validation remains inside the existing native
-# profile-launch implementation, including owned HUD and delivered profile.
-exec "$manager" "${args[@]}"
- <<<"$imports"; then vk=true; fi
-  if grep -Eiq '^[[:space:]]*DLL Name:[[:space:]]*(d3d[0-9]+|dxgi|ddraw)\.dll[[:space:]]*
-  else
-    echo "Renderer is ambiguous or dynamically loaded. Use --renderer opengl or --renderer vulkan after inspecting this game; no renderer was assumed." >&2
-    exit 1
-  fi
-  echo "Renderer hint from selected PE static imports: $renderer (not in-game verification)." >&2
-fi
-
-args=(profile-launch --config "$source" --bottle "$bottle"
-  --exe "$windows_executable" --program "$program"
-  --profile "$profile" --offline-single-player
-  --mangohud --managed-mangohud)
-[[ "$timers" == false ]] || args+=(--experimental-four-timers)
-[[ "$renderer" != opengl ]] || args+=(--mangohud-dlsym)
-if [[ "$action" == check ]]; then args+=(--check); else args+=(--launch); fi
-
-# All security and policy validation remains inside the existing native
-# profile-launch implementation, including owned HUD and delivered profile.
-exec "$manager" "${args[@]}"
- <<<"$imports"; then dx=true; fi
-  # A Direct3D import means the backend might be WineD3D or DXVK even if
-  # OpenGL/Vulkan loader imports are also present. Never call that unique.
+  if grep -Eiq '^[[:space:]]*DLL Name:[[:space:]]*opengl32\.dll[[:space:]]*$' <<<"$imports"; then gl=true; fi
+  if grep -Eiq '^[[:space:]]*DLL Name:[[:space:]]*vulkan-1\.dll[[:space:]]*$' <<<"$imports"; then vk=true; fi
+  # Mixed Direct3D imports make the backend ambiguous (DXVK/WineD3D).
+  if grep -Eiq '^[[:space:]]*DLL Name:[[:space:]]*(d3d[0-9]+|dxgi|ddraw)\.dll[[:space:]]*$' <<<"$imports"; then dx=true; fi
   if [[ "$gl" == true && "$vk" == false && "$dx" == false ]]; then
     renderer=opengl
   elif [[ "$vk" == true && "$gl" == false && "$dx" == false ]]; then
