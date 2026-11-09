@@ -353,6 +353,10 @@ fn safe_to_apply(current: &str, missing: &[String]) -> bool {
 
 fn status(selected: &Selection) -> Result<String, String> {
     if let Some(state) = read_state(selected)? {
+        let backup = regular_bytes(&selected.backup)?;
+        if digest(&backup) != state.original_sha256 {
+            return Err("Intimatr environment backup missing or modified; refusing ownership claim".into());
+        }
         let actual = digest(&regular_bytes(&selected.config)?);
         if actual == state.installed_sha256 {
             Ok("owned_unchanged".into())
@@ -618,6 +622,12 @@ mod tests {
         assert_eq!(status(&selection).unwrap(), "owned_unchanged");
         assert_eq!(fs::read_to_string(&config).unwrap(), updated);
         assert_eq!(fs::read(&selection.backup).unwrap(), selection.initial);
+
+        // Ownership must never be reported healthy without a valid original.
+        fs::write(&selection.backup, b"corrupted backup").unwrap();
+        assert!(status(&selection).is_err());
+        fs::write(&selection.backup, &selection.initial).unwrap();
+        assert_eq!(status(&selection).unwrap(), "owned_unchanged");
 
         // Do not erase changes made by Bottles or another tool after our edit.
         fs::write(&config, format!("{updated}Notes: user-edit\n")).unwrap();
