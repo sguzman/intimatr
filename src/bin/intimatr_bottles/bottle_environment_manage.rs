@@ -590,13 +590,9 @@ mod tests {
     #[test]
     fn empty_allowlist_is_accepted_for_status_only() {
         assert!(
-            Options::parse(vec!["status".into(), "--bottle".into(), "Eastward".into()])
-                .is_ok()
+            Options::parse(vec!["status".into(), "--bottle".into(), "Eastward".into()]).is_ok()
         );
-        assert!(
-            Options::parse(vec!["plan".into(), "--bottle".into(), "Eastward".into()])
-                .is_err()
-        );
+        assert!(Options::parse(vec!["plan".into(), "--bottle".into(), "Eastward".into()]).is_err());
     }
     #[test]
     fn selection_is_explicit_and_reversible() {
@@ -622,15 +618,17 @@ mod tests {
         .unwrap();
         assert!(all.all);
         assert!(all.bottles.is_empty());
-        assert!(Options::parse(vec![
-            "plan".into(),
-            "--all".into(),
-            "--bottle".into(),
-            "Eastward".into(),
-            "--preset".into(),
-            "intimatr-hud".into(),
-        ])
-        .is_err());
+        assert!(
+            Options::parse(vec![
+                "plan".into(),
+                "--all".into(),
+                "--bottle".into(),
+                "Eastward".into(),
+                "--preset".into(),
+                "intimatr-hud".into(),
+            ])
+            .is_err()
+        );
         assert!(parsed.allow.contains(&"LD_PRELOAD".to_owned()));
         assert!(
             Options::parse(vec![
