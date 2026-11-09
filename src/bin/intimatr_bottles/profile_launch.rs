@@ -268,8 +268,11 @@ fn resolve_mangohud_wrapper() -> Result<PathBuf, String> {
 }
 
 pub(super) fn run_profile_launch(args: Vec<String>) -> Result<(), String> {
-    use std::{fs::File, io::Read};
+    use std::{fs::File, io::Read, time::Instant};
 
+    // Monotonic host-side timings: never confuse Bottles CLI completion with
+    // the game becoming responsive, renderer visibility, or speed-hook load.
+    let preflight_start = Instant::now();
     let options = ProfileLaunchOptions::parse(&args)?;
     let (prefix, windows_profile, enabled) =
         verify_bottle_profile_path(&options.bottle, &options.profile, &options.bottles_cli)?;
@@ -395,6 +398,7 @@ pub(super) fn run_profile_launch(args: Vec<String>) -> Result<(), String> {
 
     // Preflight performs every launch validation but never runs the selected
     // program. It does not claim the game actually inherits any variable.
+    let preflight_elapsed_ms = preflight_start.elapsed().as_millis();
     if options.check_only {
         let report = serde_json::json!({
             "operation": "read_only_registered_bottles_profile_launch_preflight",
@@ -416,6 +420,7 @@ pub(super) fn run_profile_launch(args: Vec<String>) -> Result<(), String> {
             "mangohud_managed_config_host_path": managed_hud,
             "mangohud_dlsym_wrapper_requested": options.mangohud_dlsym,
             "mangohud_dlsym_wrapper_host_path": mangohud_wrapper,
+            "host_preflight_elapsed_ms": preflight_elapsed_ms,
             "bottles_run_invoked": false,
             "game_process_started_verified": false,
             "profile_reached_game_verified": false,
@@ -465,9 +470,11 @@ pub(super) fn run_profile_launch(args: Vec<String>) -> Result<(), String> {
             .env_remove("MANGOHUD_CONFIG")
             .env("MANGOHUD_CONFIGFILE", config);
     }
+    let invocation_start = Instant::now();
     let output = command
         .output()
         .map_err(|error| format!("cannot invoke native Bottles run: {error}"))?;
+    let bottles_cli_elapsed_ms = invocation_start.elapsed().as_millis();
     if !output.status.success() {
         return Err(format!(
             "native Bottles run failed (exit {:?}): {}",
@@ -493,6 +500,9 @@ pub(super) fn run_profile_launch(args: Vec<String>) -> Result<(), String> {
         "bottles_reported_profile_environment_mode": environment_mode,
         "bottles_environment_delivery_verified_in_game": false,
         "bottles_run_cli_exited_successfully": true,
+        "host_preflight_elapsed_ms": preflight_elapsed_ms,
+        "bottles_cli_invocation_elapsed_ms": bottles_cli_elapsed_ms,
+        "host_launch_command_total_elapsed_ms": preflight_start.elapsed().as_millis(),
         "game_process_started_verified": false,
         "profile_reached_game_verified": false,
         "experimental_startup_timer_activation_requested": options.experimental_four_timers,
