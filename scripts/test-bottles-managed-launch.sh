@@ -131,6 +131,54 @@ if tail -n 1 "$MOCK_CALLS" | grep -Fq -- '--experimental-four-timers'; then
   exit 1
 fi
 
+# A real app-launcher entry is optional and explicitly selected.
+# No game launches during shortcut plan/install; only Intimatr --check runs.
+export XDG_DATA_HOME="$tmp/xdg data"
+shortcut_script="scripts/bottles-shortcut.sh"
+bash -n "$shortcut_script"
+bash "$shortcut_script" plan "$game" --experimental-four-timers >"$tmp/shortcut-plan.out"
+grep -Fq 'shortcut_plan' "$tmp/shortcut-plan.out"
+test ! -d "$XDG_DATA_HOME/applications"
+if bash "$shortcut_script" install "$game" >"$tmp/no-consent-desktop.out" 2>"$tmp/no-consent-desktop.err"; then
+  echo "Shortcut creation accepted missing offline-single-player consent" >&2
+  exit 1
+fi
+bash "$shortcut_script" install "$game" --offline-single-player \
+  --experimental-four-timers >"$tmp/shortcut-install.out"
+shortcuts=("$XDG_DATA_HOME/applications"/intimatr-bottles-*.desktop)
+test "${#shortcuts[@]}" -eq 1
+desktop="${shortcuts[0]}"
+test -f "$desktop"
+grep -Fq 'Categories=Game;' "$desktop"
+grep -Fq -- '--experimental-four-timers' "$desktop"
+grep -Fq -- '--offline-single-player' "$desktop"
+grep -Fq -- '"/Games/Demo"' "$desktop" && {
+  echo 'Desktop entry unexpectedly lost full executable directory' >&2
+  exit 1
+}
+test "$(grep -c '^Exec=' "$desktop")" -eq 1
+bash "$shortcut_script" status "$game" >"$tmp/shortcut-status.out"
+grep -Fq 'owned_unchanged' "$tmp/shortcut-status.out"
+desktop_sha="$(sha256sum <"$desktop" | cut -d' ' -f1)"
+bash "$shortcut_script" install "$game" --offline-single-player \
+  --experimental-four-timers >"$tmp/shortcut-repeat.out"
+grep -Fq 'already installed unchanged' "$tmp/shortcut-repeat.out"
+test "$desktop_sha" = "$(sha256sum <"$desktop" | cut -d' ' -f1)"
+printf '# local modification\n' >>"$desktop"
+bash "$shortcut_script" status "$game" >"$tmp/shortcut-modified.out"
+grep -Fq 'modified_or_unmanaged' "$tmp/shortcut-modified.out"
+if bash "$shortcut_script" remove "$game" >"$tmp/shortcut-refuse.out" 2>"$tmp/shortcut-refuse.err"; then
+  echo "Shortcut remove deleted an edited desktop entry" >&2
+  exit 1
+fi
+grep -Fq 'refusing removal' "$tmp/shortcut-refuse.err"
+sed -i '$d' "$desktop"
+test "$desktop_sha" = "$(sha256sum <"$desktop" | cut -d' ' -f1)"
+bash "$shortcut_script" remove "$game" >"$tmp/shortcut-remove.out"
+test ! -e "$desktop"
+test -f "$game/Demo.exe"
+test -d "$managed"
+
 # A changed source policy must not launch a stale profile, but ownership-
 # checked removal must still work without the original source file.
 printf 'user changed the speed settings\n' >>"$source"
