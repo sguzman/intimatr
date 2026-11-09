@@ -345,6 +345,12 @@ fn read_state(selected: &Selection) -> Result<Option<State>, String> {
     }
 }
 
+/// Only an unmanaged file or an unchanged, fully configured owned file may
+/// pass apply. A prior managed file modified by Bottles/user must be reviewed.
+fn safe_to_apply(current: &str, missing: &[String]) -> bool {
+    current == "unmanaged" || (current == "owned_unchanged" && missing.is_empty())
+}
+
 fn status(selected: &Selection) -> Result<String, String> {
     if let Some(state) = read_state(selected)? {
         let actual = digest(&regular_bytes(&selected.config)?);
@@ -469,9 +475,9 @@ pub(super) fn run_bottle_env(args: Vec<String>) -> Result<(), String> {
     // Global preflight: no bottle is changed if a different selection is invalid.
     for selected in &selections {
         let current = status(selected)?;
-        if options.action == "apply" && !selected.missing.is_empty() && current != "unmanaged" {
+        if options.action == "apply" && !safe_to_apply(&current, &selected.missing) {
             return Err(format!(
-                "{}: prior managed/environment edit ({current}); restore first",
+                "{}: prior managed/environment edit ({current}); refusing apply",
                 selected.name
             ));
         }
@@ -532,7 +538,7 @@ pub(super) fn run_bottle_env(args: Vec<String>) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Options, Selection, apply, block_list, render, restore, status};
+    use super::{Options, Selection, apply, block_list, render, restore, safe_to_apply, status};
     const CONFIG: &str = "Name: Test\nLimit_System_Environment: true\nInherited_Environment_Variables:\n- HOME\n- PATH\nEnvironment_Variables: {}\n";
     #[test]
     fn preserves_unrelated_yaml_bytes() {
@@ -626,6 +632,17 @@ mod tests {
         assert!(!selection.backup.exists());
         assert!(!selection.marker.exists());
         fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn apply_refuses_owned_drift_even_without_missing_variables() {
+        let none: Vec<String> = Vec::new();
+        let new_variable = vec!["MANGOHUD".to_owned()];
+        assert!(safe_to_apply("unmanaged", &new_variable));
+        assert!(safe_to_apply("owned_unchanged", &none));
+        assert!(!safe_to_apply("owned_unchanged", &new_variable));
+        assert!(!safe_to_apply("interrupted_before_update", &none));
+        assert!(!safe_to_apply("modified_since_intimatr", &none));
     }
 
     #[test]
