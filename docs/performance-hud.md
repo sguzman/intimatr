@@ -127,6 +127,21 @@ environment preflight and returns a JSON report with
 rendering or gameplay speed. The options are mutually exclusive;
 `--check --launch` is rejected.
 
+For an **OpenGL game** where `--mangohud` alone delivers the environment
+but never renders an overlay, use the additional **`--mangohud-dlsym`**
+flag on that same game's `profile-launch` command. The CLI explicitly
+locates the native `mangohud` executable and launches
+`mangohud --dlsym bottles-cli run -b NAME -p PROGRAM` without a shell;
+it does not change other bottles or permanently update user settings.
+It checks that the exact selected bottle/program permits inheriting
+`LD_PRELOAD` and refuses a missing native wrapper. The equivalent
+`--check` command verifies the wrapper and inheritance policy without
+starting Wine or the game. This explicit OpenGL path was verified to
+render MangoHud for Eastward in owner QA; the managed Intimatr-branded
+layout and DLL speed telemetry still require separate in-game verification.
+Do not assume the wrapper is needed for Vulkan/DXVK games, or that the
+preflight guarantees the graphics overlay renders.
+
 Alternatively, enable MangoHud for the selected bottle using its **Monitor
 Performance / MangoHud** setting, or launch the Vulkan game with the
 `MANGOHUD=1` environment variable. If Bottles restricts host environment variables, `MANGOHUD`
