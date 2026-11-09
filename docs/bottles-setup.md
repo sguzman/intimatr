@@ -39,6 +39,9 @@ management. If no new DLL deployment is needed, `--runtime` can be omitted.
 - The coordinator requires the new `bottle-env` command from PR #5 and reuses
   the existing `bottles-hud.sh` and `bottles-multi-game.sh` installers.
 - Read-only `plan`/`status` preflight exact files and existing ownership.
+- The reviewed manifest is snapshotted once and the validated copy is used
+  across all stages, so another process changing the source manifest mid-run
+  cannot silently switch the selected games.
 - `apply` requires affirmative acknowledgement that all selected games and
   Bottles are closed and games are offline single-player. These are
   acknowledgements, not proof that a process has exited.
