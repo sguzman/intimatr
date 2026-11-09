@@ -90,7 +90,7 @@ jq -e '
   all(.games[];
     type == "object" and
     (.game_dir | type == "string" and startswith("/") and
-      (test("[\t\r\n\\]") | not)) and
+      (test("[\t\r\n]") | not) and (contains("\\") | not)) and
     (.executable | type == "string" and
       test("^[A-Za-z0-9_][A-Za-z0-9 ._-]{0,123}\\.[eE][xX][eE]$") and
       (contains("..") | not)) and
