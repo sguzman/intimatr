@@ -242,7 +242,16 @@ jq -s -e 'all(.[]; .operation == "status" and
   (.ownership | type == "string") and
   (.allowlist_entries_to_add | type == "array"))'   "$journal/env-before.jsonl" >/dev/null ||
   { echo "Native manager returned invalid environment recovery inventory; refusing all edits. Journal: $journal" >&2; exit 1; }
-jq -n --arg root "$root" --argjson all_bottles "$all_bottles"   '{version:1,root:$root,all_bottles:$all_bottles}' >"$journal/metadata.json"
+jq -n --arg root "$root" --argjson all_bottles "$all_bottles" \
+  '{version:1,root:$root,all_bottles:$all_bottles}' >"$journal/metadata.json"
+# Freeze the exact setup inventory. The stage marker is intentionally NOT
+# checksummed, because it advances atomically after every completed phase.
+# Recovery refuses a stale/edited selection, ownership snapshot or metadata.
+(
+  cd -- "$journal"
+  sha256sum -- metadata.json selection.json new-dll.json new-hud.json \
+    env-before.jsonl > snapshots.sha256
+)
 # A stage marker is committed by rename so a killed process leaves its last
 # completed boundary visible. A stage marked "started" can be incomplete.
 mark_stage() {
