@@ -42,19 +42,29 @@ printf '%s\n' "$*" >>"$MOCK_EVENTS"
 case "$1" in
   profile-check) printf '{"operation":"read_only_profile_resolution"}\n' ;;
   profile-export)
-    printf '%s\n' "$*" | grep -Fq -- "${MOCK_FAIL_EXE:-__NO_FAILURE__}" &&
-      [[ -n "${MOCK_FAIL_EXE:-}" ]] && exit 44
+    if [[ -n "${MOCK_FAIL_EXE:-}" && "$*" == *"$MOCK_FAIL_EXE"* &&
+          "$*" == *"/.intimatr-managed-launch/"* ]]; then
+      exit 44
+    fi
     output=""
     while (( $# )); do
       if [[ "$1" == --output ]]; then output="$2"; break; fi
       shift
     done
     [[ "$output" == /* && ! -e "$output" ]] || exit 3
-    printf 'version = 1\n[speed]\nenabled = true\n' >"$output"
-    jq -n --arg p "$output" '{
-      operation:"explicit_launch_profile_export",output_linux_file:$p,
-      resolved_speed_enabled:true
-    }'
+    if [[ -n "${MOCK_DISABLED_EXE:-}" && "$*" == *"$MOCK_DISABLED_EXE"* ]]; then
+      printf 'version = 1\n[speed]\nenabled = false\n' >"$output"
+      jq -n --arg p "$output" '{
+        operation:"explicit_launch_profile_export",output_linux_file:$p,
+        resolved_speed_enabled:false
+      }'
+    else
+      printf 'version = 1\n[speed]\nenabled = true\n' >"$output"
+      jq -n --arg p "$output" '{
+        operation:"explicit_launch_profile_export",output_linux_file:$p,
+        resolved_speed_enabled:true
+      }'
+    fi
     ;;
   *) echo "Unexpected native Intimatr command: $*" >&2; exit 3 ;;
 esac
@@ -86,6 +96,19 @@ if bash "$script" prepare "$manifest" "$manager" "$source" \
   exit 1
 fi
 test ! -e "$first/.intimatr-managed-launch"
+
+# A disabled late-game profile must fail the full preview before the
+# earlier game's managed directory is created at all.
+export MOCK_DISABLED_EXE='C:\Games\Second\Second.exe'
+if bash "$script" prepare "$manifest" "$manager" "$source" \
+  --offline-single-player --games-closed \
+  >"$tmp/disabled.out" 2>"$tmp/disabled.err"; then
+  echo "Accepted a disabled late-game Windows profile" >&2; exit 1
+fi
+grep -Fq 'Preview profile disabled or invalid' "$tmp/disabled.err"
+test ! -e "$first/.intimatr-managed-launch"
+test ! -e "$second/.intimatr-managed-launch"
+unset MOCK_DISABLED_EXE
 
 bash "$script" prepare "$manifest" "$manager" "$source" \
   --offline-single-player --games-closed >"$tmp/prepare.out"
