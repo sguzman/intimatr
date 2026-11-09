@@ -13,6 +13,13 @@ DLL injector, and it never launches a game.
 Use the existing read-only `scripts/bottles-discover.sh` with the current
 Cargo-installed `intimatr-bottles` binary to generate a new candidate manifest.
 Review every candidate and exclude online, anti-cheat or unsupported games.
+The read-only discovery command now also records `bottle`,
+`registered_program`, and `windows_executable` for each candidate, preserving
+the exact native Bottles registration identity. Existing version-1 manifests
+without those extra fields remain valid; the coordinator does not yet use
+registration metadata to generate launch shortcuts. A future managed launcher
+will validate it against the current registration rather than trusting a
+possibly stale path.
 
 Run from the existing Intimatr source checkout with real absolute file paths:
 
