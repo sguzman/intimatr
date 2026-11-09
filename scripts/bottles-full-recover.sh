@@ -88,6 +88,33 @@ stage="$(cat -- "$journal/full-profile-stage")"
 case "$stage" in profiles-started|profiles-complete|rollback-started|reverted) ;;
   *) echo "Unknown combined profile stage: $stage" >&2; exit 1 ;;
 esac
+# The completed inventory binds every original managed profile to the exact
+# bytes and directory inode observed when this setup finished. If a user
+# subsequently replaced a valid managed directory, recovery cannot claim it.
+# An interrupted preparation has no trusted completion snapshot; it remains
+# non-recoverable automatically regardless of partial after-state files.
+if [[ "$stage" != profiles-started ]]; then
+  for file in full-profiles-after.json full-profiles-after.sha256; do
+    [[ -f "$journal/$file" && ! -L "$journal/$file" ]] ||
+      { echo "Missing completed profile identity snapshot: $file" >&2; exit 1; }
+  done
+  (
+    cd -- "$journal"
+    sha256sum -- full-profiles-after.json | cmp -s - full-profiles-after.sha256
+  ) || { echo "Completed profile identity snapshot checksum mismatch" >&2; exit 1; }
+  jq -e --slurpfile selection "$journal/selection.json" '
+    type == "object" and .version == 1 and
+    (.games | type == "array" and length > 0 and length <= 32) and
+    ([.games[].game_dir] | length == (unique | length)) and
+    ([.games[].game_dir] | sort) ==
+      ([$selection[0].games[].game_dir] | sort) and
+    all(.games[]; (.snapshot_sha256 | type == "string" and
+      test("^[0-9a-f]{64}$")) and
+      (.directory_identity | type == "string" and
+        test("^[0-9]+:[0-9]+$")))
+  ' "$journal/full-profiles-after.json" >/dev/null ||
+    { echo "Completed profile inventory does not match reviewed selection" >&2; exit 1; }
+fi
 base_report="$(bash "$base" status "$journal" "$manager")" ||
   { echo "Base journal integrity or ownership inspection failed" >&2; exit 1; }
 printf '%s\n' "$base_report"
@@ -125,6 +152,21 @@ while IFS= read -r record; do
   if [[ "$stage" == profiles-started ]]; then
     echo "BLOCKED: cannot attribute incomplete-stage profile to this attempt: $game" >&2
     blockers=$((blockers+1)); continue
+  fi
+  expected_record="$(jq -ce --arg dir "$game" \
+    '.games[] | select(.game_dir == $dir)' "$journal/full-profiles-after.json")" ||
+    { echo "BLOCKED: missing completed profile identity for $game" >&2
+      blockers=$((blockers+1)); continue; }
+  expected_hash="$(jq -er .snapshot_sha256 <<<"$expected_record")"
+  expected_identity="$(jq -er .directory_identity <<<"$expected_record")"
+  managed="$game/.intimatr-managed-launch"
+  actual_hash="$(sha256sum <"$managed/snapshots.sha256" | cut -d' ' -f1)"
+  actual_identity="$(stat -c '%d:%i' -- "$managed")"
+  if [[ "$actual_hash" != "$expected_hash" ||
+        "$actual_identity" != "$expected_identity" ]]; then
+    echo "BLOCKED: managed profile was replaced after the completed setup: $game" >&2
+    blockers=$((blockers+1))
+    continue
   fi
   created_count=$((created_count+1))
   printf '%s\n' "$game" >>"$tmp/created.txt"
