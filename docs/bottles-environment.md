@@ -12,10 +12,11 @@ copying binaries into a custom directory).
 
 \`\`\`fish
 # Read-only: discover requested additions in selected bottles.
-intimatr-bottles bottle-env plan --bottle Eastward --bottle "Second Game" --preset intimatr-hud
+intimatr-bottles bottle-env plan --all --preset intimatr-hud
+# Or choose only named bottles: --bottle Eastward --bottle "Second Game"
 
 # With selected games AND Bottles itself closed, edit only those allowlists.
-intimatr-bottles bottle-env apply --bottle Eastward --bottle "Second Game" --preset intimatr-hud --bottles-closed
+intimatr-bottles bottle-env apply --all --preset intimatr-hud --bottles-closed
 
 # Read-only: inspect managed/unmanaged status.
 intimatr-bottles bottle-env status --bottle Eastward --preset intimatr-hud
@@ -33,7 +34,7 @@ values or cause MangoHud to render automatically.
 
 ### Integrity and limitations
 
-- Explicit bottle names only. No mass operation without a reviewed selection.
+- Explicit bottle names or `--all` only. No unrequested mass operation; review the plan before using `--all` in apply.
 - Preflights **all** selected bottles before any edit, refusing stale native
   inventory, unsupported YAML layouts, overrides, symlinks and duplicate names.
 - Edits the ordinary top-level PyYAML block list while preserving every
