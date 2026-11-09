@@ -581,7 +581,9 @@ pub(super) fn run_bottle_env(args: Vec<String>) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Options, Selection, apply, apply_batch, block_list, render, restore, safe_to_apply, status};
+    use super::{
+        Options, Selection, apply, apply_batch, block_list, render, restore, safe_to_apply, status,
+    };
     const CONFIG: &str = "Name: Test\nLimit_System_Environment: true\nInherited_Environment_Variables:\n- HOME\n- PATH\nEnvironment_Variables: {}\n";
     #[test]
     fn preserves_unrelated_yaml_bytes() {
