@@ -125,7 +125,12 @@ if [[ "$action" == plan || "$action" == prepare ]]; then
     { echo "Reviewed game is not in its selected native bottle C: drive" >&2; exit 1; }
   from_c="${c_path#drive_c/}/$exe"
   slash_path="${windows//\\//}"
-  [[ "$slash_path" =~ ^[cC]:/ && "${slash_path:3}" == "$from_c" ]] ||
+  registered_relative="${slash_path:3}"
+  # Wine path comparison is case-insensitive for ASCII Windows names. The
+  # native Rust launcher still resolves actual C: components and rejects
+  # ambiguous case-collisions at execution time.
+  [[ "$slash_path" =~ ^[cC]:/ &&
+     "${registered_relative,,}" == "${from_c,,}" ]] ||
     { echo "Reviewed Windows registration is not the selected executable" >&2; exit 1; }
   registered="$(bottles-cli --json programs -b "$bottle")"
   jq -e --arg name "$program" --arg path "$windows" '
