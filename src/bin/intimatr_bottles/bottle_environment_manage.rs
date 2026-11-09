@@ -100,7 +100,7 @@ impl Options {
         }
         allow.sort_unstable();
         allow.dedup();
-        if action != "restore" && allow.is_empty() {
+        if matches!(action.as_str(), "plan" | "apply") && allow.is_empty() {
             return Err("specify --preset intimatr-hud or at least one --allow NAME".into());
         }
         if matches!(action.as_str(), "apply" | "restore") != closed {
@@ -500,7 +500,7 @@ pub(super) fn run_bottle_env(args: Vec<String>) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Options, block_list, render};
+    use super::{Options, Selection, apply, block_list, render, restore, status};
     const CONFIG: &str = "Name: Test\nLimit_System_Environment: true\nInherited_Environment_Variables:\n- HOME\n- PATH\nEnvironment_Variables: {}\n";
     #[test]
     fn preserves_unrelated_yaml_bytes() {
@@ -521,6 +521,70 @@ mod tests {
     fn refuses_inventory_drift_and_nested_yaml() {
         assert!(render(CONFIG, &["MANGOHUD".into()], &["WRONG".into()]).is_err());
         assert!(block_list("Inherited_Environment_Variables:\n  - HOME\nOther: true\n").is_err());
+    }
+    #[test]
+    fn owned_patch_restores_exact_original_and_rejects_modified_settings() {
+        use std::fs;
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "intimatr-bottle-env-test-{}-{nonce}",
+            std::process::id()
+        ));
+        fs::create_dir(&root).unwrap();
+        let config = root.join("bottle.yml");
+        fs::write(&config, CONFIG).unwrap();
+        let (updated, missing) = render(
+            CONFIG,
+            &["MANGOHUD".into()],
+            &["HOME".into(), "PATH".into()],
+        )
+        .unwrap();
+        let selection = Selection {
+            name: "Test".into(),
+            config: config.clone(),
+            initial: CONFIG.as_bytes().to_vec(),
+            updated: updated.as_bytes().to_vec(),
+            missing,
+            marker: root.join("bottle.yml.intimatr-env-state.json"),
+            backup: root.join("bottle.yml.intimatr-env-original"),
+            staged: root.join("bottle.yml.intimatr-env-staged"),
+        };
+
+        assert_eq!(status(&selection).unwrap(), "unmanaged");
+        apply(&selection).unwrap();
+        assert_eq!(status(&selection).unwrap(), "owned_unchanged");
+        assert_eq!(fs::read_to_string(&config).unwrap(), updated);
+        assert_eq!(fs::read(&selection.backup).unwrap(), selection.initial);
+
+        // Do not erase changes made by Bottles or another tool after our edit.
+        fs::write(&config, format!("{updated}Notes: user-edit\n")).unwrap();
+        assert!(restore(&selection).is_err());
+        assert!(selection.backup.exists());
+        assert_eq!(status(&selection).unwrap(), "modified_since_intimatr");
+
+        fs::write(&config, &selection.updated).unwrap();
+        restore(&selection).unwrap();
+        assert_eq!(fs::read(&config).unwrap(), selection.initial);
+        assert_eq!(status(&selection).unwrap(), "unmanaged");
+        assert!(!selection.backup.exists());
+        assert!(!selection.marker.exists());
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn empty_allowlist_is_accepted_for_status_only() {
+        assert!(
+            Options::parse(vec!["status".into(), "--bottle".into(), "Eastward".into()])
+                .is_ok()
+        );
+        assert!(
+            Options::parse(vec!["plan".into(), "--bottle".into(), "Eastward".into()])
+                .is_err()
+        );
     }
     #[test]
     fn selection_is_explicit_and_reversible() {
