@@ -44,7 +44,8 @@ separate checksum guards this before-state. After every selected
 profile has been prepared and ownership-verified, a second checksummed
 inventory records the exact managed-profile ownership hash and filesystem
 device/inode identity observed at completion. The stage only becomes
-`profiles-complete` once that inventory is durable. This allows
+`profiles-complete` once that inventory has been written and published
+via rename; this is not a promise of persistence through sudden power loss. This allows
 explicit, selective recovery of newly created profiles without deleting
 pre-existing profiles **or a later replacement with matching contents**.
 A new combined apply refuses an earlier unfinished combined profile stage.
