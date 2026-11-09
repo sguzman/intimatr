@@ -201,23 +201,55 @@ if (( new_dll_count )); then
   fi
 fi
 
+# Persist a per-attempt recovery record before modifying any Bottles files.
+# It contains only reviewed selections and the original ownership inventory,
+# never credentials, game binaries, or a second copy of the DLL runtime.
+# The directory is inside the canonical native Bottles root and has mode 0700.
+journal="$(mktemp -d "$root/.intimatr-setup.XXXXXXXX")" ||
+  { echo "Cannot create durable Bottles setup journal" >&2; exit 1; }
+cp -- "$manifest" "$journal/selection.json"
+cp -- "$tmp/new-dll.json" "$journal/new-dll.json"
+cp -- "$tmp/new-hud.json" "$journal/new-hud.json"
+"$manager" bottle-env status "${env_args[@]}" --preset intimatr-hud >"$journal/env-before.jsonl"
+jq -s -e 'all(.[]; .operation == "status" and
+  (.bottle | type == "string") and
+  (.ownership | type == "string") and
+  (.allowlist_entries_to_add | type == "array"))'   "$journal/env-before.jsonl" >/dev/null ||
+  { echo "Native manager returned invalid environment recovery inventory; refusing all edits. Journal: $journal" >&2; exit 1; }
+jq -n --arg root "$root" --argjson all_bottles "$all_bottles"   '{version:1,root:$root,all_bottles:$all_bottles}' >"$journal/metadata.json"
+# A stage marker is committed by rename so a killed process leaves its last
+# completed boundary visible. A stage marked "started" can be incomplete.
+mark_stage() {
+  printf '%s\n' "$1" >"$journal/.stage-next"
+  mv -- "$journal/.stage-next" "$journal/stage"
+}
+mark_stage prepared
+echo "Recovery journal: $journal"
+
 # No global atomicity is promised: each component has its own guard/backup.
-# Failure reports which stage stopped so the owner can inspect/restore the
-# exact changes rather than risking destructive cross-component cleanup.
+# An interrupted run preserves this journal for explicit integrity-checked
+# recovery; never assume a stage succeeded merely because it was started.
 stage=environment
-trap 'rc=$?; if (( rc )); then echo "INCOMPLETE at $stage. Inspect status and owned files before retrying; no automatic destructive rollback." >&2; fi; rm -rf -- "$tmp"' EXIT
+trap 'rc=$?; if (( rc )); then echo "INCOMPLETE at $stage. Journal: $journal. Inspect ownership before retrying; no destructive automatic rollback." >&2; fi; rm -rf -- "$tmp"' EXIT
+mark_stage environment-started
 echo "=== Applying inherited variable allowlists ==="
 "$manager" bottle-env apply "${env_args[@]}" --preset intimatr-hud --bottles-closed
+mark_stage environment-complete
 stage=DLL
 if (( new_dll_count )); then
+  mark_stage dll-started
   echo "=== Installing selected DLL proxies ==="
   bash "$proxy" install "$tmp/new-dll.json" "$manager" "$runtime" \
     --offline-single-player --games-closed
+  mark_stage dll-complete
 fi
 stage=MangoHud
 if (( new_hud_count )); then
+  mark_stage hud-started
   echo "=== Installing selected MangoHud configs ==="
   bash "$hud" install "$tmp/new-hud.json" --offline-single-player --games-closed
+  mark_stage hud-complete
 fi
 stage=complete
+mark_stage complete
 echo "Selected Bottles configuration applied. Live renderer output and speed require in-game QA."
