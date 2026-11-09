@@ -105,6 +105,15 @@ fi
 journals=("$tmp/root"/.intimatr-setup.*)
 test "${#journals[@]}" -eq 1
 test "$(cat "${journals[0]}/stage")" = complete
+test -f "${journals[0]}/full-profiles-before.json"
+test -f "${journals[0]}/full-profiles-before.sha256"
+test "$(cat "${journals[0]}/full-profile-stage")" = profiles-complete
+jq -e --arg dir "$game" '
+  .version == 1 and (.games | length == 1) and
+  .games[0].game_dir == $dir and .games[0].preexisting == false
+' "${journals[0]}/full-profiles-before.json" >/dev/null
+bash scripts/bottles-full-recover.sh status "${journals[0]}" "$manager" >"$tmp/recovery-status.out"
+grep -Fq 'Eligible new profiles: 1; pre-existing preserved: 0; profile blockers: 0; base blockers: 0.' "$tmp/recovery-status.out"
 
 bash "$script" status "$manifest" "$manager" >"$tmp/status.out"
 grep -Fq 'owned_unchanged' "$tmp/status.out"
@@ -130,4 +139,39 @@ fi
 grep -Fq 'differs from reviewed request' "$tmp/policy-change.err"
 test "$before" = "$(sha256sum <"$game/intimatr.dll" | cut -d' ' -f1)"
 test "$hud_sha" = "$(sha256sum <"$game/MangoHud.conf" | cut -d' ' -f1)"
-echo 'Full setup fixture: one plan/apply/status, idempotence, profile/HUD integrity, and no game launch passed'
+# Recovery refuses to infer ownership when profile preparation did not
+# reach a completed stage, or when the prepared profile was edited.
+printf 'profiles-started\n' >"${journals[0]}/full-profile-stage"
+if bash scripts/bottles-full-recover.sh rollback "${journals[0]}" "$manager" \
+  --offline-single-player --games-closed --bottles-closed \
+  >"$tmp/started-recovery.out" 2>"$tmp/started-recovery.err"; then
+  echo 'Combined recovery assumed an incomplete profile stage completed' >&2
+  exit 1
+fi
+grep -Fq 'interrupted profile stage' "$tmp/started-recovery.err"
+test -f "$game/.intimatr-managed-launch/speed.toml"
+printf 'profiles-complete\n' >"${journals[0]}/full-profile-stage"
+printf '# owner changed profile\n' >>"$game/.intimatr-managed-launch/speed.toml"
+if bash scripts/bottles-full-recover.sh rollback "${journals[0]}" "$manager" \
+  --offline-single-player --games-closed --bottles-closed \
+  >"$tmp/tamper-recovery.out" 2>"$tmp/tamper-recovery.err"; then
+  echo 'Combined recovery removed a user-modified profile' >&2
+  exit 1
+fi
+grep -Fq 'ownership conflicts prevent combined rollback' "$tmp/tamper-recovery.err"
+test -f "$game/MangoHud.conf"
+test -f "$game/.intimatr-managed-launch/speed.toml"
+sed -i '$d' "$game/.intimatr-managed-launch/speed.toml"
+test "$profile_sha" = "$(sha256sum <"$game/.intimatr-managed-launch/speed.toml" | cut -d' ' -f1)"
+bash scripts/bottles-full-recover.sh rollback "${journals[0]}" "$manager" \
+  --offline-single-player --games-closed --bottles-closed >"$tmp/full-rollback.out"
+grep -Fq 'Combined recovery complete' "$tmp/full-rollback.out"
+test "$(cat "${journals[0]}/full-profile-stage")" = reverted
+test "$(cat "${journals[0]}/stage")" = reverted
+test ! -e "$game/.intimatr-managed-launch"
+test ! -e "$game/MangoHud.conf"
+test ! -e "$game/intimatr-mangohud.sha256"
+test -f "$game/Demo.exe"
+test -f "$game/intimatr-launch-deployment.json"
+test "$before" = "$(sha256sum <"$game/intimatr.dll" | cut -d' ' -f1)"
+echo 'Full setup fixture: plan/apply/status, integrity, rollback provenance, and no Wine launch passed'
