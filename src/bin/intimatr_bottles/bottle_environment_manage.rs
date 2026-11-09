@@ -329,7 +329,7 @@ fn read_state(selected: &Selection) -> Result<Option<State>, String> {
 
 fn status(selected: &Selection) -> Result<String, String> {
     if let Some(state) = read_state(selected)? {
-        let actual = digest(&selected.initial);
+        let actual = digest(&regular_bytes(&selected.config)?);
         if actual == state.installed_sha256 {
             Ok("owned_unchanged".into())
         } else if actual == state.original_sha256 {
