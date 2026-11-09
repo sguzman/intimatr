@@ -212,4 +212,33 @@ bash scripts/bottles-setup.sh apply "$tmp/empty.json" "$manager" \
 grep -Fq 'Selection: 0 games; 0 new DLLs; 0 new HUD configs.' "$tmp/empty-apply.log"
 test ! -e "$new_game/intimatr.dll"
 
-echo "Combined Bottles fixture: plan, status, allowlist, existing DLL, HUD install, idempotence, tamper and path refusal passed"
+# Recovery is read-only until explicitly approved. A user-modified HUD
+# blocks the entire rollback; the original Intimatr DLL remains unchanged.
+bash scripts/bottles-setup-recover.sh status "$journal" "$manager" >"$tmp/recovery-status.out"
+grep -Fq 'Blockers: 1.' "$tmp/recovery-status.out"
+if bash scripts/bottles-setup-recover.sh rollback "$journal" "$manager" \
+  --offline-single-player --games-closed --bottles-closed \
+  >"$tmp/blocked-recovery.out" 2>"$tmp/blocked-recovery.err"; then
+  echo "Recovery overwrote a locally modified HUD" >&2
+  exit 1
+fi
+grep -Fq 'Refusing partial rollback while blockers remain' "$tmp/blocked-recovery.err"
+test "$modified" = "$(sha256sum "$game/MangoHud.conf" | cut -d' ' -f1)"
+test "$(cat "$journal/stage")" = complete
+
+# Restoring the exact unchanged managed HUD allows a selective rollback.
+# Its existing, pre-installed Intimatr DLL must never be removed.
+sed -i '$d' "$game/MangoHud.conf"
+test "$managed" = "$(sha256sum "$game/MangoHud.conf" | cut -d' ' -f1)"
+bash scripts/bottles-setup-recover.sh rollback "$journal" "$manager" \
+  --offline-single-player --games-closed --bottles-closed >"$tmp/recovered.out"
+test "$(cat "$journal/stage")" = reverted
+test ! -e "$game/MangoHud.conf"
+test ! -e "$game/intimatr-mangohud.sha256"
+test "$before" = "$(sha256sum "$game/intimatr.dll" | cut -d' ' -f1)"
+if grep -Fq "remove|$game" "$MOCK_EVENTS"; then
+  echo "Recovery removed a pre-existing DLL" >&2
+  exit 1
+fi
+
+echo "Combined Bottles fixture: plan, status, snapshot, journal, selective recovery, tamper, and path refusal passed"
