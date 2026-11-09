@@ -46,7 +46,7 @@ managed="$here/scripts/bottles-managed-launch.sh"
 # This avoids introducing shell or field-code interpretation into a launcher.
 for path in "$game" "$managed"; do
   case "$path" in
-    *$'\n'*|*$'\r'*|*$'\t'*|*'%'*|*'$'*|*'\x60'*|*'"'*|*'\'*)
+    *$'\n'*|*$'\r'*|*$'\t'*|*'%'*|*'$'*|*$'\x60'*|*'"'*|*'\'*)
       echo "Unsupported character in desktop launch path; refusing unsafe shortcut" >&2
       exit 1 ;;
   esac
