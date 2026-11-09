@@ -52,6 +52,16 @@ if [[ "$action" == apply ]]; then
   [[ "$offline" == true && "$games_closed" == true && "$bottles_closed" == true ]] || usage
 fi
 
+# Freeze the reviewed selection once. Later Bottles/manager calls and
+# installer stages must never reopen a manifest that another process could
+# replace or modify between preflight and apply.
+umask 077
+tmp="$(mktemp -d "${TMPDIR:-/tmp}/intimatr-bottles-setup.XXXXXXXX")"
+trap 'rm -rf -- "$tmp"' EXIT
+cat -- "$manifest" >"$tmp/reviewed-selection.json" ||
+  { echo "Unable to snapshot selected-games manifest" >&2; exit 2; }
+manifest="$tmp/reviewed-selection.json"
+
 # Already reviewed by the owner; never select an unlisted game to patch.
 jq -e '
   type == "object" and .version == 1 and
@@ -82,8 +92,6 @@ inventory="$(bottles-cli --json list bottles)"
 jq -e 'type == "object"' <<<"$inventory" >/dev/null ||
   { echo "Native Bottles inventory was not a name-keyed object" >&2; exit 1; }
 
-tmp="$(mktemp -d "${TMPDIR:-/tmp}/intimatr-bottles-setup.XXXXXXXX")"
-trap 'rm -rf -- "$tmp"' EXIT
 : >"$tmp/new-dll.jsonl"; : >"$tmp/new-hud.jsonl"
 declare -a bottle_names=() game_dirs=() game_exes=()
 declare -A bottle_seen=()
