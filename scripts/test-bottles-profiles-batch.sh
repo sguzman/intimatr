@@ -42,6 +42,10 @@ printf '%s\n' "$*" >>"$MOCK_EVENTS"
 case "$1" in
   profile-check) printf '{"operation":"read_only_profile_resolution"}\n' ;;
   profile-export)
+    disabled=false
+    if [[ -n "${MOCK_DISABLED_EXE:-}" && "$*" == *"$MOCK_DISABLED_EXE"* ]]; then
+      disabled=true
+    fi
     if [[ -n "${MOCK_FAIL_EXE:-}" && "$*" == *"$MOCK_FAIL_EXE"* &&
           "$*" == *"/.intimatr-managed-launch/"* ]]; then
       exit 44
@@ -52,7 +56,7 @@ case "$1" in
       shift
     done
     [[ "$output" == /* && ! -e "$output" ]] || exit 3
-    if [[ -n "${MOCK_DISABLED_EXE:-}" && "$*" == *"$MOCK_DISABLED_EXE"* ]]; then
+    if [[ "$disabled" == true ]]; then
       printf 'version = 1\n[speed]\nenabled = false\n' >"$output"
       jq -n --arg p "$output" '{
         operation:"explicit_launch_profile_export",output_linux_file:$p,
