@@ -8,6 +8,45 @@ The original component-specific checksums, backups, refusal of unmanaged
 files and safety checks remain in place. This is not a universal arbitrary
 DLL injector, and it never launches a game.
 
+## One reviewed plan/apply/status (draft integration)
+
+`scripts/bottles-full-setup.sh` is the new top-level CLI entrypoint.
+It uses the **same frozen, reviewed manifest** to coordinate Bottles
+environment allowlists, selected DLL proxy/HUD installation, and selected
+per-game launch profiles. It performs a complete read-only profile and
+base-component preflight before invoking either mutating installer.
+
+```fish
+# Review and explicitly exclude online or unsupported game entries first.
+# This previews every component without modifying any Bottles/game files.
+bash scripts/bottles-full-setup.sh plan "/absolute/reviewed-selection.json" "$HOME/.cargo/bin/intimatr-bottles" "/absolute/source-policy.toml"
+
+# Explicit opt-in: all selected offline games and Bottles must be closed.
+# Supply --runtime PATH only when one of the selected games needs a new DLL.
+bash scripts/bottles-full-setup.sh apply "/absolute/reviewed-selection.json" "$HOME/.cargo/bin/intimatr-bottles" "/absolute/source-policy.toml" --runtime "/absolute/x64/intimatr.dll" --offline-single-player --games-closed --bottles-closed
+
+bash scripts/bottles-full-setup.sh status "/absolute/reviewed-selection.json" "$HOME/.cargo/bin/intimatr-bottles" "/absolute/source-policy.toml"
+```
+
+The discovery manifest supplies exact native registrations and an initial
+`"renderer": "auto"` for every candidate. Explicitly review renderer
+choices and change ambiguous games to `opengl` or `vulkan`, after confirming
+the game's actual graphics backend. `--all-bottles` remains an optional
+**environment-only** expansion; it does not authorize extra games for
+DLL/HUD/profile management. An empty manifest is not sufficient for this
+full profile workflow.
+
+**Failure and recovery:** The top-level command does not pretend the
+combined operation is globally atomic. It reports the failing stage and
+prints the base setup's persistent recovery journal when available.
+The per-game profile batch compensates earlier completed new profiles when
+a subsequent profile fails, preserving incomplete current files for manual
+inspection. The base journal remains available for the existing explicit,
+ownership-checked recovery command. This combined wrapper does not yet
+coordinate cross-component automatic rollback or crash-durable profile
+journaling, and it never starts Wine or a game. Desktop shortcut installation
+remains a separate, explicit option.
+
 ## Reviewed selection
 
 Use the existing read-only `scripts/bottles-discover.sh` with the current
@@ -204,9 +243,10 @@ compensating removal; an incomplete current profile is preserved for
 inspection.
 
 This batch is **not globally atomic across environment, DLL, HUD, and
-profiles** and does not yet share the combined setup's recovery journal.
-The combined setup and this bulk profile preparation are still separate
-commands, pending final orchestration. No game starts during either step.
+profiles** and does not yet share the base setup's recovery journal.
+The new `bottles-full-setup.sh` entrypoint now orchestrates both steps
+under one plan/apply, but their recovery mechanisms are still independent.
+No game starts during preparation.
 
 The optional `scripts/bottles-shortcut.sh` now creates an explicit
 per-game XDG applications entry **only after a managed profile's read-only
