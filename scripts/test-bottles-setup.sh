@@ -134,6 +134,18 @@ journal="${journals[0]}"
 test -d "$journal"
 test "$(stat -c %a "$journal")" = 700
 test "$(cat "$journal/stage")" = complete
+test -f "$journal/snapshots.sha256"
+# A modified reviewed selection is never a reason to select a different
+# target during recovery, even when its JSON remains syntactically valid.
+cp -- "$journal/selection.json" "$tmp/unmodified-selection.json"
+printf '\n' >>"$journal/selection.json"
+if bash scripts/bottles-setup-recover.sh status "$journal" "$manager" \
+  >"$tmp/corrupted-journal.out" 2>"$tmp/corrupted-journal.err"; then
+  echo "Recovery accepted modified journal selection" >&2
+  exit 1
+fi
+grep -Fq 'Journal snapshot checksum mismatch' "$tmp/corrupted-journal.err"
+cp -- "$tmp/unmodified-selection.json" "$journal/selection.json"
 jq -e '.version == 1 and .all_bottles == true' "$journal/metadata.json" >/dev/null
 jq -e --arg expected "$game" '.games[0].game_dir == $expected' "$journal/selection.json" >/dev/null
 jq -e --arg expected "$game" '.games[0].game_dir == $expected' "$journal/new-hud.json" >/dev/null
@@ -275,6 +287,11 @@ cp -- "$tmp/new.json" "$journal_dll/new-dll.json"
 jq -n '{version:1,games:[]}' >"$journal_dll/new-hud.json"
 printf '{"operation":"status","bottle":"Other","ownership":"owned_unchanged","allowlist_entries_to_add":[]}\n' >"$journal_dll/env-before.jsonl"
 jq -n --arg root "$tmp/root" '{version:1,root:$root,all_bottles:false}' >"$journal_dll/metadata.json"
+(
+  cd -- "$journal_dll"
+  sha256sum -- metadata.json selection.json new-dll.json new-hud.json \
+    env-before.jsonl > snapshots.sha256
+)
 printf 'dll-started\n' >"$journal_dll/stage"
 printf '{}\n' >"$new_game/intimatr-launch-deployment.json"
 steam_before="$(sha256sum "$new_game/steam_api64.dll" | cut -d' ' -f1)"
@@ -308,4 +325,4 @@ grep -Fxq "remove|$new_game" "$MOCK_EVENTS"
 test "$steam_before" = "$(sha256sum "$new_game/steam_api64.dll" | cut -d' ' -f1)"
 test "$before" = "$(sha256sum "$game/intimatr.dll" | cut -d' ' -f1)"
 
-echo "Combined Bottles fixture: plan, status, snapshot, journal, stage-bound recovery, tamper and path refusal passed"
+echo "Combined Bottles fixture: plan, status, snapshot integrity, stage-bound recovery, tamper and path refusal passed"
