@@ -48,8 +48,11 @@ mode-0700 journal inside the canonical native Bottles root (a direct child
 named `.intimatr-setup.XXXXXXXX`). The command prints its exact absolute
 path. The journal retains the reviewed manifest, lists of **newly selected**
 DLL/HUD changes, the prior environment ownership states, and an atomic
-last-stage marker. It contains no runtime binaries. Keep the journal until
-its changes are no longer needed.
+last-stage marker. A fixed-order SHA-256 inventory guards the reviewed
+selection, initial environment ownership, and metadata against accidental
+editing; recovery refuses any checksum mismatch. Stage markers remain
+mutable and are not included in that checksum inventory. The journal
+contains no runtime binaries. Keep it until its changes are no longer needed.
 
 ```fish
 # Inspect the journal path printed by apply. This is read-only.
