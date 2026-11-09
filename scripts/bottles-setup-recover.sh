@@ -75,6 +75,32 @@ case "$stage" in
   prepared|environment-started|environment-complete|dll-started|dll-complete|hud-started|hud-complete|complete|rollback-started|reverted) ;;
   *) echo "Unknown journal stage: $stage" >&2; exit 1 ;;
 esac
+# A "started" stage may have written only some files. Do not attribute
+# ownership to this attempt until that component reached its complete marker.
+# An interrupted rollback retains its original stage in an independent
+# marker, so a retry can distinguish already-removed files from untouched
+# components. Legacy interrupted rollbacks without this marker fail closed.
+recovery_source_stage="$stage"
+if [[ "$stage" == rollback-started ]]; then
+  [[ -f "$journal/rollback-source-stage" && ! -L "$journal/rollback-source-stage" ]] ||
+    { echo "BLOCKED: interrupted rollback lacks original stage; manual inspection required" >&2; exit 1; }
+  recovery_source_stage="$(cat -- "$journal/rollback-source-stage")"
+fi
+environment_phase=unstarted; dll_phase=unstarted; hud_phase=unstarted
+case "$recovery_source_stage" in
+  prepared) ;;
+  environment-started) environment_phase=started ;;
+  environment-complete) environment_phase=complete ;;
+  dll-started) environment_phase=complete; dll_phase=started ;;
+  dll-complete) environment_phase=complete; dll_phase=complete ;;
+  hud-started) environment_phase=complete; dll_phase=complete; hud_phase=started ;;
+  hud-complete|complete)
+    environment_phase=complete; dll_phase=complete; hud_phase=complete ;;
+  reverted)
+    # Status is supported; rollback itself will refuse this stage below.
+    environment_phase=complete; dll_phase=complete; hud_phase=complete ;;
+  *) echo "BLOCKED: invalid recovery source stage: $recovery_source_stage" >&2; exit 1 ;;
+esac
 
 # Hold the same advisory lock as setup throughout rollback preflight AND
 # mutation, so two Intimatr operations cannot change ownership while the
@@ -97,7 +123,8 @@ blockers=0
 # Refuse to touch an installed resource not verifiably owned and unchanged.
 # Absent resources are already restored and are safely skipped.
 check_selected() {
-  local file="$1" kind="$2" game exe state response
+  local file="$1" kind="$2" game exe state response phase
+  if [[ "$kind" == hud ]]; then phase="$hud_phase"; else phase="$dll_phase"; fi
   while IFS=$'\t' read -r game exe; do
     [[ "$game" == "$root/"* && -d "$game" && ! -L "$game" &&
        "$(realpath -e -- "$game")" == "$game" ]] || {
@@ -112,8 +139,13 @@ check_selected() {
         echo "BLOCKED: cannot inspect HUD in $game" >&2; blockers=$((blockers + 1)); continue;
       }
       if grep -Fxq -- "HUD owned (unchanged): $game" <<<"$response"; then
-        jq -nc --arg game_dir "$game" --arg executable "$exe" \
-          '{game_dir:$game_dir,executable:$executable}' >>"$temp/remove-hud.jsonl"
+        if [[ "$phase" != complete ]]; then
+          echo "BLOCKED: HUD stage was $phase; cannot attribute installed HUD to this attempt: $game" >&2
+          blockers=$((blockers + 1))
+        else
+          jq -nc --arg game_dir "$game" --arg executable "$exe" \
+            '{game_dir:$game_dir,executable:$executable}' >>"$temp/remove-hud.jsonl"
+        fi
       elif ! grep -Fxq -- "HUD absent: $game" <<<"$response"; then
         echo "BLOCKED: HUD is modified, incomplete, or unmanaged in $game" >&2
         blockers=$((blockers + 1))
@@ -125,8 +157,13 @@ check_selected() {
       state="$(jq -r '.status // "invalid"' <<<"$response")"
       if [[ "$state" == installed ]] &&
           jq -e '.original_preserved == true' <<<"$response" >/dev/null; then
-        jq -nc --arg game_dir "$game" --arg executable "$exe" \
-          '{game_dir:$game_dir,executable:$executable}' >>"$temp/remove-dll.jsonl"
+        if [[ "$phase" != complete ]]; then
+          echo "BLOCKED: DLL stage was $phase; cannot attribute installed proxy to this attempt: $game" >&2
+          blockers=$((blockers + 1))
+        else
+          jq -nc --arg game_dir "$game" --arg executable "$exe" \
+            '{game_dir:$game_dir,executable:$executable}' >>"$temp/remove-dll.jsonl"
+        fi
       elif [[ "$state" != not_installed ]]; then
         echo "BLOCKED: DLL is modified, incomplete, or unmanaged in $game" >&2
         blockers=$((blockers + 1))
@@ -147,7 +184,13 @@ while IFS=$'\t' read -r bottle ownership missing; do
   }
   current="$(jq -r '.ownership // "invalid"' <<<"$response")"
   case "$current" in
-    owned_unchanged) printf '%s\n' "$bottle" >>"$temp/restore-env.txt" ;;
+    owned_unchanged)
+      if [[ "$environment_phase" != complete ]]; then
+        echo "BLOCKED: environment stage was $environment_phase; cannot attribute managed bottle to this attempt: $bottle" >&2
+        blockers=$((blockers + 1))
+      else
+        printf '%s\n' "$bottle" >>"$temp/restore-env.txt"
+      fi ;;
     unmanaged) ;;
     *) echo "BLOCKED: environment ownership is $current for $bottle" >&2
        blockers=$((blockers + 1)) ;;
@@ -173,6 +216,12 @@ mark_stage() {
   printf '%s\n' "$1" >"$journal/.stage-next"
   mv -- "$journal/.stage-next" "$journal/stage"
 }
+# Keep the source stage even if a signal/power loss interrupts rollback.
+# A retry rechecks ownership and skips files already restored.
+if [[ "$stage" != rollback-started ]]; then
+  printf '%s\n' "$stage" >"$journal/.rollback-source-stage-next"
+  mv -- "$journal/.rollback-source-stage-next" "$journal/rollback-source-stage"
+fi
 mark_stage rollback-started
 if (( hud_count )); then
   jq -s '{version:1,games:.}' "$temp/remove-hud.jsonl" >"$temp/hud.json"
