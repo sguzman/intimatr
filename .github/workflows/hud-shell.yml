@@ -5,11 +5,15 @@ on:
     paths:
       - 'scripts/bottles-hud.sh'
       - 'scripts/test-bottles-hud.sh'
+      - 'scripts/bottles-setup.sh'
+      - 'scripts/test-bottles-setup.sh'
       - '.github/workflows/hud-shell.yml'
   pull_request:
     paths:
       - 'scripts/bottles-hud.sh'
       - 'scripts/test-bottles-hud.sh'
+      - 'scripts/bottles-setup.sh'
+      - 'scripts/test-bottles-setup.sh'
       - '.github/workflows/hud-shell.yml'
 
 permissions:
@@ -31,3 +35,6 @@ jobs:
           bash -n scripts/bottles-hud.sh
           bash -n scripts/test-bottles-hud.sh
           bash scripts/test-bottles-hud.sh
+          bash -n scripts/bottles-setup.sh
+          bash -n scripts/test-bottles-setup.sh
+          bash scripts/test-bottles-setup.sh
