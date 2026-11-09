@@ -290,7 +290,7 @@ fn prepare(
     let config = prefix.join("bottle.yml");
     let initial = regular_bytes(&config)?;
     let text = std::str::from_utf8(&initial).map_err(|_| "Bottles YAML is not UTF-8")?;
-    let requested: &[String] = if limited { allow.as_slice() } else { &[] };
+    let requested: &[String] = if limited { allow } else { &[] };
     let (updated, missing) = render(text, requested, &inherited)?;
     Ok(Selection {
         name: name.to_owned(),
