@@ -34,6 +34,42 @@ DLL and HUD files rather than overwriting them.
 An empty reviewed manifest is accepted for `--all-bottles` environment-only
 management. If no new DLL deployment is needed, `--runtime` can be omitted.
 
+## Persistent journal and selective rollback (draft)
+
+Every `apply` attempt that reaches the mutation stage creates a private,
+mode-0700 journal inside the canonical native Bottles root (a direct child
+named `.intimatr-setup.XXXXXXXX`). The command prints its exact absolute
+path. The journal retains the reviewed manifest, lists of **newly selected**
+DLL/HUD changes, the prior environment ownership states, and an atomic
+last-stage marker. It contains no runtime binaries. Keep the journal until
+its changes are no longer needed.
+
+```fish
+# Inspect the journal path printed by apply. This is read-only.
+bash scripts/bottles-setup-recover.sh status "/absolute/bottles-root/.intimatr-setup.XXXXXXXX" "$HOME/.cargo/bin/intimatr-bottles"
+
+# Explicitly undo newly managed changes, preserving pre-existing installations.
+# Close Bottles and all selected offline games first.
+bash scripts/bottles-setup-recover.sh rollback "/absolute/bottles-root/.intimatr-setup.XXXXXXXX" "$HOME/.cargo/bin/intimatr-bottles" --offline-single-player --games-closed --bottles-closed
+```
+
+Recovery preflights the journal's path, ownership and selections, verifies
+current per-component integrity, and refuses the entire rollback if any
+candidate was modified, moved, or became unowned. It removes only newly
+configured owned HUD files and DLL proxies, then restores environment settings
+for bottles that were unmanaged before that attempt. The stage marker
+survives interrupted commands, allowing the same journal to be inspected
+again; it is not proof that a started stage completed. Successful rollback
+marks the journal `reverted` and keeps it for inspection. Setup and
+rollback serialize through an advisory lock on the native Bottles directory.
+
+**Limitations:** This is an explicit, best-effort recovery path, not
+cross-component atomicity, a guarantee against power loss, or protection from
+Bottles/user edits made concurrently outside Intimatr. An interrupted or
+partially installed file that cannot pass current ownership checks is left
+untouched for manual inspection; the journal does not authorize guessing
+or deleting a modified file.
+
 ## Limitations
 
 - The coordinator requires the new `bottle-env` command from PR #5 and reuses
@@ -55,11 +91,10 @@ management. If no new DLL deployment is needed, `--runtime` can be omitted.
   a failure later in the DLL batch attempts to restore only newly installed,
   checksum-owned and unchanged proxies; the HUD installer similarly rolls
   back its own newly installed files. These are best-effort compensations,
-  not a durable transaction or crash recovery mechanism. If a later
-  component stage fails, earlier successful stages may remain. The failed
-  stage is reported; existing `bottle-env restore`,
-  `bottles-multi-game.sh remove`, and `bottles-hud.sh remove` provide separate
-  ownership-checked reversal. A combined transaction journal is unfinished.
+  not globally atomic. If a later component stage fails, earlier successful
+  stages may remain. The durable attempt journal and the recovery command
+  above permit explicit, ownership-checked selective reversal, but cannot
+  guarantee recovery of incomplete or externally modified components.
 - This configures a managed overlay but does **not** automatically choose an
   OpenGL vs Vulkan launch, create desktop shortcuts, export per-game profiles,
   measure startup time or verify live gameplay. Explicit
