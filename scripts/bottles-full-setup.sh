@@ -123,6 +123,28 @@ if [[ "$action" == plan ]]; then
   exit 0
 fi
 
+# An earlier combined profile stage may be unfinished even when the base
+# environment/DLL/HUD journal has already reached "complete". Do not layer
+# another combined apply on top of an unresolved profile recovery attempt.
+root_raw="$(bottles-cli --json info bottles-path)"
+[[ "$root_raw" == /* && "$root_raw" != *$'\n'* && "$root_raw" != *$'\r'* ]] ||
+  { echo "Invalid native Bottles root" >&2; exit 1; }
+root="$(realpath -e -- "$root_raw")"
+for previous in "$root"/.intimatr-setup.*; do
+  [[ -e "$previous" || -L "$previous" ]] || continue
+  if [[ -e "$previous/full-profile-stage" || -L "$previous/full-profile-stage" ]]; then
+    [[ -f "$previous/full-profile-stage" && ! -L "$previous/full-profile-stage" ]] ||
+      { echo "Unsafe prior profile stage marker: $previous" >&2; exit 1; }
+    prior_stage="$(cat -- "$previous/full-profile-stage")"
+    case "$prior_stage" in
+      profiles-complete|reverted) ;;
+      *)
+        echo "Unfinished combined profile stage ($prior_stage) at $previous. Inspect/recover before applying again." >&2
+        exit 1 ;;
+    esac
+  fi
+done
+
 # Record precisely which reviewed games already had a managed launch
 # profile BEFORE any component mutation. This before-state is needed to
 # recover newly created profiles without touching a pre-existing one.
