@@ -169,9 +169,8 @@ fn block_list(config: &str) -> Result<(usize, Vec<String>), String> {
     let mut found = false;
     let mut end = 0;
     let mut vars = Vec::new();
-    let mut inline_empty = false;
-    if !config.ends_with('\n') {
-        return Err("Bottles YAML lacks terminal newline; refusing lossless patch".into());
+    if !config.ends_with('\n') || config.contains('\r') {
+        return Err("Bottles YAML requires LF line endings for safe lossless patch".into());
     }
     // Reject ambiguous duplicate keys instead of editing the first one.
     if config
@@ -190,7 +189,6 @@ fn block_list(config: &str) -> Result<(usize, Vec<String>), String> {
                 end = offset + line.len();
             } else if raw == "Inherited_Environment_Variables: []" {
                 found = true;
-                inline_empty = true;
                 end = offset + line.len();
                 break;
             }
@@ -224,10 +222,6 @@ fn block_list(config: &str) -> Result<(usize, Vec<String>), String> {
     let mut unique = BTreeSet::new();
     if vars.iter().any(|name| !unique.insert(name)) {
         return Err("duplicate inherited variables in Bottles YAML".into());
-    }
-    if inline_empty {
-        // `render` replaces just this single known inline-empty representation.
-        // It never inserts block list entries below `key: []`.
     }
     Ok((end, vars))
 }
