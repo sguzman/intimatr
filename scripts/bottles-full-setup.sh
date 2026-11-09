@@ -34,7 +34,7 @@ if [[ "$action" != status ]]; then
   [[ "$source" == /* && -f "$source" && ! -L "$source" ]] || usage
 fi
 [[ -x "$manager" ]] || usage
-for cmd in jq sha256sum; do
+for cmd in jq sha256sum realpath bottles-cli flock stat; do
   command -v "$cmd" >/dev/null || { echo "Missing required command: $cmd" >&2; exit 2; }
 done
 all=false; runtime=""; offline=false; games_closed=false; bottles_closed=false
@@ -130,6 +130,24 @@ root_raw="$(bottles-cli --json info bottles-path)"
 [[ "$root_raw" == /* && "$root_raw" != *$'\n'* && "$root_raw" != *$'\r'* ]] ||
   { echo "Invalid native Bottles root" >&2; exit 1; }
 root="$(realpath -e -- "$root_raw")"
+# Combined setup/recovery needs a lock spanning the base journal AND game
+# profile stage. This is separate from the base installer's root-directory
+# lock, which the child process acquires while applying its own changes.
+# Only explicit apply creates this inert, private file; plan/status do not.
+full_lock="$root/.intimatr-full-operation.lock"
+if [[ ! -e "$full_lock" && ! -L "$full_lock" ]]; then
+  ( set -C; umask 077; : >"$full_lock" ) ||
+    { echo "Cannot create a new private combined-operation lock" >&2; exit 1; }
+fi
+[[ -f "$full_lock" && ! -L "$full_lock" &&
+   "$(stat -c %u -- "$full_lock")" == "$EUID" &&
+   "$(stat -c %a -- "$full_lock")" == 600 &&
+   "$(stat -c %h -- "$full_lock")" == 1 ]] ||
+  { echo "Combined-operation lock is foreign, linked or unsafe" >&2; exit 1; }
+exec 8<"$full_lock"
+flock -n 8 ||
+  { echo "Another Intimatr combined setup or recovery is active" >&2; exit 1; }
+
 for previous in "$root"/.intimatr-setup.*; do
   [[ -e "$previous" || -L "$previous" ]] || continue
   if [[ -e "$previous/full-profile-stage" || -L "$previous/full-profile-stage" ]]; then
