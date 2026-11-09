@@ -60,7 +60,8 @@ jq -e '
   all(.games[];
     type == "object" and
     (.game_dir | type == "string" and startswith("/") and
-     (test("[\\\t\\\r\\\n\\\\]") | not)) and
+     (contains("\\") | not) and (contains("\t") | not) and
+     (contains("\r") | not) and (contains("\n") | not)) and
     (.executable | type == "string" and
       test("^[A-Za-z0-9_][A-Za-z0-9 ._-]{0,123}\\.[eE][xX][eE]$") and
       (contains("..") | not))
@@ -141,7 +142,7 @@ for i in "${!game_dirs[@]}"; do
 done
 jq -s '{version:1,games:.}' "$tmp/new-dll.jsonl" >"$tmp/new-dll.json"
 new_dll_count="$(jq '.games | length' "$tmp/new-dll.json")"
-if (( new_dll_count )); then
+if (( new_dll_count )) && [[ "$action" != status ]]; then
   echo "=== Preflight $new_dll_count new DLL candidates ==="
   bash "$proxy" plan "$tmp/new-dll.json" "$manager"
 fi
