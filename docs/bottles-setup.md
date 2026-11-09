@@ -36,16 +36,41 @@ the game's actual graphics backend. `--all-bottles` remains an optional
 DLL/HUD/profile management. An empty manifest is not sufficient for this
 full profile workflow.
 
-**Failure and recovery:** The top-level command does not pretend the
-combined operation is globally atomic. It reports the failing stage and
-prints the base setup's persistent recovery journal when available.
-The per-game profile batch compensates earlier completed new profiles when
-a subsequent profile fails, preserving incomplete current files for manual
-inspection. The base journal remains available for the existing explicit,
-ownership-checked recovery command. This combined wrapper does not yet
-coordinate cross-component automatic rollback or crash-durable profile
-journaling, and it never starts Wine or a game. Desktop shortcut installation
-remains a separate, explicit option.
+**Failure and recovery:** The top-level command is not globally
+atomic. It reports the failing stage and prints the base setup's private
+recovery journal. After a successful base apply, it also records which
+reviewed game profiles were already managed before the full attempt. A
+separate checksum guards this before-state; a stage marker distinguishes
+profile preparation that only started from a completed batch. This allows
+explicit, selective recovery of newly created profiles without deleting
+pre-existing ones. A new combined apply refuses an earlier unfinished
+combined profile stage.
+
+```fish
+# Read-only status of the same journal printed by the combined apply.
+bash scripts/bottles-full-recover.sh status "/absolute/bottles-root/.intimatr-setup.XXXXXXXX" "$HOME/.cargo/bin/intimatr-bottles"
+
+# Explicit rollback, after closing all selected offline games and Bottles.
+bash scripts/bottles-full-recover.sh rollback "/absolute/bottles-root/.intimatr-setup.XXXXXXXX" "$HOME/.cargo/bin/intimatr-bottles" --offline-single-player --games-closed --bottles-closed
+```
+
+The recovery command checks the original base journal, the complete
+before-state inventory, all currently managed profile checksums and the
+base component ownership guard *before* deleting any new profiles. It then
+removes only unchanged profiles absent before this attempt and delegates
+DLL/HUD/environment rollback to the existing guarded base command. A
+profile modified by the user blocks the combined rollback; a profile
+preparation stage merely marked `profiles-started` also blocks automatic
+removal because its provenance is incomplete. If rollback is interrupted,
+a `rollback-started` marker allows an integrity-checked retry.
+
+**Limits:** The combined operation and its rollback are still compensating,
+not fully atomic or guaranteed across power loss, changes by external tools,
+or every possible interruption window. An interruption after base apply but
+before the combined profile inventory is written may require using the base
+recovery command directly. A failed mid-profile export may leave an incomplete
+profile directory for manual inspection. No Wine/game launch or desktop
+shortcut installation occurs automatically.
 
 ## Reviewed selection
 
