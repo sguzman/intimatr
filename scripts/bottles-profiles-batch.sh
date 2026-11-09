@@ -27,7 +27,7 @@ case "$action" in plan|prepare|status|remove) ;; *) usage ;; esac
 here="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
 single="$here/scripts/bottles-managed-launch.sh"
 [[ -f "$single" && ! -L "$single" ]] || { echo "Missing Intimatr managed launcher" >&2; exit 2; }
-for cmd in jq realpath bottles-cli; do
+for cmd in jq realpath bottles-cli sha256sum; do
   command -v "$cmd" >/dev/null || { echo "Missing required command: $cmd" >&2; exit 2; }
 done
 
@@ -111,11 +111,23 @@ while IFS= read -r record; do
   renderers+=("$(jq -er '.renderer' <<<"$record")")
 done < <(jq -c '.games[]' "$manifest")
 
+# The resolved speed policy must remain exactly the same across the
+# entire reviewed batch. Do not embed a temporary source path in the installed
+# metadata: it intentionally refers to the original absolute source file.
+if [[ "$action" == plan || "$action" == prepare ]]; then
+  initial_source_sha="$(sha256sum <"$source" | cut -d' ' -f1)"
+fi
+source_unchanged() {
+  [[ "$(sha256sum <"$source" | cut -d' ' -f1)" == "$initial_source_sha" ]] ||
+    { echo "BLOCKED: Source speed policy changed during batch; refusing mixed profiles" >&2; return 1; }
+}
+
 # Preflight EVERY selected item before the first mutation. No launch, Wine,
 # DLL install, HUD rewrite, or environment change occurs in this script.
 for i in "${!games[@]}"; do
   game="${games[i]}"; current="$game"
   if [[ "$action" == plan || "$action" == prepare ]]; then
+    source_unchanged
     bash "$single" plan "$manifest" "$manager" "$game" "$source" \
       --renderer "${renderers[i]}"
     # A simple profile-check does not establish that the Windows DLL can
@@ -134,6 +146,7 @@ for i in "${!games[@]}"; do
       .output_linux_file == $output and .resolved_speed_enabled == true
     ' <<<"$report" >/dev/null && [[ -f "$temp_profile" && ! -L "$temp_profile" ]] ||
       { echo "BLOCKED: Preview profile disabled or invalid for $game" >&2; exit 1; }
+    source_unchanged
   else
     if [[ ! -e "$game/.intimatr-managed-launch" &&
           ! -L "$game/.intimatr-managed-launch" ]]; then
@@ -170,6 +183,7 @@ for i in "${!games[@]}"; do
   old=false
   [[ ! -e "$game/.intimatr-managed-launch" &&
      ! -L "$game/.intimatr-managed-launch" ]] || old=true
+  source_unchanged
   bash "$single" prepare "$manifest" "$manager" "$game" "$source" \
     --renderer "${renderers[i]}" --offline-single-player --games-closed
   if [[ "$old" == false ]]; then
@@ -177,5 +191,6 @@ for i in "${!games[@]}"; do
     bash "$single" status "$game" >/dev/null
     created+=("$game")
   fi
+  source_unchanged
 done
 echo "Prepared all ${#games[@]} explicitly reviewed profiles; no game launched."
