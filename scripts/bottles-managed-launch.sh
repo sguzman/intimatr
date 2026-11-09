@@ -188,6 +188,18 @@ if [[ "$action" == status ]]; then
       game_started:false,gameplay_verified:false}'
   exit 0
 fi
+if [[ "$action" == remove ]]; then
+  # Removal is based only on intact ownership records, not on whether the
+  # source policy still exists; the user may have renamed or edited it.
+  count="$(find "$managed" -mindepth 1 -maxdepth 1 -printf '. ' | wc -w)"
+  [[ "$count" -eq 3 ]] ||
+    { echo "Extra files in managed directory; refusing removal" >&2; exit 1; }
+  rm -- "$managed/launch.json" "$managed/speed.toml" "$checksum_file"
+  rmdir -- "$managed"
+  echo "Removed only the owned per-game launch profile: $game"
+  exit 0
+fi
+
 # No pending writes are permitted from check/launch. Refuse a source policy
 # revision until the selected delivered profile is deliberately rebuilt.
 source="$(jq -er .source "$managed/launch.json")"
@@ -199,16 +211,6 @@ source_hash="$(jq -er .source_sha256 "$managed/launch.json")"
   { echo "Managed launch source or native manager is missing" >&2; exit 1; }
 [[ "$(sha_file "$source")" == "$source_hash" ]] ||
   { echo "Source speed policy changed; refusing stale delivered profile" >&2; exit 1; }
-
-if [[ "$action" == remove ]]; then
-  count="$(find "$managed" -mindepth 1 -maxdepth 1 -printf '. ' | wc -w)"
-  [[ "$count" -eq 3 ]] ||
-    { echo "Extra files in managed directory; refusing removal" >&2; exit 1; }
-  rm -- "$managed/launch.json" "$managed/speed.toml" "$checksum_file"
-  rmdir -- "$managed"
-  echo "Removed only the owned per-game launch profile: $game"
-  exit 0
-fi
 
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/intimatr-managed-launch.XXXXXXXX")"
 trap 'rm -rf -- "$tmp"' EXIT
