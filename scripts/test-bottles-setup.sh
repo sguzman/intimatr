@@ -28,7 +28,7 @@ set -euo pipefail
 case "$1" in
   bottle-env)
     printf '%s\n' "$*" >>"$MOCK_EVENTS"
-    printf '{"operation":"mock_bottle_env","files_modified":false}\n"
+    printf '{"operation":"mock_bottle_env","files_modified":false}\n'
     ;;
   launch-proxy)
     [[ "$2" == status && "$3" == --game-dir ]]
@@ -37,8 +37,6 @@ case "$1" in
   *) echo "unexpected Intimatr command: $*" >&2; exit 3 ;;
 esac
 EOF
-# Correct the shell-quoted fixture output without using Python.
-sed -i 's/printf.*mock_bottle_env.*$/    printf '\''{"operation":"mock_bottle_env","files_modified":false}\\n'\''/' "$tmp/mockbin/intimatr-bottles"
 chmod 0755 "$tmp/mockbin/bottles-cli" "$tmp/mockbin/intimatr-bottles"
 export PATH="$tmp/mockbin:$PATH"
 export MOCK_BOTTLES_ROOT="$tmp/root"
