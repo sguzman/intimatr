@@ -16,18 +16,33 @@ temp="$(mktemp -d "${TMPDIR:-/tmp}/intimatr-bottles-discover.XXXXXXXX")"
 trap 'rm -rf -- "$temp"' EXIT
 "$manager" bottle-compat --all >"$temp/compat.json"
 jq -e '.operation == "read_only_all_registered_bottles_static_pe_compatibility"' "$temp/compat.json" >/dev/null
-jq -r '
+# Retain exact native Bottles registration identity alongside each
+# candidate. This allows a future managed launcher to select a registered
+# program without guessing from the basename or hand-editing its name.
+jq -c '
   .bottles[]
-  | select(.bottle_prefix_association_verified == true)
+  | select(.bottle_prefix_association_verified == true and
+      (.bottle | type == "string"))
+  | . as $bottle
   | .programs[]
   | select(.registration_metadata_valid == true and
       .static_pe_compatibility.static_import_status == "static_four_timer_names_present" and
-      (.resolved_linux_file | type == "string"))
-  | .resolved_linux_file
-' "$temp/compat.json" >"$temp/candidates.txt"
+      (.resolved_linux_file | type == "string") and
+      (.registered_name | type == "string" and length > 0 and
+        (test("[\\t\\r\\n]") | not)) and
+      (.registered_windows_path | type == "string" and length > 0 and
+        (test("[\\t\\r\\n]") | not)))
+  | {resolved_linux_file, bottle:$bottle.bottle,
+     registered_program:.registered_name,
+     windows_executable:.registered_windows_path}
+' "$temp/compat.json" >"$temp/candidates.jsonl"
 
 : >"$temp/selected.jsonl"
-while IFS= read -r exe; do
+while IFS= read -r candidate; do
+  exe="$(jq -er '.resolved_linux_file' <<<"$candidate")" || continue
+  bottle="$(jq -er '.bottle' <<<"$candidate")" || continue
+  program="$(jq -er '.registered_program' <<<"$candidate")" || continue
+  windows_executable="$(jq -er '.windows_executable' <<<"$candidate")" || continue
   [[ "$exe" == /* && -f "$exe" && ! -L "$exe" ]] || continue
   game="$(dirname -- "$exe")"
   [[ ! -L "$game" && -f "$game/steam_api64.dll" && ! -L "$game/steam_api64.dll" ]] || continue
@@ -39,9 +54,14 @@ while IFS= read -r exe; do
   fi
   if ! grep -Fqx "$game" "$temp/seen.txt" 2>/dev/null; then
     printf '%s\n' "$game" >>"$temp/seen.txt"
-    jq -nc --arg game_dir "$game" --arg executable "$filename" '{game_dir:$game_dir,executable:$executable}' >>"$temp/selected.jsonl"
+    jq -nc --arg game_dir "$game" --arg executable "$filename" \
+      --arg bottle "$bottle" --arg registered_program "$program" \
+      --arg windows_executable "$windows_executable" \
+      '{game_dir:$game_dir,executable:$executable,bottle:$bottle,
+        registered_program:$registered_program,
+        windows_executable:$windows_executable}' >>"$temp/selected.jsonl"
   fi
-done <"$temp/candidates.txt"
+done <"$temp/candidates.jsonl"
 
 jq -s '{version:1,games:.}' "$temp/selected.jsonl" >"$temp/manifest.json"
 # Refuse overwrites and links, including races with another writer.
