@@ -6,7 +6,7 @@ cd "$here"
 for cmd in jq sha256sum cmp realpath; do command -v "$cmd" >/dev/null; done
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/intimatr-batch-profiles-test.XXXXXXXX")"
 trap 'rm -rf -- "$tmp"' EXIT
-export MOCK_ROOT="$tmp/root" MOCK_PROGRAMS="$tmp/programs.json" MOCK_EVENTS="$tmp/events"
+export MOCK_ROOT="$tmp/root" MOCK_PROGRAMS="$tmp/programs.json" MOCK_EVENTS="$tmp/events" MOCK_SOURCE="$tmp/speed.toml"
 mkdir -p "$tmp/bin" "$MOCK_ROOT/Alpha/drive_c/Games/First" \
   "$MOCK_ROOT/Alpha/drive_c/Games/Second"
 first="$MOCK_ROOT/Alpha/drive_c/Games/First"
@@ -42,6 +42,10 @@ printf '%s\n' "$*" >>"$MOCK_EVENTS"
 case "$1" in
   profile-check) printf '{"operation":"read_only_profile_resolution"}\n' ;;
   profile-export)
+    if [[ -n "${MOCK_MUTATE_SOURCE_EXE:-}" &&
+          "$*" == *"$MOCK_MUTATE_SOURCE_EXE"* ]]; then
+      printf '# concurrent source policy change\n' >>"$MOCK_SOURCE"
+    fi
     disabled=false
     if [[ -n "${MOCK_DISABLED_EXE:-}" && "$*" == *"$MOCK_DISABLED_EXE"* ]]; then
       disabled=true
@@ -113,6 +117,20 @@ grep -Fq 'Preview profile disabled or invalid' "$tmp/disabled.err"
 test ! -e "$first/.intimatr-managed-launch"
 test ! -e "$second/.intimatr-managed-launch"
 unset MOCK_DISABLED_EXE
+
+# A second profile's preview must not silently mix a concurrently edited
+# shared speed policy with the first game's configuration.
+export MOCK_MUTATE_SOURCE_EXE='C:\Games\Second\Second.exe'
+if bash "$script" prepare "$manifest" "$manager" "$source" \
+  --offline-single-player --games-closed \
+  >"$tmp/source-drift.out" 2>"$tmp/source-drift.err"; then
+  echo "Accepted source-policy drift during batch" >&2; exit 1
+fi
+grep -Fq 'Source speed policy changed during batch' "$tmp/source-drift.err"
+test ! -e "$first/.intimatr-managed-launch"
+test ! -e "$second/.intimatr-managed-launch"
+unset MOCK_MUTATE_SOURCE_EXE
+printf 'shared speed policy\n' >"$source"
 
 bash "$script" prepare "$manifest" "$manager" "$source" \
   --offline-single-player --games-closed >"$tmp/prepare.out"
