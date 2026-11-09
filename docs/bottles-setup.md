@@ -62,6 +62,9 @@ survives interrupted commands, allowing the same journal to be inspected
 again; it is not proof that a started stage completed. Successful rollback
 marks the journal `reverted` and keeps it for inspection. Setup and
 rollback serialize through an advisory lock on the native Bottles directory.
+A new `apply` also refuses to proceed while an earlier attempt's journal
+has an unfinished stage (including an interrupted rollback). Inspect that
+journal and resolve any ownership conflicts before attempting another apply.
 
 **Limitations:** This is an explicit, best-effort recovery path, not
 cross-component atomicity, a guarantee against power loss, or protection from
