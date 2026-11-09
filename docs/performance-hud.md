@@ -119,6 +119,15 @@ rejects explicit conflicting Bottles/program values. A registered game on a
 non-C: Wine drive is resolved only for this explicit selection through that
 bottle's verified drive mapping. This must follow the separate HUD install.
 
+Host-side launch timing fields distinguish preparation from command overhead.
+A successful `--check` reports `host_preflight_elapsed_ms`. A successful
+`--launch` additionally reports `bottles_cli_invocation_elapsed_ms` and
+`host_launch_command_total_elapsed_ms`, measured with a monotonic clock.
+These measure Intimatr's validation and the native Bottles CLI's return,
+**not** the time until a game window becomes responsive, the HUD appears,
+or speed hooks activate. A failing command reports its error rather than a
+misleading success-timing record.
+
 Before launching a selected game, replace `--launch` with `--check` on
 the exact same `profile-launch` command (keeping all other selection,
 profile, and HUD flags). This performs the full read-only game/config/
