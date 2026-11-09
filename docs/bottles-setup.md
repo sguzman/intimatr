@@ -170,7 +170,45 @@ DLL proxies, and MangoHud, not prepared launch profiles.
 Renderer `auto` remains a conservative static PE-import hint. Explicit
 `--renderer opengl` or `--renderer vulkan` may be chosen at preparation.
 An actual game start, custom HUD rendering, timer activation, or gameplay
-speed is not verified until owner QA. The optional `scripts/bottles-shortcut.sh` now creates an explicit
+speed is not verified until owner QA. ## Bulk preparation of reviewed game profiles
+
+`scripts/bottles-profiles-batch.sh` prepares the launch profiles for
+**every explicitly selected game** in the same reviewed version-1 manifest.
+It shares the safe native manager and exact registration checks of the
+single-game workflow, but reads a `renderer` field for each game. The
+discovery script initially records `"renderer": "auto"`: this is **not**
+confirmation of an actual rendering backend. Review candidates, remove
+unsupported/online/anti-cheat entries, and change ambiguous games to a
+reviewed `"opengl"` or `"vulkan"` choice. No game is implicitly enrolled.
+
+```fish
+# Both are read-only regarding games; they export temporary preview profiles
+# to validate all selected game configurations before any installation.
+bash scripts/bottles-profiles-batch.sh plan "/absolute/reviewed-selection.json" "$HOME/.cargo/bin/intimatr-bottles" "/absolute/source-policy.toml"
+
+# One affirmative bulk preparation, only after closing all selected games.
+bash scripts/bottles-profiles-batch.sh prepare "/absolute/reviewed-selection.json" "$HOME/.cargo/bin/intimatr-bottles" "/absolute/source-policy.toml" --offline-single-player --games-closed
+
+bash scripts/bottles-profiles-batch.sh status "/absolute/reviewed-selection.json"
+bash scripts/bottles-profiles-batch.sh remove "/absolute/reviewed-selection.json" --games-closed
+```
+
+The batch freezes the source manifest for the operation, checks exact game
+registrations and profile rules, and writes only missing per-game managed
+profiles. Every game's resolved Windows DLL-readable profile is previewed
+in temporary storage first, including verification that speed is enabled.
+Identical re-preparation is a no-op. Bulk removal preflights ownership for
+every existing profile before removing any. If a late preparation fails,
+only earlier fully prepared profiles from that invocation are eligible for
+compensating removal; an incomplete current profile is preserved for
+inspection.
+
+This batch is **not globally atomic across environment, DLL, HUD, and
+profiles** and does not yet share the combined setup's recovery journal.
+The combined setup and this bulk profile preparation are still separate
+commands, pending final orchestration. No game starts during either step.
+
+The optional `scripts/bottles-shortcut.sh` now creates an explicit
 per-game XDG applications entry **only after a managed profile's read-only
 launch preflight passes**. It writes to
 `${XDG_DATA_HOME:-$HOME/.local/share}/applications/`, not
