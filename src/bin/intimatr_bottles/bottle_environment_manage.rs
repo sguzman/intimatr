@@ -458,6 +458,38 @@ fn restore(selected: &Selection) -> Result<(), String> {
     Ok(())
 }
 
+/// Apply selected bottles as a batch. If a later apply fails, undo only
+/// edits created by this invocation, in reverse order. This is compensating
+/// rollback, not crash-safe global atomicity or a durable transaction journal.
+fn apply_batch(selections: &[Selection]) -> Result<(), String> {
+    let mut installed: Vec<&Selection> = Vec::new();
+    for selected in selections {
+        if selected.missing.is_empty() {
+            continue;
+        }
+        if let Err(error) = apply(selected) {
+            let mut rollback_errors = Vec::new();
+            for earlier in installed.iter().rev() {
+                if let Err(rollback_error) = restore(earlier) {
+                    rollback_errors.push(format!("{}: {rollback_error}", earlier.name));
+                }
+            }
+            let reverted = installed.len() - rollback_errors.len();
+            let mut report = format!(
+                "{}: environment batch apply failed: {error}; restored {reverted} earlier bottle edits",
+                selected.name
+            );
+            if !rollback_errors.is_empty() {
+                report.push_str("; MANUAL RECOVERY REQUIRED for: ");
+                report.push_str(&rollback_errors.join("; "));
+            }
+            return Err(report);
+        }
+        installed.push(selected);
+    }
+    Ok(())
+}
+
 pub(super) fn run_bottle_env(args: Vec<String>) -> Result<(), String> {
     let options = Options::parse(args)?;
     let list = bottles_json_with_command("bottles-cli", &["list", "bottles"])?;
@@ -499,6 +531,21 @@ pub(super) fn run_bottle_env(args: Vec<String>) -> Result<(), String> {
             return Err(format!("{}: stale staged file found", selected.name));
         }
     }
+    if options.action == "apply" {
+        apply_batch(&selections)?;
+        // Do not print per-bottle success until the entire batch commits.
+        for selected in &selections {
+            println!(
+                "{}",
+                serde_json::json!({
+                    "bottle":selected.name, "operation":"apply",
+                    "added":selected.missing, "ownership":status(selected)?,
+                    "only_bottle_environment_modified":!selected.missing.is_empty()
+                })
+            );
+        }
+        return Ok(());
+    }
     for selected in &selections {
         let before = status(selected)?;
         match options.action.as_str() {
@@ -512,17 +559,7 @@ pub(super) fn run_bottle_env(args: Vec<String>) -> Result<(), String> {
                     })
                 );
             }
-            "apply" => {
-                apply(selected)?;
-                println!(
-                    "{}",
-                    serde_json::json!({
-                        "bottle":selected.name, "operation":"apply",
-                        "added":selected.missing, "ownership":status(selected)?,
-                        "only_bottle_environment_modified":!selected.missing.is_empty()
-                    })
-                );
-            }
+            "apply" => unreachable!("batch apply is handled before reporting"),
             "restore" => {
                 if before != "unmanaged" {
                     restore(selected)?;
@@ -544,7 +581,7 @@ pub(super) fn run_bottle_env(args: Vec<String>) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Options, Selection, apply, block_list, render, restore, safe_to_apply, status};
+    use super::{Options, Selection, apply, apply_batch, block_list, render, restore, safe_to_apply, status};
     const CONFIG: &str = "Name: Test\nLimit_System_Environment: true\nInherited_Environment_Variables:\n- HOME\n- PATH\nEnvironment_Variables: {}\n";
     #[test]
     fn preserves_unrelated_yaml_bytes() {
@@ -643,6 +680,59 @@ mod tests {
         assert_eq!(status(&selection).unwrap(), "unmanaged");
         assert!(!selection.backup.exists());
         assert!(!selection.marker.exists());
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn batch_apply_reverts_only_newly_written_bottles_when_later_apply_fails() {
+        use std::fs;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "intimatr-bottle-env-batch-{}-{nonce}",
+            std::process::id()
+        ));
+        fs::create_dir(&root).unwrap();
+        let (updated, missing) = render(
+            CONFIG,
+            &["MANGOHUD".into()],
+            &["HOME".into(), "PATH".into()],
+        )
+        .unwrap();
+        let make = |name: &str| {
+            let prefix = root.join(name);
+            fs::create_dir(&prefix).unwrap();
+            fs::write(prefix.join("bottle.yml"), CONFIG).unwrap();
+            Selection {
+                name: name.into(),
+                config: prefix.join("bottle.yml"),
+                initial: CONFIG.as_bytes().to_vec(),
+                updated: updated.as_bytes().to_vec(),
+                missing: missing.clone(),
+                marker: prefix.join("bottle.yml.intimatr-env-state.json"),
+                backup: prefix.join("bottle.yml.intimatr-env-original"),
+                staged: prefix.join("bottle.yml.intimatr-env-staged"),
+            }
+        };
+        let first = make("First");
+        let second = make("Second");
+        // Simulate an intervening Bottles write after the global preflight.
+        fs::write(&second.config, format!("{CONFIG}Notes: concurrent edit\n")).unwrap();
+        let error = apply_batch(&[first, second]).unwrap_err();
+        assert!(error.contains("restored 1 earlier bottle edits"), "{error}");
+        assert_eq!(status(&first).unwrap(), "unmanaged");
+        assert_eq!(fs::read_to_string(&first.config).unwrap(), CONFIG);
+        assert!(!first.marker.exists());
+        assert!(!first.backup.exists());
+        assert_eq!(
+            fs::read_to_string(&second.config).unwrap(),
+            format!("{CONFIG}Notes: concurrent edit\n")
+        );
+        assert_eq!(status(&second).unwrap(), "unmanaged");
         fs::remove_dir_all(&root).unwrap();
     }
 
