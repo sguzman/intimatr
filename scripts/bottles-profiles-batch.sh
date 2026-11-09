@@ -118,6 +118,22 @@ for i in "${!games[@]}"; do
   if [[ "$action" == plan || "$action" == prepare ]]; then
     bash "$single" plan "$manifest" "$manager" "$game" "$source" \
       --renderer "${renderers[i]}"
+    # A simple profile-check does not establish that the Windows DLL can
+    # load the resolved per-game profile or that speed is enabled. Export
+    # to a private temporary file for ALL targets before the first mutation.
+    # This prevents a disabled/broken late profile from causing needless
+    # partial installation in an earlier selected game.
+    bottle="$(jq -er --arg dir "$game" '.games[] | select(.game_dir == $dir) | .bottle' "$manifest")"
+    windows="$(jq -er --arg dir "$game" '.games[] | select(.game_dir == $dir) | .windows_executable' "$manifest")"
+    temp_profile="$tmp/preflight-$i.toml"
+    report="$("$manager" profile-export --config "$source" --bottle "$bottle" \
+      --exe "$windows" --output "$temp_profile")" ||
+      { echo "BLOCKED: Cannot export preview profile for $game" >&2; exit 1; }
+    jq -e --arg output "$temp_profile" '
+      .operation == "explicit_launch_profile_export" and
+      .output_linux_file == $output and .resolved_speed_enabled == true
+    ' <<<"$report" >/dev/null && [[ -f "$temp_profile" && ! -L "$temp_profile" ]] ||
+      { echo "BLOCKED: Preview profile disabled or invalid for $game" >&2; exit 1; }
   else
     if [[ ! -e "$game/.intimatr-managed-launch" &&
           ! -L "$game/.intimatr-managed-launch" ]]; then
