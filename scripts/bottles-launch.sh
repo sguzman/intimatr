@@ -83,6 +83,23 @@ actual_bottle="${relative%%/*}"
    -f "$chosen/$exe" && ! -L "$chosen/$exe" ]] ||
   { echo "Selected file or bottle identity differs from reviewed selection" >&2; exit 1; }
 
+# Ensure the selected native registration still resolves to the very file
+# reviewed in the manifest, not merely another program with a matching name
+# somewhere in the same bottle. The native manager independently checks
+# case-collisions and symlink/drive containment at final preflight.
+windows_slashes="${windows_executable//\\//}"
+if [[ ! "$windows_slashes" =~ ^[cC]:/ ]]; then
+  echo "Selected registered game is not on this bottle's C: drive" >&2
+  exit 1
+fi
+windows_relative="${windows_slashes:3}"
+selected_relative="${relative#"$actual_bottle"/}"
+selected_relative="${selected_relative#drive_c/}/$exe"
+if [[ "${windows_relative,,}" != "${selected_relative,,}" ]]; then
+  echo "Registered executable path does not match selected game directory" >&2
+  exit 1
+fi
+
 registered="$(bottles-cli --json programs -b "$bottle")"
 jq -e --arg name "$program" --arg executable "$windows_executable" '
   type == "array" and
