@@ -14,6 +14,9 @@ use intimatr::bottles::{BottleInventory, parse_bottle_names, parse_registered_pr
 #[path = "intimatr_bottles/bottle_compat.rs"]
 mod bottle_compat;
 #[cfg(target_os = "linux")]
+#[path = "intimatr_bottles/bottle_environment_manage.rs"]
+mod bottle_environment_manage;
+#[cfg(target_os = "linux")]
 #[path = "intimatr_bottles/game_attach.rs"]
 mod game_attach;
 #[cfg(target_os = "linux")]
@@ -67,6 +70,7 @@ fn run() -> Result<(), String> {
             "Usage:\n  intimatr-bottles scan\n  intimatr-bottles plan (--all | --include-bottle GLOB | --include-program GLOB) [--exclude-bottle GLOB] [--exclude-program GLOB]\n  intimatr-bottles probe-attach --pid PID --prefix WINEPREFIX --helper PATH --runner ABSOLUTE_WINE_BINARY\n  intimatr-bottles profile-check --config TOML --bottle NAME --exe WINDOWS_PATH
   intimatr-bottles profile-export --config TOML --bottle NAME --exe WINDOWS_PATH --output ABSOLUTE_NEW_LINUX_TOML
   intimatr-bottles profile-path --bottle NAME --profile ABSOLUTE_LINUX_TOML [--bottles-cli NATIVE_BOTTLES_CLI]
+  intimatr-bottles bottle-env (plan|status|apply|restore) --bottle NAME [--bottle NAME] (--preset intimatr-hud | --allow NAME [--allow NAME]) [--bottles-closed]
   intimatr-bottles profile-env --bottle NAME [--program REGISTERED_PROGRAM_NAME] [--bottles-cli NATIVE_BOTTLES_CLI]
   intimatr-bottles profile-launch --config ORIGINAL_TOML --bottle NAME --exe EXACT_WINDOWS_PATH --program REGISTERED_PROGRAM_NAME --profile VERIFIED_C_DRIVE_TOML [--bottles-cli NATIVE_BOTTLES_CLI] --offline-single-player (--launch | --check) [--experimental-four-timers] [--mangohud] [--managed-mangohud | --mangohud-config ABSOLUTE_MANAGED_CONFIG]
   intimatr-bottles launch-proxy (status --game-dir EASTWARD_DIR | install --game-dir EASTWARD_DIR --proxy PREBUILT_X64_PROXY_DLL --dll INTIMATR_X64_DLL --config EASTWARD_TOML --offline-single-player --game-closed | remove --game-dir EASTWARD_DIR --offline-single-player --game-closed)\n  intimatr-bottles pe-compat --exe ABSOLUTE_LINUX_PE_FILE
@@ -88,6 +92,9 @@ fn run() -> Result<(), String> {
     }
     if action == "profile-path" {
         return profile_check::run_profile_path(args.collect());
+    }
+    if action == "bottle-env" {
+        return bottle_environment_manage::run_bottle_env(args.collect());
     }
     if action == "profile-env" {
         return profile_environment::run_profile_env(args.collect());
