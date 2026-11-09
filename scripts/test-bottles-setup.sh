@@ -146,6 +146,32 @@ after_apply_count="$(grep -c '^bottle-env apply ' "$MOCK_EVENTS")"
 test "$before_apply_count" -eq "$after_apply_count"
 test ! -e "$new_game/intimatr.dll"
 
+# An existing but invalid x64 Windows runtime must be rejected BEFORE any
+# inherited environment allowlists are modified. Mock the presence of both
+# MinGW build commands so the failure exercises PE validation, not tool lookup.
+cat >"$tmp/mockbin/x86_64-w64-mingw32-gcc" <<'EOF'
+#!/usr/bin/env bash
+exit 99
+EOF
+cat >"$tmp/mockbin/x86_64-w64-mingw32-dlltool" <<'EOF'
+#!/usr/bin/env bash
+exit 99
+EOF
+chmod 0755 "$tmp/mockbin/x86_64-w64-mingw32-gcc" "$tmp/mockbin/x86_64-w64-mingw32-dlltool"
+printf 'not a Windows PE DLL\n' >"$tmp/invalid-runtime.dll"
+before_apply_count="$(grep -c '^bottle-env apply ' "$MOCK_EVENTS")"
+if bash scripts/bottles-setup.sh apply "$tmp/new.json" "$manager" \
+  --runtime "$tmp/invalid-runtime.dll" \
+  --offline-single-player --games-closed --bottles-closed \
+  >"$tmp/invalid-runtime.out" 2>"$tmp/invalid-runtime.err"; then
+  echo "Setup applied invalid x64 Windows runtime" >&2
+  exit 1
+fi
+grep -Fq 'Runtime is not a readable x64 Windows PE DLL' "$tmp/invalid-runtime.err"
+after_apply_count="$(grep -c '^bottle-env apply ' "$MOCK_EVENTS")"
+test "$before_apply_count" -eq "$after_apply_count"
+test ! -e "$new_game/intimatr.dll"
+
 # The all-bottles scope with an empty manifest is environment-only, never
 # an implicit request to deploy DLLs to every game in that inventory.
 bash scripts/bottles-setup.sh apply "$tmp/empty.json" "$manager" \
