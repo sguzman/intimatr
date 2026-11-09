@@ -24,7 +24,7 @@ else
   [[ $# == 3 && "$1" == --offline-single-player &&
      "$2" == --games-closed && "$3" == --bottles-closed ]] || usage
 fi
-for cmd in jq sha256sum cmp realpath bottles-cli; do
+for cmd in jq sha256sum cmp realpath bottles-cli flock stat; do
   command -v "$cmd" >/dev/null ||
     { echo "Missing prerequisite: $cmd" >&2; exit 2; }
 done
@@ -44,6 +44,26 @@ root="$(realpath -e -- "$root_raw")"
    "$(stat -c %u -- "$journal")" == "$EUID" &&
    "$(stat -c %a -- "$journal")" == 700 ]] ||
   { echo "Invalid, foreign, or incorrectly owned recovery journal" >&2; exit 1; }
+
+# Serialize profile removal with any other *combined* operation before
+# checking ownership. Use a separate file from the root-directory lock
+# acquired later by the base recovery child, to avoid self-deadlock.
+# Read-only status never creates or locks this file.
+if [[ "$action" == rollback ]]; then
+  full_lock="$root/.intimatr-full-operation.lock"
+  if [[ ! -e "$full_lock" && ! -L "$full_lock" ]]; then
+    ( set -C; umask 077; : >"$full_lock" ) ||
+      { echo "Cannot create a private combined-operation lock" >&2; exit 1; }
+  fi
+  [[ -f "$full_lock" && ! -L "$full_lock" &&
+     "$(stat -c %u -- "$full_lock")" == "$EUID" &&
+     "$(stat -c %a -- "$full_lock")" == 600 &&
+     "$(stat -c %h -- "$full_lock")" == 1 ]] ||
+    { echo "Combined-operation lock is foreign, linked or unsafe" >&2; exit 1; }
+  exec 8<"$full_lock"
+  flock -n 8 ||
+    { echo "Another Intimatr combined setup or recovery is active" >&2; exit 1; }
+fi
 
 for file in selection.json full-profiles-before.json full-profiles-before.sha256 full-profile-stage stage; do
   [[ -f "$journal/$file" && ! -L "$journal/$file" ]] ||
