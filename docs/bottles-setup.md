@@ -80,6 +80,39 @@ partially installed file that cannot pass current ownership checks is left
 untouched for manual inspection; the journal does not authorize guessing
 or deleting a modified file.
 
+## One selected-game launch (draft)
+
+`scripts/bottles-launch.sh` now composes the existing native, ownership-checked
+`profile-launch` command from the exact registration stored in a recently
+reviewed discovery manifest. It does **not** install a DLL, modify an
+environment allowlist, write a profile, or start an unselected game.
+
+The source policy and delivered profile must already exist and match. This
+first stage takes those two absolute paths explicitly; eliminating them through
+a managed per-game configuration is still pending.
+
+```fish
+bash scripts/bottles-launch.sh check "/absolute/selection.json" "$HOME/.cargo/bin/intimatr-bottles" "/absolute/bottles-root/BOTTLE/drive_c/Games/GAME" "/absolute/source-policy.toml" "/absolute/delivered-profile.toml" --offline-single-player
+
+# Replace check with launch only after reviewing the check report.
+# Explicit speed-hook opt-in remains separate:
+# --experimental-four-timers
+```
+
+The wrapper verifies one selected game and its unchanged native Bottles
+registration, then reuses the Rust manager's source/profile/HUD/environment
+preflight. It uses the owned per-game MangoHud configuration. The default
+`--renderer auto` makes a choice **only** if the executable's static PE imports
+unambiguously show `opengl32.dll` or `vulkan-1.dll`. Because many games
+load renderers dynamically or use DXVK, ambiguous results fail closed and
+require an explicit `--renderer opengl` or `--renderer vulkan`. OpenGL uses
+the integrated `mangohud --dlsym` path; Vulkan uses ordinary MangoHud
+activation. Neither static hints nor successful native CLI exit prove the
+actual overlay rendered.
+
+This is a safe incremental launcher, **not yet** the finished zero-configuration
+per-game shortcut or complete bulk setup experience.
+
 ## Limitations
 
 - The coordinator requires the new `bottle-env` command from PR #5 and reuses
