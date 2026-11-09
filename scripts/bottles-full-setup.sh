@@ -155,7 +155,7 @@ for previous in "$root"/.intimatr-setup.*; do
       { echo "Unsafe prior profile stage marker: $previous" >&2; exit 1; }
     prior_stage="$(cat -- "$previous/full-profile-stage")"
     case "$prior_stage" in
-      profiles-complete|reverted) ;;
+      profiles-complete|profiles-pending-reverted|reverted) ;;
       *)
         echo "Unfinished combined profile stage ($prior_stage) at $previous. Inspect/recover before applying again." >&2
         exit 1 ;;
