@@ -84,6 +84,28 @@ bash scripts/bottles-launch.sh check "$manifest" "$manager" "$game" "$source" "$
   --renderer opengl --offline-single-player >"$tmp/explicit.out"
 tail -n 1 "$MOCK_EVENTS" | grep -Fq -- '--mangohud-dlsym'
 
+# Explicitly authorized launch uses the registered Bottles program, not a
+# guessed executable path. This mock manager never starts a real game.
+jq -n '[{name:"Demo Offline",path:"C:\\Games\\Demo\\Demo.exe"}]' >"$MOCK_PROGRAMS"
+before="$(wc -l <"$MOCK_EVENTS")"
+bash scripts/bottles-launch.sh launch "$manifest" "$manager" "$game" "$source" "$profile" \
+  --renderer vulkan --offline-single-player >"$tmp/launch.out"
+test "$(wc -l <"$MOCK_EVENTS")" -eq "$((before + 1))"
+tail -n 1 "$MOCK_EVENTS" | grep -Fq -- '--launch'
+tail -n 1 "$MOCK_EVENTS" | grep -Fq -- '--program Demo Offline'
+if tail -n 1 "$MOCK_EVENTS" | grep -Fq -- '--mangohud-dlsym'; then
+  echo 'Explicit Vulkan incorrectly used OpenGL preload' >&2
+  exit 1
+fi
+# Missing offline consent must fail before invoking the native manager.
+before="$(wc -l <"$MOCK_EVENTS")"
+if bash scripts/bottles-launch.sh launch "$manifest" "$manager" "$game" "$source" "$profile" \
+  --renderer vulkan >"$tmp/no-consent.out" 2>"$tmp/no-consent.err"; then
+  echo 'Launch accepted missing offline-single-player acknowledgment' >&2
+  exit 1
+fi
+test "$before" -eq "$(wc -l <"$MOCK_EVENTS")"
+
 # Registration changes always require a new reviewed manifest.
 jq -n '[{name:"Demo Offline",path:"C:\\Different\\Demo.exe"}]' >"$MOCK_PROGRAMS"
 before="$(wc -l <"$MOCK_EVENTS")"
