@@ -62,11 +62,18 @@ bash scripts/bottles-setup-recover.sh rollback "/absolute/bottles-root/.intimatr
 
 Recovery preflights the journal's path, ownership and selections, verifies
 current per-component integrity, and refuses the entire rollback if any
-candidate was modified, moved, or became unowned. It removes only newly
+candidate was modified, moved, or became unowned. Importantly, a stage
+marked `started` does **not** prove that the resources now present were
+installed by that attempt: recovery blocks removal of any such resource
+until the corresponding `complete` stage was recorded. Stages not yet
+started likewise cannot claim ownership of files found afterward. It removes only newly
 configured owned HUD files and DLL proxies, then restores environment settings
 for bottles that were unmanaged before that attempt. The stage marker
 survives interrupted commands, allowing the same journal to be inspected
-again; it is not proof that a started stage completed. Successful rollback
+again; it is not proof that a started stage completed. If rollback itself
+is interrupted, a separate `rollback-source-stage` marker preserves the
+last setup boundary for conservative retry; older incomplete rollback
+journals without this marker require manual inspection. Successful rollback
 marks the journal `reverted` and keeps it for inspection. Setup and
 rollback serialize through an advisory lock on the native Bottles directory.
 A new `apply` also refuses to proceed while an earlier attempt's journal
