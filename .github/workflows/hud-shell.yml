@@ -16,6 +16,8 @@ on:
       - 'scripts/test-bottles-managed-launch.sh'
       - 'scripts/bottles-profiles-batch.sh'
       - 'scripts/test-bottles-profiles-batch.sh'
+      - 'scripts/bottles-full-setup.sh'
+      - 'scripts/test-bottles-full-setup.sh'
       - 'scripts/bottles-shortcut.sh'
       - 'scripts/bottles-multi-game.sh'
       - 'scripts/test-bottles-multi-game.sh'
@@ -35,6 +37,8 @@ on:
       - 'scripts/test-bottles-managed-launch.sh'
       - 'scripts/bottles-profiles-batch.sh'
       - 'scripts/test-bottles-profiles-batch.sh'
+      - 'scripts/bottles-full-setup.sh'
+      - 'scripts/test-bottles-full-setup.sh'
       - 'scripts/bottles-shortcut.sh'
       - 'scripts/bottles-multi-game.sh'
       - 'scripts/test-bottles-multi-game.sh'
@@ -79,3 +83,6 @@ jobs:
           bash -n scripts/bottles-profiles-batch.sh
           bash -n scripts/test-bottles-profiles-batch.sh
           bash scripts/test-bottles-profiles-batch.sh
+          bash -n scripts/bottles-full-setup.sh
+          bash -n scripts/test-bottles-full-setup.sh
+          bash scripts/test-bottles-full-setup.sh
