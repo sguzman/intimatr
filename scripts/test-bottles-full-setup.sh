@@ -106,7 +106,7 @@ journals=("$tmp/root"/.intimatr-setup.*)
 test "${#journals[@]}" -eq 1
 test "$(cat "${journals[0]}/stage")" = complete
 
-bash "$script" status "$manifest" "$manager" "$source" >"$tmp/status.out"
+bash "$script" status "$manifest" "$manager" >"$tmp/status.out"
 grep -Fq 'owned_unchanged' "$tmp/status.out"
 grep -Fq 'HUD owned (unchanged)' "$tmp/status.out"
 
