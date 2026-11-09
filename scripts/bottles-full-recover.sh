@@ -75,6 +75,12 @@ base_blockers="$(sed -nE 's/^Restorable newly owned entries: .*Blockers: ([0-9]+
 [[ "$base_blockers" =~ ^[0-9]+$ ]] ||
   { echo "Missing valid base rollback blocker count" >&2; exit 1; }
 base_stage="$(cat -- "$journal/stage")"
+case "$base_stage" in
+  complete|rollback-started|reverted) ;;
+  *)
+    echo "BLOCKED: base stage $base_stage is incomplete; use the base recovery workflow" >&2
+    exit 1 ;;
+esac
 
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/intimatr-full-recovery.XXXXXXXX")"
 trap 'rm -rf -- "$tmp"' EXIT
