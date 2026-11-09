@@ -170,8 +170,39 @@ DLL proxies, and MangoHud, not prepared launch profiles.
 Renderer `auto` remains a conservative static PE-import hint. Explicit
 `--renderer opengl` or `--renderer vulkan` may be chosen at preparation.
 An actual game start, custom HUD rendering, timer activation, or gameplay
-speed is not verified until owner QA. A GUI/desktop one-click shortcut is
-still unfinished.
+speed is not verified until owner QA. The optional `scripts/bottles-shortcut.sh` now creates an explicit
+per-game XDG applications entry **only after a managed profile's read-only
+launch preflight passes**. It writes to
+`${XDG_DATA_HOME:-$HOME/.local/share}/applications/`, not
+`~/.local/bin`, and never copies or installs an executable. The entry is
+named using the game and bottle; its filename is based on a stable SHA-256
+of the exact selected game directory.
+
+```fish
+# Read-only preview; requires a prepared profile and successful launch check.
+bash scripts/bottles-shortcut.sh plan "/absolute/bottles-root/BOTTLE/drive_c/Games/GAME"
+
+# Optional explicit launcher installation. This does not start Wine.
+bash scripts/bottles-shortcut.sh install "/absolute/bottles-root/BOTTLE/drive_c/Games/GAME" --offline-single-player
+
+# If speed timers should be enabled when the shortcut is clicked, explicitly
+# add --experimental-four-timers to plan/install (it is saved in the entry).
+
+bash scripts/bottles-shortcut.sh status "/absolute/bottles-root/BOTTLE/drive_c/Games/GAME"
+bash scripts/bottles-shortcut.sh remove "/absolute/bottles-root/BOTTLE/drive_c/Games/GAME"
+```
+
+The installer refuses an existing foreign or modified desktop entry and
+treats a repeated identical installation as a no-op. Removal compares the
+entire generated entry, including the optional timer opt-in, and refuses to
+delete edited user files. Because Desktop Entry argument quoting has subtle
+rules, unsupported path metacharacters are rejected rather than guessed.
+This first implementation still requires a source checkout at the
+same absolute path, and the app menu's actual visibility and launch behavior
+remain for owner QA. No system-wide desktop registration or GUI is installed.
+
+The combined project is not yet a fully verified, zero-configuration
+launch-and-setup experience.
 
 This is a safe incremental launcher, **not yet** the finished zero-configuration
 per-game shortcut or complete bulk setup experience.
@@ -203,8 +234,9 @@ per-game shortcut or complete bulk setup experience.
   guarantee recovery of incomplete or externally modified components.
 - The unified branch includes the native OpenGL `--mangohud-dlsym`
   path (originally developed in PR #6), a conservatively selected
-  renderer-specific launch wrapper, and per-game profile preparation.
-  It does **not** yet generate desktop shortcuts, automatically refresh
-  changed speed policies, or verify HUD rendering and gameplay speed.
+  renderer-specific launch wrapper, per-game profile preparation, and
+  opt-in XDG desktop shortcuts. It does **not** automatically refresh
+  changed speed policies or verify desktop-launch behavior, HUD rendering,
+  or gameplay speed.
   The current launch timing fields measure preflight and CLI overhead,
   not the game's visible or responsive startup time.
