@@ -51,6 +51,7 @@ jq -e --arg game "$game" \
    .games[0].game_dir == $game and
    .games[0].executable == "Example.exe" and
    .games[0].bottle == "Alpha" and
+   .games[0].renderer == "auto" and
    .games[0].registered_program == "Example Offline" and
    .games[0].windows_executable == "C:\\Games\\Example\\Example.exe"' \
   "$tmp/selection.json" >/dev/null
