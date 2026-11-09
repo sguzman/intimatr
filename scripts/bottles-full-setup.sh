@@ -7,7 +7,7 @@ usage() {
   cat >&2 <<'EOF'
 Usage:
   bash scripts/bottles-full-setup.sh plan MANIFEST ABS_MANAGER ABS_SOURCE_POLICY [--all-bottles]
-  bash scripts/bottles-full-setup.sh status MANIFEST ABS_MANAGER ABS_SOURCE_POLICY [--all-bottles]
+  bash scripts/bottles-full-setup.sh status MANIFEST ABS_MANAGER [--all-bottles]
   bash scripts/bottles-full-setup.sh apply MANIFEST ABS_MANAGER ABS_SOURCE_POLICY [--runtime ABS_X64_DLL] [--all-bottles] --offline-single-player --games-closed --bottles-closed
 
 Use an explicitly reviewed version-1 manifest from bottles-discover.sh.
@@ -19,12 +19,20 @@ EOF
   exit 2
 }
 
-(( $# >= 4 )) || usage
-action="$1"; manifest="$2"; manager="$3"; source="$4"; shift 4
+(( $# >= 3 )) || usage
+action="$1"; manifest="$2"; manager="$3"; shift 3
 [[ "$action" == plan || "$action" == apply || "$action" == status ]] || usage
-for p in "$manifest" "$manager" "$source"; do
+source=""
+if [[ "$action" != status ]]; then
+  (( $# >= 1 )) || usage
+  source="$1"; shift
+fi
+for p in "$manifest" "$manager"; do
   [[ "$p" == /* && -f "$p" && ! -L "$p" ]] || usage
 done
+if [[ "$action" != status ]]; then
+  [[ "$source" == /* && -f "$source" && ! -L "$source" ]] || usage
+fi
 [[ -x "$manager" ]] || usage
 for cmd in jq sha256sum; do
   command -v "$cmd" >/dev/null || { echo "Missing required command: $cmd" >&2; exit 2; }
@@ -87,7 +95,9 @@ trap cleanup EXIT
 cat -- "$manifest" >"$tmp/reviewed.json" ||
   { echo "Unable to snapshot original reviewed manifest" >&2; exit 1; }
 manifest="$tmp/reviewed.json"
-source_hash="$(sha256sum <"$source" | cut -d' ' -f1)"
+if [[ "$action" != status ]]; then
+  source_hash="$(sha256sum <"$source" | cut -d' ' -f1)"
+fi
 source_unchanged() {
   [[ "$(sha256sum <"$source" | cut -d' ' -f1)" == "$source_hash" ]] ||
     { echo "Source speed policy changed during combined setup; refusing mixed policy" >&2; return 1; }
