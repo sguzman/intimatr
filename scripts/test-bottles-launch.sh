@@ -32,6 +32,7 @@ case "$MOCK_IMPORTS" in
   opengl) echo '  DLL Name: opengl32.dll' ;;
   vulkan) echo '  DLL Name: vulkan-1.dll' ;;
   ambiguous) printf '%s\n' '  DLL Name: opengl32.dll' '  DLL Name: vulkan-1.dll' ;;
+  opengl_dx) printf '%s\n' '  DLL Name: opengl32.dll' '  DLL Name: d3d11.dll' ;;
   none) echo '  DLL Name: kernel32.dll' ;;
   *) exit 3 ;;
 esac
@@ -77,6 +78,17 @@ if bash scripts/bottles-launch.sh check "$manifest" "$manager" "$game" "$source"
   exit 1
 fi
 grep -Fq 'Renderer is ambiguous or dynamically loaded' "$tmp/ambiguous.err"
+test "$before" -eq "$(wc -l <"$MOCK_EVENTS")"
+
+# An OpenGL import alongside Direct3D is not decisive about DXVK/WineD3D.
+export MOCK_IMPORTS=opengl_dx
+before="$(wc -l <"$MOCK_EVENTS")"
+if bash scripts/bottles-launch.sh check "$manifest" "$manager" "$game" "$source" "$profile" \
+  --offline-single-player >"$tmp/mixed.out" 2>"$tmp/mixed.err"; then
+  echo 'Mixed OpenGL/Direct3D imports incorrectly selected a renderer' >&2
+  exit 1
+fi
+grep -Fq 'Renderer is ambiguous or dynamically loaded' "$tmp/mixed.err"
 test "$before" -eq "$(wc -l <"$MOCK_EVENTS")"
 
 # An explicit renderer is allowed even if PE imports are ambiguous.
