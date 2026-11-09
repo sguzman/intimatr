@@ -76,6 +76,17 @@ case "$stage" in
   *) echo "Unknown journal stage: $stage" >&2; exit 1 ;;
 esac
 
+# Hold the same advisory lock as setup throughout rollback preflight AND
+# mutation, so two Intimatr operations cannot change ownership while the
+# recovery selection is being computed. Read-only status takes no lock.
+if [[ "$action" == rollback ]]; then
+  command -v flock >/dev/null ||
+    { echo "Missing flock for exclusive rollback" >&2; exit 2; }
+  exec 9<"$root"
+  flock -n 9 ||
+    { echo "Another Intimatr setup or rollback holds the Bottles lock" >&2; exit 1; }
+fi
+
 temp="$(mktemp -d "${TMPDIR:-/tmp}/intimatr-setup-recovery.XXXXXXXX")"
 trap 'rm -rf -- "$temp"' EXIT
 : >"$temp/remove-hud.jsonl"
@@ -156,11 +167,7 @@ if [[ "$action" == status ]]; then
 fi
 [[ "$stage" != reverted ]] || { echo "Journal already rolled back" >&2; exit 2; }
 (( blockers == 0 )) || { echo "Refusing partial rollback while blockers remain" >&2; exit 1; }
-command -v flock >/dev/null || { echo "Missing flock for exclusive rollback" >&2; exit 2; }
-exec 9<"$root"
-flock -n 9 || { echo "Another Intimatr setup or rollback holds the Bottles lock" >&2; exit 1; }
-
-# Crash-safe stage markers leave an audit trail. State validation happens
+# Stage markers leave an audit trail. State validation happens
 # again inside each installer, which refuses changes made after this preflight.
 mark_stage() {
   printf '%s\n' "$1" >"$journal/.stage-next"
