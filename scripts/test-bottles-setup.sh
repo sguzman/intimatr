@@ -104,6 +104,23 @@ if bash scripts/bottles-setup.sh apply "$manifest" "$manager" --all-bottles \
 fi
 test ! -e "$game/MangoHud.conf"
 
+# A prior incomplete setup must block new apply BEFORE any environment or
+# game modifications. Its journal must be handled explicitly.
+unfinished="$(mktemp -d "$tmp/root/.intimatr-setup.XXXXXXXX")"
+printf 'dll-started\n' >"$unfinished/stage"
+env_before="$(grep -c '^bottle-env apply ' "$MOCK_EVENTS" || true)"
+if bash scripts/bottles-setup.sh apply "$manifest" "$manager" \
+  --offline-single-player --games-closed --bottles-closed --all-bottles \
+  >"$tmp/unfinished.out" 2>"$tmp/unfinished.err"; then
+  echo "New apply ignored an unfinished recovery journal" >&2
+  exit 1
+fi
+grep -Fq 'Unfinished Intimatr setup (dll-started)' "$tmp/unfinished.err"
+test "$env_before" -eq "$(grep -c '^bottle-env apply ' "$MOCK_EVENTS" || true)"
+test ! -e "$game/MangoHud.conf"
+rm -- "$unfinished/stage"
+rmdir -- "$unfinished"
+
 # Existing compatible Intimatr DLL is preserved; missing HUD is installed.
 bash scripts/bottles-setup.sh apply "$manifest" "$manager" \
   --offline-single-player --games-closed --bottles-closed --all-bottles \
