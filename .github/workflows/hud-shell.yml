@@ -12,6 +12,8 @@ on:
       - 'scripts/test-bottles-discover.sh'
       - 'scripts/bottles-launch.sh'
       - 'scripts/test-bottles-launch.sh'
+      - 'scripts/bottles-managed-launch.sh'
+      - 'scripts/test-bottles-managed-launch.sh'
       - 'scripts/bottles-multi-game.sh'
       - 'scripts/test-bottles-multi-game.sh'
       - '.github/workflows/hud-shell.yml'
@@ -26,6 +28,8 @@ on:
       - 'scripts/test-bottles-discover.sh'
       - 'scripts/bottles-launch.sh'
       - 'scripts/test-bottles-launch.sh'
+      - 'scripts/bottles-managed-launch.sh'
+      - 'scripts/test-bottles-managed-launch.sh'
       - 'scripts/bottles-multi-game.sh'
       - 'scripts/test-bottles-multi-game.sh'
       - '.github/workflows/hud-shell.yml'
@@ -62,3 +66,6 @@ jobs:
           bash -n scripts/bottles-launch.sh
           bash -n scripts/test-bottles-launch.sh
           bash scripts/test-bottles-launch.sh
+          bash -n scripts/bottles-managed-launch.sh
+          bash -n scripts/test-bottles-managed-launch.sh
+          bash scripts/test-bottles-managed-launch.sh
