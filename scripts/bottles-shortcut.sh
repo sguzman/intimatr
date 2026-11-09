@@ -52,13 +52,27 @@ for path in "$game" "$managed"; do
   esac
 done
 
-xdg_home="${XDG_DATA_HOME:-${HOME:-}/.local/share}"
+if [[ -n "${XDG_DATA_HOME:-}" ]]; then
+  xdg_home="$XDG_DATA_HOME"
+else
+  [[ "${HOME:-}" == /* ]] ||
+    { echo "Neither absolute XDG_DATA_HOME nor HOME is available" >&2; exit 1; }
+  xdg_home="$HOME/.local/share"
+fi
 [[ "$xdg_home" == /* && "$xdg_home" != *$'\n'* ]] ||
   { echo "XDG_DATA_HOME must be an absolute directory" >&2; exit 1; }
 applications="$xdg_home/applications"
 id="$(printf '%s' "$game" | sha256sum | cut -d' ' -f1)"
 shortcut="$applications/intimatr-bottles-$id.desktop"
 name="$(basename -- "$game")"
+# The registration path disambiguates identically named games from different
+# native Bottles in the desktop applications menu.
+case "$game" in
+  */drive_c/*)
+    bottle_prefix="${game%%/drive_c/*}"
+    bottle_name="$(basename -- "$bottle_prefix")" ;;
+  *) echo "Selected game is not under a native bottle C: drive" >&2; exit 1 ;;
+esac
 # The optional timer opt-in is persisted explicitly by the owner. It is not
 # enabled just because a managed game profile was prepared.
 extra=""
@@ -67,7 +81,7 @@ generate_entry() {
   cat <<EOF
 [Desktop Entry]
 Type=Application
-Name=Intimatr - $name
+Name=Intimatr - $name ($bottle_name)
 Comment=Launch a reviewed offline game using its managed Intimatr profile
 Exec=/usr/bin/bash "$managed" launch "$game" --offline-single-player$extra
 Terminal=false
