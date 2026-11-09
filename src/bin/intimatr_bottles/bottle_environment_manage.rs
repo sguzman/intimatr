@@ -241,9 +241,7 @@ fn render(
         .cloned()
         .collect::<Vec<_>>();
     let mut updated = String::with_capacity(config.len() + missing.len() * 32);
-    if !missing.is_empty()
-        && config[..end].ends_with("Inherited_Environment_Variables: []\n")
-    {
+    if !missing.is_empty() && config[..end].ends_with("Inherited_Environment_Variables: []\n") {
         updated.push_str(&config[..end - " []\n".len()]);
         updated.push('\n');
     } else {
@@ -553,7 +551,8 @@ mod tests {
     }
     #[test]
     fn supports_inline_empty_list_without_touching_other_bottles_settings() {
-        let input = "Name: New Bottle\nInherited_Environment_Variables: []\nEnvironment_Variables: {}\n";
+        let input =
+            "Name: New Bottle\nInherited_Environment_Variables: []\nEnvironment_Variables: {}\n";
         let (updated, missing) = render(input, &["MANGOHUD".into()], &[]).unwrap();
         assert_eq!(missing, vec!["MANGOHUD".to_owned()]);
         assert_eq!(
@@ -569,9 +568,12 @@ mod tests {
     fn refuses_inventory_drift_and_nested_yaml() {
         assert!(render(CONFIG, &["MANGOHUD".into()], &["WRONG".into()]).is_err());
         assert!(block_list("Inherited_Environment_Variables:\n  - HOME\nOther: true\n").is_err());
-        assert!(block_list(
-            "Inherited_Environment_Variables: []\nInherited_Environment_Variables:\n- HOME\n"
-        ).is_err());
+        assert!(
+            block_list(
+                "Inherited_Environment_Variables: []\nInherited_Environment_Variables:\n- HOME\n"
+            )
+            .is_err()
+        );
     }
     #[test]
     fn owned_patch_restores_exact_original_and_rejects_modified_settings() {
