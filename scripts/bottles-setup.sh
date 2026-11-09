@@ -210,6 +210,23 @@ exec 9<"$root"
 flock -n 9 ||
   { echo "Another Intimatr setup/recovery holds the native Bottles lock" >&2; exit 1; }
 
+# Do not silently add another setup on top of an unfinished operation.
+# The persisted journal must be inspected/recovered before retrying, even if
+# a new plan happens to see files that appear to be Intimatr-owned.
+for previous in "$root"/.intimatr-setup.*; do
+  [[ -e "$previous" || -L "$previous" ]] || continue
+  [[ -d "$previous" && ! -L "$previous" &&
+     -f "$previous/stage" && ! -L "$previous/stage" ]] ||
+    { echo "Unsafe or incomplete prior Intimatr journal: $previous" >&2; exit 1; }
+  previous_stage="$(cat -- "$previous/stage")"
+  case "$previous_stage" in
+    complete|reverted) ;;
+    *)
+      echo "Unfinished Intimatr setup ($previous_stage) at $previous. Review/recover it before another apply." >&2
+      exit 1 ;;
+  esac
+done
+
 # Persist a per-attempt recovery record before modifying any Bottles files.
 # It contains only reviewed selections and the original ownership inventory,
 # never credentials, game binaries, or a second copy of the DLL runtime.
