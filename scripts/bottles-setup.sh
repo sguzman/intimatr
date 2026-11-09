@@ -170,9 +170,27 @@ if [[ "$action" != apply ]]; then
   echo "Read-only $action: no bottle, DLL or HUD files changed."
   exit 0
 fi
-if (( new_dll_count )) && [[ -z "$runtime" ]]; then
-  echo "A new DLL install requires --runtime ABSOLUTE_X64_INTIMATR_DLL; refusing all changes." >&2
-  exit 2
+if (( new_dll_count )); then
+  if [[ -z "$runtime" ]]; then
+    echo "A new DLL install requires --runtime ABSOLUTE_X64_INTIMATR_DLL; refusing all changes." >&2
+    exit 2
+  fi
+  # Preflight ALL runtime/build prerequisites before editing bottle.yml.
+  # Previously a missing MinGW compiler or invalid DLL was discovered only
+  # inside the proxy installer, after the environment stage had committed.
+  for tool in x86_64-w64-mingw32-gcc x86_64-w64-mingw32-dlltool; do
+    command -v "$tool" >/dev/null ||
+      { echo "Missing DLL build prerequisite before applying: $tool" >&2; exit 2; }
+  done
+  [[ -f "$here/scripts/generate-steam-api64-forwarders.sh" &&
+     -f "$here/native/launch_proxy/steam_api64_bridge.c" &&
+     -f "$here/config/bottles-proxy-template.toml" ]] ||
+    { echo "Incomplete Intimatr DLL forwarder source checkout; refusing all changes." >&2; exit 2; }
+  if ! x86_64-w64-mingw32-objdump -f "$runtime" 2>/dev/null |
+      grep -Eq 'file format pei-x86-64'; then
+    echo "Runtime is not a readable x64 Windows PE DLL: $runtime; refusing all changes." >&2
+    exit 2
+  fi
 fi
 
 # No global atomicity is promised: each component has its own guard/backup.
