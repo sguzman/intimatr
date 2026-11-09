@@ -589,6 +589,21 @@ pub fn wait_until_running(process: Handle, pid: u32, dll: &Path) -> Result<(), S
     Err("Intimatr DLL loaded but runtime never reached Running; do not retry attach".into())
 }
 
+/// Treat an asynchronous shutdown as pending until the target reaches its
+/// independently observed Stopped state. A stopping/running transition is
+/// not success, and an unexpected or Failed state must never be reported
+/// as a clean shutdown.
+fn shutdown_status_complete(status: u32) -> Result<bool, String> {
+    match status {
+        5 => Ok(true),
+        3 | 4 => Ok(false),
+        6 => Err("target Intimatr lifecycle entered Failed during shutdown".into()),
+        other => Err(format!(
+            "target Intimatr reported unexpected lifecycle {other} during shutdown"
+        )),
+    }
+}
+
 /// Explicitly call only the selected Intimatr DLL's own shutdown export.
 /// Leave the DLL mapped and independently require its Stopped state.
 pub fn request_shutdown(process: Handle, pid: u32, dll: &Path) -> Result<(), String> {
@@ -607,10 +622,16 @@ pub fn request_shutdown(process: Handle, pid: u32, dll: &Path) -> Result<(), Str
     if call_export(process, shutdown, 15_000)? != 1 {
         return Err("target Intimatr shutdown failed; DLL remains loaded".into());
     }
-    if call_export(process, status, 2_000)? != 5 {
-        return Err("target Intimatr did not confirm Stopped after shutdown".into());
+    // The shutdown request may return before its worker reaches Stopped.
+    // Poll the actual target, bounded like wait_until_running; never equate
+    // a successful shutdown command with verified shutdown completion.
+    for _ in 0..40 {
+        if shutdown_status_complete(call_export(process, status, 2_000)?)? {
+            return Ok(());
+        }
+        thread::sleep(Duration::from_millis(100));
     }
-    Ok(())
+    Err("target Intimatr did not confirm Stopped after bounded shutdown polling".into())
 }
 
 #[cfg(test)]
@@ -625,6 +646,19 @@ mod tests {
         assert!(classify(3).unwrap());
         for code in [4, 5, 6, 7, u32::MAX] {
             assert!(classify(code).is_err());
+        }
+    }
+
+    #[test]
+    fn shutdown_requires_observed_stopped_not_merely_stopping() {
+        assert_eq!(shutdown_status_complete(3).unwrap(), false);
+        assert_eq!(shutdown_status_complete(4).unwrap(), false);
+        assert_eq!(shutdown_status_complete(5).unwrap(), true);
+        for code in [0, 1, 2, 6, 7, u32::MAX] {
+            assert!(
+                shutdown_status_complete(code).is_err(),
+                "unexpected lifecycle {code} was accepted"
+            );
         }
     }
 
