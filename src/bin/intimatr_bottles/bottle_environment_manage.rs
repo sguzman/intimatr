@@ -724,7 +724,10 @@ mod tests {
         let second = make("Second");
         // Simulate an intervening Bottles write after the global preflight.
         fs::write(&second.config, format!("{CONFIG}Notes: concurrent edit\n")).unwrap();
-        let error = apply_batch(&[first, second]).unwrap_err();
+        let batch = [first, second];
+        let error = apply_batch(&batch).unwrap_err();
+        let first = &batch[0];
+        let second = &batch[1];
         assert!(error.contains("restored 1 earlier bottle edits"), "{error}");
         assert_eq!(status(&first).unwrap(), "unmanaged");
         assert_eq!(fs::read_to_string(&first.config).unwrap(), CONFIG);
