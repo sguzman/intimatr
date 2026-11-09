@@ -326,4 +326,76 @@ test ! -e "$game/intimatr-mangohud.sha256"
 test -f "$game/Demo.exe"
 test -f "$game/intimatr-launch-deployment.json"
 test "$before" = "$(sha256sum <"$game/intimatr.dll" | cut -d' ' -f1)"
-echo 'Full setup fixture: plan/apply/status, integrity, rollback provenance, and no Wine launch passed'
+# The base installer can now durably capture the combined profile
+# before-state BEFORE any base mutation. Simulate a crash between the base
+# command finishing and the full coordinator resuming: there must be a
+# "profiles-pending" journal, and no automatic profile removal permission.
+jq -n --arg game "$game" '{
+  version:1,games:[{game_dir:$game,preexisting:false}]
+}' >"$tmp/before-base.json"
+bash scripts/bottles-setup.sh apply "$manifest" "$manager" \
+  --full-profiles-before "$tmp/before-base.json" \
+  --offline-single-player --games-closed --bottles-closed \
+  >"$tmp/base-only.out"
+new_journal="$(sed -n 's/^Recovery journal: //p' "$tmp/base-only.out" | tail -n 1)"
+test -d "$new_journal"
+test "$(cat "$new_journal/stage")" = complete
+test "$(cat "$new_journal/full-profile-stage")" = profiles-pending
+cmp -s -- "$tmp/before-base.json" "$new_journal/full-profiles-before.json"
+(
+  cd -- "$new_journal"
+  sha256sum -- full-profiles-before.json |
+    cmp -s - full-profiles-before.sha256
+)
+test -f "$game/MangoHud.conf"
+test ! -e "$game/.intimatr-managed-launch"
+bash scripts/bottles-full-recover.sh status "$new_journal" "$manager" \
+  >"$tmp/pending-status.out"
+grep -Fq 'Profile stage: profiles-pending' "$tmp/pending-status.out"
+grep -Fq 'Eligible new profiles: 0; pre-existing preserved: 0; profile blockers: 0; base blockers: 0.' \
+  "$tmp/pending-status.out"
+
+# A later unrelated managed directory cannot be attributed to the
+# not-yet-started profile stage, even if it appears under the selected game.
+mkdir -- "$game/.intimatr-managed-launch"
+printf 'foreign user file\n' >"$game/.intimatr-managed-launch/custom.txt"
+if bash scripts/bottles-full-recover.sh rollback "$new_journal" "$manager" \
+  --offline-single-player --games-closed --bottles-closed \
+  >"$tmp/pending-foreign.out" 2>"$tmp/pending-foreign.err"; then
+  echo 'Pending-stage recovery erased an unowned profile directory' >&2
+  exit 1
+fi
+grep -Fq 'ownership conflicts prevent combined rollback' "$tmp/pending-foreign.err"
+test -f "$game/.intimatr-managed-launch/custom.txt"
+test -f "$game/MangoHud.conf"
+rmdir -- "$game/.intimatr-managed-launch" 2>/dev/null && {
+  echo 'Fixture unexpectedly removed a nonempty foreign directory' >&2
+  exit 1
+}
+rm -- "$game/.intimatr-managed-launch/custom.txt"
+rmdir -- "$game/.intimatr-managed-launch"
+
+bash scripts/bottles-full-recover.sh rollback "$new_journal" "$manager" \
+  --offline-single-player --games-closed --bottles-closed \
+  >"$tmp/pending-rollback.out"
+grep -Fq 'Combined pending-stage recovery complete; no profiles removed.' \
+  "$tmp/pending-rollback.out"
+test "$(cat "$new_journal/full-profile-stage")" = profiles-pending-reverted
+test "$(cat "$new_journal/stage")" = reverted
+test ! -e "$game/.intimatr-managed-launch"
+test ! -e "$game/MangoHud.conf"
+test -f "$game/intimatr.dll"
+test "$before" = "$(sha256sum <"$game/intimatr.dll" | cut -d' ' -f1)"
+bash scripts/bottles-full-recover.sh rollback "$new_journal" "$manager" \
+  --offline-single-player --games-closed --bottles-closed \
+  >"$tmp/pending-repeat.out"
+grep -Fq 'Combined journal already reverted' "$tmp/pending-repeat.out"
+
+# Reverted pending attempts must not block future combined setup.
+bash "$script" apply "$manifest" "$manager" "$source" \
+  --offline-single-player --games-closed --bottles-closed \
+  >"$tmp/after-pending-apply.out"
+grep -Fq 'Combined setup complete' "$tmp/after-pending-apply.out"
+test -f "$game/.intimatr-managed-launch/speed.toml"
+
+echo 'Full setup fixture: recovered completed and pending stages, tamper guards, and no Wine launch passed'
