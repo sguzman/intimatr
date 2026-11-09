@@ -40,11 +40,14 @@ full profile workflow.
 atomic. It reports the failing stage and prints the base setup's private
 recovery journal. After a successful base apply, it also records which
 reviewed game profiles were already managed before the full attempt. A
-separate checksum guards this before-state; a stage marker distinguishes
-profile preparation that only started from a completed batch. This allows
+separate checksum guards this before-state. After every selected
+profile has been prepared and ownership-verified, a second checksummed
+inventory records the exact managed-profile ownership hash and filesystem
+device/inode identity observed at completion. The stage only becomes
+`profiles-complete` once that inventory is durable. This allows
 explicit, selective recovery of newly created profiles without deleting
-pre-existing ones. A new combined apply refuses an earlier unfinished
-combined profile stage.
+pre-existing profiles **or a later replacement with matching contents**.
+A new combined apply refuses an earlier unfinished combined profile stage.
 
 ```fish
 # Read-only status of the same journal printed by the combined apply.
@@ -54,10 +57,13 @@ bash scripts/bottles-full-recover.sh status "/absolute/bottles-root/.intimatr-se
 bash scripts/bottles-full-recover.sh rollback "/absolute/bottles-root/.intimatr-setup.XXXXXXXX" "$HOME/.cargo/bin/intimatr-bottles" --offline-single-player --games-closed --bottles-closed
 ```
 
-The recovery command checks the original base journal, the complete
-before-state inventory, all currently managed profile checksums and the
-base component ownership guard *before* deleting any new profiles. It then
-removes only unchanged profiles absent before this attempt and delegates
+The recovery command checks the original base journal, both
+checksummed profile inventories, the recorded directory identity,
+all currently managed profile checksums, and the base component ownership
+guard *before* deleting any new profiles. A recreated or changed profile
+whose directory identity or owned checksum differs from the completed
+snapshot blocks rollback, even if it remains a valid Intimatr profile.
+Recovery then removes only unchanged profiles absent before this attempt and delegates
 DLL/HUD/environment rollback to the existing guarded base command. A
 profile modified by the user blocks the combined rollback; a profile
 preparation stage merely marked `profiles-started` also blocks automatic
@@ -78,9 +84,13 @@ base installer's own root-directory lock, avoiding recursive deadlock.
 does not block standalone base operations, Bottles itself, or arbitrary
 external tools. The combined operation and its rollback are still
 compensating, not fully atomic or guaranteed across power loss, changes
-by external tools, or every possible interruption window. An interruption after base apply but
-before the combined profile inventory is written may require using the base
-recovery command directly. A failed mid-profile export may leave an incomplete
+by external tools, or every possible interruption window.
+Filesystem identity is a conservative replacement guard, not a guarantee
+against deliberately forged ownership or inode reuse. An interruption
+after base apply but before the combined before-state is written may
+require using the base recovery command directly. If the completed
+after-state is missing, profile recovery deliberately fails closed.
+A failed mid-profile export may leave an incomplete
 profile directory for manual inspection. No Wine/game launch or desktop
 shortcut installation occurs automatically.
 
