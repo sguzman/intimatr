@@ -169,8 +169,18 @@ fn block_list(config: &str) -> Result<(usize, Vec<String>), String> {
     let mut found = false;
     let mut end = 0;
     let mut vars = Vec::new();
+    let mut inline_empty = false;
     if !config.ends_with('\n') {
         return Err("Bottles YAML lacks terminal newline; refusing lossless patch".into());
+    }
+    // Reject ambiguous duplicate keys instead of editing the first one.
+    if config
+        .lines()
+        .filter(|line| line.starts_with("Inherited_Environment_Variables:"))
+        .count()
+        != 1
+    {
+        return Err("Bottles YAML inherited-variable key is missing or duplicated".into());
     }
     for line in config.split_inclusive('\n') {
         let raw = line.trim_end_matches(&['\r', '\n'][..]);
@@ -178,6 +188,11 @@ fn block_list(config: &str) -> Result<(usize, Vec<String>), String> {
             if raw == "Inherited_Environment_Variables:" {
                 found = true;
                 end = offset + line.len();
+            } else if raw == "Inherited_Environment_Variables: []" {
+                found = true;
+                inline_empty = true;
+                end = offset + line.len();
+                break;
             }
         } else if raw.starts_with("- ") {
             let item = &raw[2..];
@@ -210,6 +225,10 @@ fn block_list(config: &str) -> Result<(usize, Vec<String>), String> {
     if vars.iter().any(|name| !unique.insert(name)) {
         return Err("duplicate inherited variables in Bottles YAML".into());
     }
+    if inline_empty {
+        // `render` replaces just this single known inline-empty representation.
+        // It never inserts block list entries below `key: []`.
+    }
     Ok((end, vars))
 }
 
@@ -228,7 +247,14 @@ fn render(
         .cloned()
         .collect::<Vec<_>>();
     let mut updated = String::with_capacity(config.len() + missing.len() * 32);
-    updated.push_str(&config[..end]);
+    if !missing.is_empty()
+        && config[..end].ends_with("Inherited_Environment_Variables: []\n")
+    {
+        updated.push_str(&config[..end - " []\n".len()]);
+        updated.push('\n');
+    } else {
+        updated.push_str(&config[..end]);
+    }
     for name in &missing {
         updated.push_str("- ");
         updated.push_str(name);
@@ -457,9 +483,8 @@ pub(super) fn run_bottle_env(args: Vec<String>) -> Result<(), String> {
                 selected.name
             ));
         }
-        if options.action == "restore" && current == "unmanaged" {
-            return Err(format!("{}: nothing owned to restore", selected.name));
-        }
+        // A selected bottle with no Intimatr-owned change is already restored.
+        // This makes --all restore safe when only a subset needed additions.
         if options.action == "restore" && current == "modified_since_intimatr" {
             return Err(format!(
                 "{}: settings changed since apply; refusing restore",
@@ -495,12 +520,15 @@ pub(super) fn run_bottle_env(args: Vec<String>) -> Result<(), String> {
                 );
             }
             "restore" => {
-                restore(selected)?;
+                if before != "unmanaged" {
+                    restore(selected)?;
+                }
                 println!(
                     "{}",
                     serde_json::json!({
                         "bottle":selected.name, "operation":"restore",
-                        "ownership":"unmanaged", "original_bottle_yml_restored":true
+                        "ownership":"unmanaged",
+                        "original_bottle_yml_restored":before != "unmanaged"
                     })
                 );
             }
@@ -530,9 +558,26 @@ mod tests {
         );
     }
     #[test]
+    fn supports_inline_empty_list_without_touching_other_bottles_settings() {
+        let input = "Name: New Bottle\nInherited_Environment_Variables: []\nEnvironment_Variables: {}\n";
+        let (updated, missing) = render(input, &["MANGOHUD".into()], &[]).unwrap();
+        assert_eq!(missing, vec!["MANGOHUD".to_owned()]);
+        assert_eq!(
+            updated,
+            "Name: New Bottle\nInherited_Environment_Variables:\n- MANGOHUD\nEnvironment_Variables: {}\n"
+        );
+        let (unchanged, none) = render(input, &[], &[]).unwrap();
+        assert_eq!(unchanged, input);
+        assert!(none.is_empty());
+    }
+
+    #[test]
     fn refuses_inventory_drift_and_nested_yaml() {
         assert!(render(CONFIG, &["MANGOHUD".into()], &["WRONG".into()]).is_err());
         assert!(block_list("Inherited_Environment_Variables:\n  - HOME\nOther: true\n").is_err());
+        assert!(block_list(
+            "Inherited_Environment_Variables: []\nInherited_Environment_Variables:\n- HOME\n"
+        ).is_err());
     }
     #[test]
     fn owned_patch_restores_exact_original_and_rejects_modified_settings() {
