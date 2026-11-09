@@ -95,6 +95,20 @@ fi
 grep -Fq 'Registered Bottles program changed' "$tmp/changed.err"
 test "$before" -eq "$(wc -l <"$MOCK_EVENTS")"
 
+# A registration for another file in this bottle must not silently launch
+# that other program even if the manifest and native registry agree on it.
+jq '.games[0].windows_executable="C:\\Games\\Other\\Demo.exe"' "$manifest" >"$tmp/wrong-target.json"
+jq -n '[{name:"Demo Offline",path:"C:\\Games\\Other\\Demo.exe"}]' >"$MOCK_PROGRAMS"
+before="$(wc -l <"$MOCK_EVENTS")"
+if bash scripts/bottles-launch.sh check "$tmp/wrong-target.json" "$manager" "$game" \
+  "$source" "$profile" --renderer opengl --offline-single-player \
+  >"$tmp/wrong-target.out" 2>"$tmp/wrong-target.err"; then
+  echo 'Launch accepted another executable inside the selected bottle' >&2
+  exit 1
+fi
+grep -Fq 'Registered executable path does not match selected game directory' "$tmp/wrong-target.err"
+test "$before" -eq "$(wc -l <"$MOCK_EVENTS")"
+
 # The exact file, policy and profile are read-only in every case.
 test -f "$game/Demo.exe"
 test ! -e "$game/MangoHud.conf"
