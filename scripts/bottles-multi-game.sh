@@ -139,8 +139,35 @@ for i in "${!games[@]}"; do
   echo "Prepared independent proxy for $exe ($(grep -c '=steam_api64_intimatr_original\.' "$temp/$i/forwarders.def") exports)"
 done
 
-# Each operation is reversible on its own. If an install fails, previously
-# installed games remain explicitly reported, not silently rolled back.
+# Restore only successfully installed, owned and unchanged proxies if a
+# later installation fails. An interrupted current install is never guessed
+# safe to remove; its status must be inspected separately. This is best-effort
+# compensation, not a crash-safe cross-component transaction journal.
+declare -a installed_this_run=()
+rollback_partial_install() {
+  local rc=$?
+  if (( rc != 0 )); then
+    echo "DLL batch failed; checking newly installed proxies for safe rollback" >&2
+    local i game
+    for ((i=${#installed_this_run[@]}-1; i>=0; i--)); do
+      game="${installed_this_run[i]}"
+      if "$manager" launch-proxy status --game-dir "$game" |
+          jq -e '.status == "installed" and .original_preserved == true' >/dev/null; then
+        if "$manager" launch-proxy remove --game-dir "$game" \
+            --offline-single-player --game-closed; then
+          echo "Restored newly installed proxy: $game" >&2
+        else
+          echo "MANUAL RECOVERY REQUIRED: could not restore proxy in $game" >&2
+        fi
+      else
+        echo "MANUAL RECOVERY REQUIRED: proxy ownership changed in $game" >&2
+      fi
+    done
+    echo "Inspect the failing game and any manual-recovery entries before retrying." >&2
+  fi
+  rm -rf -- "$temp"
+}
+trap rollback_partial_install EXIT
 for i in "${!games[@]}"; do
   echo "Installing selected offline game: ${games[i]}"
   "$manager" launch-proxy install \
@@ -150,5 +177,10 @@ for i in "${!games[@]}"; do
     --dll "$runtime" \
     --config "$temp/$i/${exes[i]}.toml" \
     --offline-single-player --game-closed
+  # Record only complete, verified installs, never partially written files.
+  "$manager" launch-proxy status --game-dir "${games[i]}" |
+    jq -e '.status == "installed" and .original_preserved == true' >/dev/null ||
+    { echo "Proxy install status failed verification: ${games[i]}" >&2; exit 1; }
+  installed_this_run+=("${games[i]}")
 done
 echo "All selected proxies installed. Speed needs an accepted launch profile and startup opt-in; installer does not arm timers or start games."
