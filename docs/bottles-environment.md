@@ -43,8 +43,13 @@ values or cause MangoHud to render automatically.
 - Per-bottle backup and SHA-256 ownership marker are created with restrictive
   permissions. Updates are staged and renamed atomically. Removal refuses
   modifications by Bottles or another tool since the Intimatr update.
-- Multiple-bottle apply/restore is **not globally atomic**. On partial failure,
-  inspect the per-bottle status and restore eligible owned entries explicitly.
+- Multi-bottle `apply` performs compensating rollback in reverse order
+  if a later bottle fails, restoring only unchanged entries created in that
+  invocation. It defers success reporting until the batch finishes and
+  reports any rollback conflicts for manual recovery.
+- Multi-bottle `restore` and interrupted/crashed operations are **not globally
+  atomic**. A durable cross-component journal is still required. After a
+  process interruption, inspect per-bottle status before manual recovery.
 - Bottle GUI and processes must be closed for writes. The
   \`--bottles-closed\` flag is an acknowledgment, not a process inspection.
 - This feature does **not** automatically deploy Intimatr's DLL. Continue to
