@@ -67,6 +67,27 @@ script="scripts/bottles-managed-launch.sh"
 managed="$game/.intimatr-managed-launch"
 bash -n "$script"
 
+# A registered Windows path may vary by ASCII case from the Linux file.
+# Still reject a genuinely different executable under the same prefix.
+jq --arg w 'c:\\games\\demo\\DEMO.exe' '.games[0].windows_executable=$w' \
+  "$manifest" >"$tmp/case.json"
+jq -n --arg w 'c:\\games\\demo\\DEMO.exe' '[{name:"Demo Offline",path:$w}]' \
+  >"$MOCK_PROGRAMS"
+bash "$script" plan "$tmp/case.json" "$manager" "$game" "$source" \
+  --renderer opengl >"$tmp/case.out"
+test ! -e "$managed"
+jq -n --arg w 'C:\\Games\\Other\\Demo.exe' '[{name:"Demo Offline",path:$w}]' \
+  >"$MOCK_PROGRAMS"
+jq --arg w 'C:\\Games\\Other\\Demo.exe' '.games[0].windows_executable=$w' \
+  "$manifest" >"$tmp/other-game.json"
+if bash "$script" plan "$tmp/other-game.json" "$manager" "$game" "$source" \
+  --renderer opengl >"$tmp/other.out" 2>"$tmp/other.err"; then
+  echo 'Different registered Windows game accepted as selected executable' >&2
+  exit 1
+fi
+grep -Fq 'not the selected executable' "$tmp/other.err"
+jq -n '[{name:"Demo Offline",path:"C:\\Games\\Demo\\Demo.exe"}]' >"$MOCK_PROGRAMS"
+
 bash "$script" plan "$manifest" "$manager" "$game" "$source" \
   --renderer opengl >"$tmp/plan.out"
 test ! -e "$managed"
