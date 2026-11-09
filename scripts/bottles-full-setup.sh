@@ -123,6 +123,35 @@ if [[ "$action" == plan ]]; then
   exit 0
 fi
 
+# Record precisely which reviewed games already had a managed launch
+# profile BEFORE any component mutation. This before-state is needed to
+# recover newly created profiles without touching a pre-existing one.
+: >"$tmp/profiles-before.jsonl"
+while IFS= read -r game; do
+  present=false
+  if [[ -e "$game/.intimatr-managed-launch" ||
+        -L "$game/.intimatr-managed-launch" ]]; then
+    present=true
+  fi
+  jq -nc --arg game_dir "$game" --argjson preexisting "$present" \
+    '{game_dir:$game_dir,preexisting:$preexisting}' >>"$tmp/profiles-before.jsonl"
+done < <(jq -r '.games[].game_dir' "$manifest")
+jq -s '{version:1,games:.}' "$tmp/profiles-before.jsonl" >"$tmp/profiles-before.json"
+before_state_unchanged() {
+  local record game was present
+  while IFS= read -r record; do
+    game="$(jq -er '.game_dir' <<<"$record")"
+    was="$(jq -r '.preexisting' <<<"$record")"
+    present=false
+    if [[ -e "$game/.intimatr-managed-launch" ||
+          -L "$game/.intimatr-managed-launch" ]]; then
+      present=true
+    fi
+    [[ "$was" == "$present" ]] ||
+      { echo "Managed profile existence changed after preflight: $game" >&2; return 1; }
+  done < <(jq -c '.games[]' "$tmp/profiles-before.json")
+}
+
 # Existing base apply checks x64 runtime/build prerequisites before changing
 # any environment allowlist. Failure/partial setup is journaled there.
 stage=base-apply
@@ -131,10 +160,33 @@ apply_args=("${base_args[@]}" --offline-single-player --games-closed --bottles-c
 source_unchanged
 bash "$base" apply "$manifest" "$manager" "${apply_args[@]}" | tee "$tmp/base-output.log"
 journal="$(sed -n 's/^Recovery journal: //p' "$tmp/base-output.log" | tail -n 1)"
+[[ "$journal" == /* && -d "$journal" && ! -L "$journal" &&
+   "$(basename -- "$journal")" == .intimatr-setup.* &&
+   -f "$journal/selection.json" && -f "$journal/stage" &&
+   "$(cat -- "$journal/stage")" == complete ]] ||
+  { echo "Missing or invalid completed base setup journal" >&2; exit 1; }
 source_unchanged
+before_state_unchanged
+# Preserve a separate profile before-state in the base journal. The base
+# immutable selection and environment inventory remain intact.
+[[ ! -e "$journal/full-profiles-before.json" &&
+   ! -e "$journal/full-profiles-before.sha256" &&
+   ! -e "$journal/full-profile-stage" ]] ||
+  { echo "Base setup journal already contains a profile recovery record" >&2; exit 1; }
+cp -- "$tmp/profiles-before.json" "$journal/full-profiles-before.json"
+(
+  cd -- "$journal"
+  sha256sum -- full-profiles-before.json >full-profiles-before.sha256
+)
+mark_full_stage() {
+  printf '%s\n' "$1" >"$journal/.full-profile-stage-next"
+  mv -- "$journal/.full-profile-stage-next" "$journal/full-profile-stage"
+}
+mark_full_stage profiles-started
 stage=profile-preparation
 bash "$profiles" prepare "$manifest" "$manager" "$source" \
   --offline-single-player --games-closed
+mark_full_stage profiles-complete
 source_unchanged
 stage=complete
 echo "Combined setup complete: environments, selected DLLs/HUD and all reviewed launch profiles."
