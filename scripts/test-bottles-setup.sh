@@ -41,11 +41,19 @@ case "$1" in
     fi
     ;;
   launch-proxy)
-    [[ "$2" == status && "$3" == --game-dir ]]
-    if [[ "$4" == *"/Uninstalled" ]]; then
-      printf '{"status":"not_installed","original_preserved":false}\n'
+    [[ "$3" == --game-dir ]]
+    if [[ "$2" == remove ]]; then
+      printf 'remove|%s\n' "$4" >>"$MOCK_EVENTS"
+      rm -- "$4/intimatr-launch-deployment.json"
+    elif [[ "$2" == status ]]; then
+      if [[ "$4" == *"/Uninstalled" &&
+            ! -f "$4/intimatr-launch-deployment.json" ]]; then
+        printf '{"status":"not_installed","original_preserved":false}\n'
+      else
+        printf '{"status":"installed","original_preserved":true}\n'
+      fi
     else
-      printf '{"status":"installed","original_preserved":true}\n'
+      exit 3
     fi
     ;;
   *) echo "unexpected Intimatr command: $*" >&2; exit 3 ;;
@@ -241,4 +249,25 @@ if grep -Fq "remove|$game" "$MOCK_EVENTS"; then
   exit 1
 fi
 
-echo "Combined Bottles fixture: plan, status, snapshot, journal, selective recovery, tamper, and path refusal passed"
+# Simulate a previous invocation interrupted during the DLL stage.
+# It must restore only the newly managed proxy, not the original Steam DLL.
+journal_dll="$(mktemp -d "$tmp/root/.intimatr-setup.XXXXXXXX")"
+cp -- "$tmp/new.json" "$journal_dll/selection.json"
+cp -- "$tmp/new.json" "$journal_dll/new-dll.json"
+jq -n '{version:1,games:[]}' >"$journal_dll/new-hud.json"
+printf '{"operation":"status","bottle":"Other","ownership":"owned_unchanged","allowlist_entries_to_add":[]}\n' >"$journal_dll/env-before.jsonl"
+jq -n --arg root "$tmp/root" '{version:1,root:$root,all_bottles:false}' >"$journal_dll/metadata.json"
+printf 'dll-started\n' >"$journal_dll/stage"
+printf '{}\n' >"$new_game/intimatr-launch-deployment.json"
+steam_before="$(sha256sum "$new_game/steam_api64.dll" | cut -d' ' -f1)"
+bash scripts/bottles-setup-recover.sh status "$journal_dll" "$manager" >"$tmp/dll-status.out"
+grep -Fq '0 HUD, 1 DLL, 0 bottle environments. Blockers: 0.' "$tmp/dll-status.out"
+bash scripts/bottles-setup-recover.sh rollback "$journal_dll" "$manager" \
+  --offline-single-player --games-closed --bottles-closed >"$tmp/dll-rollback.out"
+test "$(cat "$journal_dll/stage")" = reverted
+test ! -e "$new_game/intimatr-launch-deployment.json"
+grep -Fxq "remove|$new_game" "$MOCK_EVENTS"
+test "$steam_before" = "$(sha256sum "$new_game/steam_api64.dll" | cut -d' ' -f1)"
+test "$before" = "$(sha256sum "$game/intimatr.dll" | cut -d' ' -f1)"
+
+echo "Combined Bottles fixture: plan, status, snapshot, journal, HUD and DLL recovery, tamper and path refusal passed"
