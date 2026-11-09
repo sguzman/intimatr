@@ -32,11 +32,22 @@ case "$1" in
     ;;
   launch-proxy)
     [[ "$2" == status && "$3" == --game-dir ]]
-    printf '{"status":"installed","original_preserved":true}\n'
+    if [[ "$4" == *"/Uninstalled" ]]; then
+      printf '{"status":"not_installed","original_preserved":false}\n'
+    else
+      printf '{"status":"installed","original_preserved":true}\n'
+    fi
     ;;
   *) echo "unexpected Intimatr command: $*" >&2; exit 3 ;;
 esac
 EOF
+cat >"$tmp/mockbin/x86_64-w64-mingw32-objdump" <<'EOF'
+#!/usr/bin/env bash
+# A fixture import table: supported offline game only.
+[[ "$2" == *"/Uninstalled/Uninstalled.exe" ]] &&
+  printf '%s\n' '  DLL Name: steam_api64.dll'
+EOF
+chmod 0755 "$tmp/mockbin/x86_64-w64-mingw32-objdump"
 chmod 0755 "$tmp/mockbin/bottles-cli" "$tmp/mockbin/intimatr-bottles"
 export PATH="$tmp/mockbin:$PATH"
 export MOCK_BOTTLES_ROOT="$tmp/root"
@@ -111,4 +122,36 @@ jq -n '{version:1,games:[]}' >"$tmp/empty.json"
 bash scripts/bottles-setup.sh plan "$tmp/empty.json" "$manager" \
   --all-bottles >"$tmp/empty-plan.log"
 grep -Fq 'Selection: 0 games' "$tmp/empty-plan.log"
+
+# New DLL installs get a real read-only compatibility preflight, but an apply
+# without an explicitly selected Windows DLL must refuse BEFORE env writes.
+new_game="$tmp/root/Other/drive_c/Games/Uninstalled"
+mkdir -p "$new_game"
+printf 'fake PE fixture\n' >"$new_game/Uninstalled.exe"
+printf 'fake steam library\n' >"$new_game/steam_api64.dll"
+jq -n --arg d "$new_game" \
+  '{version:1,games:[{game_dir:$d,executable:"Uninstalled.exe"}]}' >"$tmp/new.json"
+bash scripts/bottles-setup.sh plan "$tmp/new.json" "$manager" >"$tmp/new-plan.log"
+grep -Fq '1 new DLLs' "$tmp/new-plan.log"
+grep -Fq 'Candidate (read only):' "$tmp/new-plan.log"
+before_apply_count="$(grep -c '^bottle-env apply ' "$MOCK_EVENTS")"
+if bash scripts/bottles-setup.sh apply "$tmp/new.json" "$manager" \
+  --offline-single-player --games-closed --bottles-closed \
+  >"$tmp/missing-runtime.out" 2>"$tmp/missing-runtime.err"; then
+  echo "Setup tried a new DLL installation without an explicit runtime" >&2
+  exit 1
+fi
+grep -Fq 'requires --runtime' "$tmp/missing-runtime.err"
+after_apply_count="$(grep -c '^bottle-env apply ' "$MOCK_EVENTS")"
+test "$before_apply_count" -eq "$after_apply_count"
+test ! -e "$new_game/intimatr.dll"
+
+# The all-bottles scope with an empty manifest is environment-only, never
+# an implicit request to deploy DLLs to every game in that inventory.
+bash scripts/bottles-setup.sh apply "$tmp/empty.json" "$manager" \
+  --offline-single-player --games-closed --bottles-closed --all-bottles \
+  >"$tmp/empty-apply.log"
+grep -Fq 'Selection: 0 games; 0 new DLLs; 0 new HUD configs.' "$tmp/empty-apply.log"
+test ! -e "$new_game/intimatr.dll"
+
 echo "Combined Bottles fixture: plan, status, allowlist, existing DLL, HUD install, idempotence, tamper and path refusal passed"
