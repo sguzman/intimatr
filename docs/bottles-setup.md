@@ -97,9 +97,9 @@ or deleting a modified file.
 reviewed discovery manifest. It does **not** install a DLL, modify an
 environment allowlist, write a profile, or start an unselected game.
 
-The source policy and delivered profile must already exist and match. This
-first stage takes those two absolute paths explicitly; eliminating them through
-a managed per-game configuration is still pending.
+The low-level wrapper requires the source policy and delivered profile
+to be provided explicitly. The managed setup workflow below can prepare
+an owned profile once and reuse it without those repeated arguments.
 
 ```fish
 bash scripts/bottles-launch.sh check "/absolute/selection.json" "$HOME/.cargo/bin/intimatr-bottles" "/absolute/bottles-root/BOTTLE/drive_c/Games/GAME" "/absolute/source-policy.toml" "/absolute/delivered-profile.toml" --offline-single-player
@@ -119,6 +119,59 @@ require an explicit `--renderer opengl` or `--renderer vulkan`. OpenGL uses
 the integrated `mangohud --dlsym` path; Vulkan uses ordinary MangoHud
 activation. Neither static hints nor successful native CLI exit prove the
 actual overlay rendered.
+
+## Prepared game profiles and short launches (draft)
+
+`scripts/bottles-managed-launch.sh` uses one reviewed game registration,
+the existing `intimatr-bottles profile-export` command, and a source speed
+policy to prepare a **private, Intimatr-owned** launch folder inside the
+selected game directory. It does not install a DLL, configure HUD, start a
+game, or change a global Bottles setting.
+
+```fish
+# Read-only preview. Use exact paths from the reviewed manifest.
+bash scripts/bottles-managed-launch.sh plan "/absolute/selection.json" "$HOME/.cargo/bin/intimatr-bottles" "/absolute/bottles-root/BOTTLE/drive_c/Games/GAME" "/absolute/source-policy.toml" --renderer opengl
+
+# One-time preparation, with the selected game closed.
+bash scripts/bottles-managed-launch.sh prepare "/absolute/selection.json" "$HOME/.cargo/bin/intimatr-bottles" "/absolute/bottles-root/BOTTLE/drive_c/Games/GAME" "/absolute/source-policy.toml" --renderer opengl --offline-single-player --games-closed
+
+# Later: no source/profile/manager/registration arguments to reenter.
+bash scripts/bottles-managed-launch.sh status "/absolute/bottles-root/BOTTLE/drive_c/Games/GAME"
+bash scripts/bottles-managed-launch.sh check "/absolute/bottles-root/BOTTLE/drive_c/Games/GAME" --offline-single-player
+bash scripts/bottles-managed-launch.sh launch "/absolute/bottles-root/BOTTLE/drive_c/Games/GAME" --offline-single-player
+
+# Experimental timer hooks are always a separate per-launch opt-in:
+# --experimental-four-timers
+
+# Explicit owned-profile removal when the game is closed.
+bash scripts/bottles-managed-launch.sh remove "/absolute/bottles-root/BOTTLE/drive_c/Games/GAME" --games-closed
+```
+
+Preparation creates only the previously absent
+`.intimatr-managed-launch/speed.toml`, `launch.json`, and
+`snapshots.sha256`. The directory is private (0700). The Rust manager
+creates a DLL-readable, selected-game profile and confirms that speed is
+enabled before the launch descriptor is accepted. A fixed SHA-256 inventory
+covers both profile and descriptor. The launcher verifies intact ownership,
+that the source policy has not changed, the current native Bottles
+registration, the selected C: game executable, and the existing HUD/profile
+preflight before it invokes Wine. A repeated identical `prepare` is a
+no-op. Changed policies, game identity, renderer, local edits, and unmanaged
+files are never silently overwritten.
+
+`remove` deletes only the three exact, unchanged managed files after an
+explicit games-closed acknowledgment, even if the original source policy
+has moved or changed. Extra files and modified owned files block removal.
+If preparation is interrupted, the incomplete directory is retained for
+manual inspection, not automatically deleted. It is **not** a substitute for
+the separate combined setup journal, which currently covers environments,
+DLL proxies, and MangoHud, not prepared launch profiles.
+
+Renderer `auto` remains a conservative static PE-import hint. Explicit
+`--renderer opengl` or `--renderer vulkan` may be chosen at preparation.
+An actual game start, custom HUD rendering, timer activation, or gameplay
+speed is not verified until owner QA. A GUI/desktop one-click shortcut is
+still unfinished.
 
 This is a safe incremental launcher, **not yet** the finished zero-configuration
 per-game shortcut or complete bulk setup experience.
@@ -148,8 +201,10 @@ per-game shortcut or complete bulk setup experience.
   stages may remain. The durable attempt journal and the recovery command
   above permit explicit, ownership-checked selective reversal, but cannot
   guarantee recovery of incomplete or externally modified components.
-- This configures a managed overlay but does **not** automatically choose an
-  OpenGL vs Vulkan launch, create desktop shortcuts, export per-game profiles,
-  measure startup time or verify live gameplay. Explicit
-  `profile-launch --mangohud-dlsym` support is separately under PR #6.
-  These integrations remain part of issue #4.
+- The unified branch includes the native OpenGL `--mangohud-dlsym`
+  path (originally developed in PR #6), a conservatively selected
+  renderer-specific launch wrapper, and per-game profile preparation.
+  It does **not** yet generate desktop shortcuts, automatically refresh
+  changed speed policies, or verify HUD rendering and gameplay speed.
+  The current launch timing fields measure preflight and CLI overhead,
+  not the game's visible or responsive startup time.
