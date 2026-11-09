@@ -31,7 +31,14 @@ case "$1" in
     if [[ -n "${MOCK_MUTATE_MANIFEST:-}" ]]; then
       printf '%s\n' '{"version":1,"games":[{"game_dir":"/outside","executable":"Outside.exe"}]}' > "$MOCK_MUTATE_MANIFEST"
     fi
-    printf '{"operation":"mock_bottle_env","files_modified":false}\n'
+    if [[ "$2" == status ]]; then
+      printf '{"operation":"status","bottle":"Eastward","ownership":"unmanaged","allowlist_entries_to_add":["MANGOHUD"]}\n'
+      if [[ " $* " == *" --all "* ]]; then
+        printf '{"operation":"status","bottle":"Other","ownership":"unmanaged","allowlist_entries_to_add":["MANGOHUD"]}\n'
+      fi
+    else
+      printf '{"operation":"mock_bottle_env","files_modified":false}\n'
+    fi
     ;;
   launch-proxy)
     [[ "$2" == status && "$3" == --game-dir ]]
@@ -96,6 +103,17 @@ bash scripts/bottles-setup.sh apply "$manifest" "$manager" \
 grep -Fxq 'bottle-env apply --all --preset intimatr-hud --bottles-closed' "$MOCK_EVENTS"
 test -f "$game/MangoHud.conf"
 test -f "$game/intimatr-mangohud.sha256"
+journals=("$tmp/root"/.intimatr-setup.*)
+test "${#journals[@]}" -eq 1
+journal="${journals[0]}"
+test -d "$journal"
+test "$(stat -c %a "$journal")" = 700
+test "$(cat "$journal/stage")" = complete
+jq -e '.version == 1 and .all_bottles == true' "$journal/metadata.json" >/dev/null
+jq -e --arg expected "$game" '.games[0].game_dir == $expected' "$journal/selection.json" >/dev/null
+jq -e --arg expected "$game" '.games[0].game_dir == $expected' "$journal/new-hud.json" >/dev/null
+jq -s -e 'length == 2 and all(.[]; .operation == "status" and .ownership == "unmanaged")' \
+  "$journal/env-before.jsonl" >/dev/null
 test "$before" = "$(sha256sum "$game/intimatr.dll" | cut -d' ' -f1)"
 managed="$(sha256sum "$game/MangoHud.conf" | cut -d' ' -f1)"
 
