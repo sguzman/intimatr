@@ -11,11 +11,11 @@ use std::process::Command;
 use intimatr::bottles::{BottleInventory, parse_bottle_names, parse_registered_programs};
 
 #[cfg(target_os = "linux")]
-#[path = "intimatr_bottles/bottle_environment_manage.rs"]
-mod bottle_environment_manage;
-#[cfg(target_os = "linux")]
 #[path = "intimatr_bottles/bottle_compat.rs"]
 mod bottle_compat;
+#[cfg(target_os = "linux")]
+#[path = "intimatr_bottles/bottle_environment_manage.rs"]
+mod bottle_environment_manage;
 #[cfg(target_os = "linux")]
 #[path = "intimatr_bottles/game_attach.rs"]
 mod game_attach;
