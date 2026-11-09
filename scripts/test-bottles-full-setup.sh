@@ -146,6 +146,25 @@ test "$hud_sha" = "$(sha256sum <"$game/MangoHud.conf" | cut -d' ' -f1)"
 test "$profile_sha" = "$(sha256sum <"$game/.intimatr-managed-launch/speed.toml" | cut -d' ' -f1)"
 test "$before" = "$(sha256sum <"$game/intimatr.dll" | cut -d' ' -f1)"
 
+# The second completed journal records the already-managed profile as
+# pre-existing. Recovering that attempt must never delete it, the original
+# DLL, or the HUD first installed by the earlier attempt.
+all_journals=("$tmp/root"/.intimatr-setup.*)
+test "${#all_journals[@]}" -eq 2
+second_journal=""
+for candidate in "${all_journals[@]}"; do
+  [[ "$candidate" == "${journals[0]}" ]] || second_journal="$candidate"
+done
+[[ -n "$second_journal" ]]
+jq -e '.games[0].preexisting == true' "$second_journal/full-profiles-before.json" >/dev/null
+bash scripts/bottles-full-recover.sh rollback "$second_journal" "$manager" \
+  --offline-single-player --games-closed --bottles-closed >"$tmp/previous-profile.out"
+grep -Fq 'pre-existing profiles' "$tmp/previous-profile.out"
+test "$(cat "$second_journal/full-profile-stage")" = reverted
+test -f "$game/.intimatr-managed-launch/speed.toml"
+test -f "$game/MangoHud.conf"
+test "$before" = "$(sha256sum <"$game/intimatr.dll" | cut -d' ' -f1)"
+
 # A newly changed source cannot be silently adopted on an existing profile.
 printf '# edited by owner\n' >>"$source"
 if bash "$script" apply "$manifest" "$manager" "$source" \
