@@ -201,6 +201,15 @@ if (( new_dll_count )); then
   fi
 fi
 
+# Lock the canonical native Bottles directory itself, avoiding creation of
+# a lockfile that could collide with or follow an unmanaged user symlink.
+# The recovery command holds this same advisory lock during rollback.
+command -v flock >/dev/null ||
+  { echo "Missing flock for exclusive Bottles setup" >&2; exit 2; }
+exec 9<"$root"
+flock -n 9 ||
+  { echo "Another Intimatr setup/recovery holds the native Bottles lock" >&2; exit 1; }
+
 # Persist a per-attempt recovery record before modifying any Bottles files.
 # It contains only reviewed selections and the original ownership inventory,
 # never credentials, game binaries, or a second copy of the DLL runtime.
