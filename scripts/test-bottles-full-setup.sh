@@ -77,6 +77,20 @@ bash -n "$script"
 bash "$script" plan "$manifest" "$manager" "$source" \
   >"$tmp/plan.out"
 grep -Fq 'Combined plan complete' "$tmp/plan.out"
+lock="$tmp/root/.intimatr-full-operation.lock"
+test ! -e "$lock"
+
+# A user-owned/unsafe file or symlink at the reserved lock path is not
+# clobbered, and all selected game files stay untouched.
+ln -s -- "$source" "$lock"
+if bash "$script" apply "$manifest" "$manager" "$source" \
+  --offline-single-player --games-closed --bottles-closed \
+  >"$tmp/lock-symlink.out" 2>"$tmp/lock-symlink.err"; then
+  echo "Combined setup followed a foreign lock symlink" >&2; exit 1
+fi
+test -L "$lock"
+test ! -e "$game/MangoHud.conf"
+rm -- "$lock"
 test ! -e "$game/MangoHud.conf"
 test ! -e "$game/.intimatr-managed-launch"
 
@@ -125,6 +139,9 @@ test "$(cat "${journals[0]}/stage")" = complete
 test -f "${journals[0]}/full-profiles-before.json"
 test -f "${journals[0]}/full-profiles-before.sha256"
 test "$(cat "${journals[0]}/full-profile-stage")" = profiles-complete
+test -f "$lock"
+test ! -L "$lock"
+test "$(stat -c %a -- "$lock")" = 600
 jq -e --arg dir "$game" '
   .version == 1 and (.games | length == 1) and
   .games[0].game_dir == $dir and .games[0].preexisting == false
@@ -135,6 +152,27 @@ grep -Fq 'Eligible new profiles: 1; pre-existing preserved: 0; profile blockers:
 bash "$script" status "$manifest" "$manager" >"$tmp/status.out"
 grep -Fq 'owned_unchanged' "$tmp/status.out"
 grep -Fq 'HUD owned (unchanged)' "$tmp/status.out"
+
+# Lock contention must reject overlapping combined operations before
+# modifying any selected profile, HUD or environment.
+exec 7<"$lock"
+flock -n 7
+if bash "$script" apply "$manifest" "$manager" "$source" \
+  --offline-single-player --games-closed --bottles-closed \
+  >"$tmp/contended-apply.out" 2>"$tmp/contended-apply.err"; then
+  echo "Combined apply bypassed active full-operation lock" >&2; exit 1
+fi
+grep -Fq 'Another Intimatr combined setup or recovery is active' "$tmp/contended-apply.err"
+test -f "$game/.intimatr-managed-launch/speed.toml"
+if bash scripts/bottles-full-recover.sh rollback "${journals[0]}" "$manager" \
+  --offline-single-player --games-closed --bottles-closed \
+  >"$tmp/contended-rollback.out" 2>"$tmp/contended-rollback.err"; then
+  echo "Combined rollback bypassed active full-operation lock" >&2; exit 1
+fi
+grep -Fq 'Another Intimatr combined setup or recovery is active' "$tmp/contended-rollback.err"
+test "$(cat "${journals[0]}/full-profile-stage")" = profiles-complete
+flock -u 7
+exec 7<&-
 
 # Idempotent reapplication does not change either file, game binary or DLL.
 hud_sha="$(sha256sum <"$game/MangoHud.conf" | cut -d' ' -f1)"
