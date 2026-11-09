@@ -134,8 +134,25 @@ if [[ "$action" == plan || "$action" == prepare ]]; then
     ([.[] | select(.name == $name and .path == $path)] | length == 1)
   ' <<<"$registered" >/dev/null ||
     { echo "Native Bottles registration changed or is ambiguous" >&2; exit 1; }
-  [[ ! -e "$managed" && ! -L "$managed" ]] ||
-    { echo "Managed launch already exists (or incomplete): $managed" >&2; exit 1; }
+  if [[ -e "$managed" || -L "$managed" ]]; then
+    # Repeating the exact same reviewed request is a no-op, but an incomplete
+    # or edited managed folder is never repaired or overwritten silently.
+    check_owned || exit 1
+    hash="$(sha_file "$source")"
+    jq -e --arg manager "$manager" --arg source "$source" \
+      --arg hash "$hash" --arg renderer "$renderer" \
+      --argjson selection "$selection" \
+      '.manager == $manager and .source == $source and
+       .source_sha256 == $hash and .renderer == $renderer and
+       .selection == $selection' "$managed/launch.json" >/dev/null ||
+      { echo "Managed launch differs from reviewed request; remove explicitly before changing it" >&2; exit 1; }
+    if [[ "$action" == plan ]]; then
+      echo "Managed launch is unchanged; plan has zero writes: $game"
+    else
+      echo "Managed launch already prepared unchanged: $game"
+    fi
+    exit 0
+  fi
   # The existing Rust resolver is read-only. The later export will validate
   # and deliver a DLL-readable profile, but no launch is attempted here.
   "$manager" profile-check --config "$source" --bottle "$bottle" --exe "$windows" >/dev/null
