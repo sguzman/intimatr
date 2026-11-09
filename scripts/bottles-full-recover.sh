@@ -85,7 +85,7 @@ jq -e --slurpfile selection "$journal/selection.json" --arg root "$root" '
 ' "$journal/full-profiles-before.json" >/dev/null ||
   { echo "Combined recovery inventory differs from original reviewed selection" >&2; exit 1; }
 stage="$(cat -- "$journal/full-profile-stage")"
-case "$stage" in profiles-started|profiles-complete|rollback-started|reverted) ;;
+case "$stage" in profiles-pending|profiles-pending-reverted|profiles-started|profiles-complete|rollback-started|reverted) ;;
   *) echo "Unknown combined profile stage: $stage" >&2; exit 1 ;;
 esac
 # The completed inventory binds every original managed profile to the exact
@@ -93,7 +93,8 @@ esac
 # subsequently replaced a valid managed directory, recovery cannot claim it.
 # An interrupted preparation has no trusted completion snapshot; it remains
 # non-recoverable automatically regardless of partial after-state files.
-if [[ "$stage" != profiles-started ]]; then
+if [[ "$stage" != profiles-started && "$stage" != profiles-pending &&
+      "$stage" != profiles-pending-reverted ]]; then
   for file in full-profiles-after.json full-profiles-after.sha256; do
     [[ -f "$journal/$file" && ! -L "$journal/$file" ]] ||
       { echo "Missing completed profile identity snapshot: $file" >&2; exit 1; }
@@ -122,12 +123,18 @@ base_blockers="$(sed -nE 's/^Restorable newly owned entries: .*Blockers: ([0-9]+
 [[ "$base_blockers" =~ ^[0-9]+$ ]] ||
   { echo "Missing valid base rollback blocker count" >&2; exit 1; }
 base_stage="$(cat -- "$journal/stage")"
-case "$base_stage" in
-  complete|rollback-started|reverted) ;;
-  *)
-    echo "BLOCKED: base stage $base_stage is incomplete; use the base recovery workflow" >&2
-    exit 1 ;;
-esac
+# A full attempt interrupted while profiles were still pending can have
+# ANY valid base stage. Its base recovery is ownership-checked independently;
+# a started base stage with ambiguous ownership will be blocked there.
+# Once profiles were started, only a completed/recovering base is acceptable.
+if [[ "$stage" != profiles-pending && "$stage" != profiles-pending-reverted ]]; then
+  case "$base_stage" in
+    complete|rollback-started|reverted) ;;
+    *)
+      echo "BLOCKED: base stage $base_stage is incomplete; use the base recovery workflow" >&2
+      exit 1 ;;
+  esac
+fi
 
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/intimatr-full-recovery.XXXXXXXX")"
 trap 'rm -rf -- "$tmp"' EXIT
@@ -149,8 +156,9 @@ while IFS= read -r record; do
     echo "BLOCKED: incomplete or user-modified profile: $game" >&2
     blockers=$((blockers+1)); continue
   fi
-  if [[ "$stage" == profiles-started ]]; then
-    echo "BLOCKED: cannot attribute incomplete-stage profile to this attempt: $game" >&2
+  if [[ "$stage" == profiles-pending || "$stage" == profiles-pending-reverted ||
+        "$stage" == profiles-started ]]; then
+    echo "BLOCKED: profile stage $stage cannot attribute an installed profile to this attempt: $game" >&2
     blockers=$((blockers+1)); continue
   fi
   expected_record="$(jq -ce --arg dir "$game" \
@@ -179,7 +187,7 @@ if [[ "$action" == status ]]; then
   echo "Status is read-only; no selected game or Bottles files changed."
   exit 0
 fi
-if [[ "$stage" == reverted ]]; then
+if [[ "$stage" == reverted || "$stage" == profiles-pending-reverted ]]; then
   # A completed combined recovery must not conceal an unfinished base
   # rollback. Profile and base stage markers are intentionally independent.
   [[ "$base_stage" == reverted ]] ||
@@ -196,6 +204,19 @@ mark_stage() {
   printf '%s\n' "$1" >"$journal/.full-profile-stage-next"
   mv -- "$journal/.full-profile-stage-next" "$journal/full-profile-stage"
 }
+if [[ "$stage" == profiles-pending ]]; then
+  # No profile mutation was ever started. The before-state is authoritative
+  # for preserving pre-existing user profiles; any new profile found here was
+  # treated as a blocker during preflight. Preserve the pending marker until
+  # base rollback finishes so a crash can be resumed without an after-state.
+  if [[ "$base_stage" != reverted ]]; then
+    bash "$base" rollback "$journal" "$manager" \
+      --offline-single-player --games-closed --bottles-closed
+  fi
+  mark_stage profiles-pending-reverted
+  echo "Combined pending-stage recovery complete; no profiles removed."
+  exit 0
+fi
 mark_stage rollback-started
 while IFS= read -r game; do
   bash "$single" remove "$game" --games-closed
