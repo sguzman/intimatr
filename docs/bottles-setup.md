@@ -44,6 +44,9 @@ management. If no new DLL deployment is needed, `--runtime` can be omitted.
   acknowledgements, not proof that a process has exited.
 - Only native C: installations are accepted. Symlinked, moved, and unmapped
   locations fail closed until their identity is supported and verified.
+- For a new DLL deployment, `apply` validates the required MinGW tools,
+  forwarder sources, and a readable x64 Windows PE runtime **before** changing
+  any bottle environment allowlist. Read-only `plan` does not require a runtime.
 - A batch is **not globally atomic**. If a later stage fails, earlier changes
   may remain. The failed stage is reported; existing `bottle-env restore`,
   `bottles-multi-game.sh remove`, and `bottles-hud.sh remove` provide separate
