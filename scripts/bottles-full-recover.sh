@@ -180,6 +180,10 @@ if [[ "$action" == status ]]; then
   exit 0
 fi
 if [[ "$stage" == reverted ]]; then
+  # A completed combined recovery must not conceal an unfinished base
+  # rollback. Profile and base stage markers are intentionally independent.
+  [[ "$base_stage" == reverted ]] ||
+    { echo "BLOCKED: combined journal says reverted but base is $base_stage" >&2; exit 1; }
   echo "Combined journal already reverted."
   exit 0
 fi
