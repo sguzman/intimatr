@@ -139,6 +139,14 @@ test "$(cat "${journals[0]}/stage")" = complete
 test -f "${journals[0]}/full-profiles-before.json"
 test -f "${journals[0]}/full-profiles-before.sha256"
 test "$(cat "${journals[0]}/full-profile-stage")" = profiles-complete
+test -f "${journals[0]}/full-profiles-after.json"
+test -f "${journals[0]}/full-profiles-after.sha256"
+jq -e --arg dir "$game" '
+  .version == 1 and (.games | length == 1) and
+  .games[0].game_dir == $dir and
+  (.games[0].snapshot_sha256 | test("^[0-9a-f]{64}$")) and
+  (.games[0].directory_identity | test("^[0-9]+:[0-9]+$"))
+' "${journals[0]}/full-profiles-after.json" >/dev/null
 test -f "$lock"
 test ! -L "$lock"
 test "$(stat -c %a -- "$lock")" = 600
@@ -152,6 +160,45 @@ grep -Fq 'Eligible new profiles: 1; pre-existing preserved: 0; profile blockers:
 bash "$script" status "$manifest" "$manager" >"$tmp/status.out"
 grep -Fq 'owned_unchanged' "$tmp/status.out"
 grep -Fq 'HUD owned (unchanged)' "$tmp/status.out"
+
+# A valid, byte-identical managed profile installed *later* is not
+# owned by the earlier full attempt. Directory identity distinguishes
+# replacement even when all managed checksums are exactly identical.
+original_managed="$game/.intimatr-managed-launch"
+mv -- "$original_managed" "$tmp/original-owned-profile"
+mkdir -- "$original_managed"
+cp -a -- "$tmp/original-owned-profile/." "$original_managed/"
+bash scripts/bottles-managed-launch.sh status "$game" >"$tmp/replacement-owned.out"
+grep -Fq 'owned_unchanged' "$tmp/replacement-owned.out"
+bash scripts/bottles-full-recover.sh status "${journals[0]}" "$manager" \
+  >"$tmp/replacement-status.out" 2>"$tmp/replacement-status.err"
+grep -Fq 'managed profile was replaced after the completed setup' "$tmp/replacement-status.err"
+grep -Fq 'profile blockers: 1' "$tmp/replacement-status.out"
+if bash scripts/bottles-full-recover.sh rollback "${journals[0]}" "$manager" \
+  --offline-single-player --games-closed --bottles-closed \
+  >"$tmp/replacement-rollback.out" 2>"$tmp/replacement-rollback.err"; then
+  echo 'Recovery deleted a byte-identical profile created after setup' >&2
+  exit 1
+fi
+test -f "$original_managed/speed.toml"
+rm -- "$original_managed/launch.json" "$original_managed/speed.toml" \
+  "$original_managed/snapshots.sha256"
+rmdir -- "$original_managed"
+mv -- "$tmp/original-owned-profile" "$original_managed"
+
+# An edited completed-profile inventory must block recovery before any
+# profile files are removed, even if its JSON remains syntactically valid.
+cp -- "${journals[0]}/full-profiles-after.json" "$tmp/intact-profile-after.json"
+printf '\n' >>"${journals[0]}/full-profiles-after.json"
+if bash scripts/bottles-full-recover.sh rollback "${journals[0]}" "$manager" \
+  --offline-single-player --games-closed --bottles-closed \
+  >"$tmp/edited-after.out" 2>"$tmp/edited-after.err"; then
+  echo 'Combined recovery trusted a modified completion inventory' >&2
+  exit 1
+fi
+grep -Fq 'Completed profile identity snapshot checksum mismatch' "$tmp/edited-after.err"
+cp -- "$tmp/intact-profile-after.json" "${journals[0]}/full-profiles-after.json"
+test -f "$original_managed/speed.toml"
 
 # Lock contention must reject overlapping combined operations before
 # modifying any selected profile, HUD or environment.
