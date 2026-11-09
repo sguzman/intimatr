@@ -64,9 +64,21 @@ preparation stage merely marked `profiles-started` also blocks automatic
 removal because its provenance is incomplete. If rollback is interrupted,
 a `rollback-started` marker allows an integrity-checked retry.
 
-**Limits:** The combined operation and its rollback are still compensating,
-not fully atomic or guaranteed across power loss, changes by external tools,
-or every possible interruption window. An interruption after base apply but
+The combined `apply` and `rollback` commands now hold an exclusive
+advisory lock across their **full** environment/DLL/HUD and per-game
+profile stages. The first explicitly approved operation creates an inert,
+owner-only (0600) `.intimatr-full-operation.lock` file in the native
+Bottles root. Later operations reuse this file; a symlink, foreign owner,
+extra hardlink, or unsafe mode blocks mutation. The lock file remains
+after setup or rollback for future serialization. `plan` and `status`
+do not create or require this lock. This separate lock coexists with the
+base installer's own root-directory lock, avoiding recursive deadlock.
+
+**Limits:** The lock serializes *combined Intimatr operations* only; it
+does not block standalone base operations, Bottles itself, or arbitrary
+external tools. The combined operation and its rollback are still
+compensating, not fully atomic or guaranteed across power loss, changes
+by external tools, or every possible interruption window. An interruption after base apply but
 before the combined profile inventory is written may require using the base
 recovery command directly. A failed mid-profile export may leave an incomplete
 profile directory for manual inspection. No Wine/game launch or desktop
