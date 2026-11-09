@@ -266,8 +266,9 @@ if grep -Fq "remove|$game" "$MOCK_EVENTS"; then
   exit 1
 fi
 
-# Simulate a previous invocation interrupted during the DLL stage.
-# It must restore only the newly managed proxy, not the original Steam DLL.
+# A stage marked "started" cannot prove that a present owned proxy came
+# from this attempt. Refuse destructive recovery until a completed boundary
+# is recorded; a verified completed stage can be rolled back safely.
 journal_dll="$(mktemp -d "$tmp/root/.intimatr-setup.XXXXXXXX")"
 cp -- "$tmp/new.json" "$journal_dll/selection.json"
 cp -- "$tmp/new.json" "$journal_dll/new-dll.json"
@@ -277,14 +278,34 @@ jq -n --arg root "$tmp/root" '{version:1,root:$root,all_bottles:false}' >"$journ
 printf 'dll-started\n' >"$journal_dll/stage"
 printf '{}\n' >"$new_game/intimatr-launch-deployment.json"
 steam_before="$(sha256sum "$new_game/steam_api64.dll" | cut -d' ' -f1)"
+bash scripts/bottles-setup-recover.sh status "$journal_dll" "$manager" >"$tmp/dll-started-status.out" 2>"$tmp/dll-started.err"
+grep -Fq '0 HUD, 0 DLL, 0 bottle environments. Blockers: 1.' "$tmp/dll-started-status.out"
+grep -Fq 'DLL stage was started' "$tmp/dll-started.err"
+if bash scripts/bottles-setup-recover.sh rollback "$journal_dll" "$manager" \
+  --offline-single-player --games-closed --bottles-closed \
+  >"$tmp/dll-unsafe.out" 2>"$tmp/dll-unsafe.err"; then
+  echo "Incomplete DLL stage was incorrectly treated as fully owned" >&2
+  exit 1
+fi
+grep -Fq 'Refusing partial rollback while blockers remain' "$tmp/dll-unsafe.err"
+test -f "$new_game/intimatr-launch-deployment.json"
+test "$(cat "$journal_dll/stage")" = dll-started
+if grep -Fxq "remove|$new_game" "$MOCK_EVENTS"; then
+  echo "Recovery removed a DLL from an unconfirmed stage" >&2
+  exit 1
+fi
+# A crash after completing the DLL stage is safe to recover if the current
+# proxy is still intact. The journal must preserve the source stage.
+printf 'dll-complete\n' >"$journal_dll/stage"
 bash scripts/bottles-setup-recover.sh status "$journal_dll" "$manager" >"$tmp/dll-status.out"
 grep -Fq '0 HUD, 1 DLL, 0 bottle environments. Blockers: 0.' "$tmp/dll-status.out"
 bash scripts/bottles-setup-recover.sh rollback "$journal_dll" "$manager" \
   --offline-single-player --games-closed --bottles-closed >"$tmp/dll-rollback.out"
+test "$(cat "$journal_dll/rollback-source-stage")" = dll-complete
 test "$(cat "$journal_dll/stage")" = reverted
 test ! -e "$new_game/intimatr-launch-deployment.json"
 grep -Fxq "remove|$new_game" "$MOCK_EVENTS"
 test "$steam_before" = "$(sha256sum "$new_game/steam_api64.dll" | cut -d' ' -f1)"
 test "$before" = "$(sha256sum "$game/intimatr.dll" | cut -d' ' -f1)"
 
-echo "Combined Bottles fixture: plan, status, snapshot, journal, HUD and DLL recovery, tamper and path refusal passed"
+echo "Combined Bottles fixture: plan, status, snapshot, journal, stage-bound recovery, tamper and path refusal passed"
