@@ -38,10 +38,17 @@ full profile workflow.
 
 **Failure and recovery:** The top-level command is not globally
 atomic. It reports the failing stage and prints the base setup's private
-recovery journal. After a successful base apply, it also records which
-reviewed game profiles were already managed before the full attempt. A
-separate checksum guards this before-state. After every selected
-profile has been prepared and ownership-verified, a second checksummed
+recovery journal. Before the base installer changes a bottle allowlist,
+DLL proxy, or HUD, it now captures the reviewed games' original managed
+profile presence in that same base journal with a separate checksum and
+a `profiles-pending` marker. Therefore a crash after base apply but before
+profile preparation can be recovered from the base journal without guessing
+whether a profile was installed. When the full coordinator is ready to
+begin profile preparation, it marks `profiles-started`; that state is
+deliberately **not** treated as proof of a completed install.
+
+After every selected profile has been prepared and ownership-verified,
+a second checksummed
 inventory records the exact managed-profile ownership hash and filesystem
 device/inode identity observed at completion. The stage only becomes
 `profiles-complete` once that inventory has been written and published
@@ -58,18 +65,24 @@ bash scripts/bottles-full-recover.sh status "/absolute/bottles-root/.intimatr-se
 bash scripts/bottles-full-recover.sh rollback "/absolute/bottles-root/.intimatr-setup.XXXXXXXX" "$HOME/.cargo/bin/intimatr-bottles" --offline-single-player --games-closed --bottles-closed
 ```
 
-The recovery command checks the original base journal, both
-checksummed profile inventories, the recorded directory identity,
-all currently managed profile checksums, and the base component ownership
-guard *before* deleting any new profiles. A recreated or changed profile
+The recovery command checks the original base journal and checksummed
+before-state first. For completed profile installations, it also checks
+the after-state, the recorded directory identity, and all current profile
+checksums before deleting any newly owned profile. The base component
+ownership guard is checked independently before all rollback changes. A recreated or changed profile
 whose directory identity or owned checksum differs from the completed
 snapshot blocks rollback, even if it remains a valid Intimatr profile.
 Recovery then removes only unchanged profiles absent before this attempt and delegates
 DLL/HUD/environment rollback to the existing guarded base command. A
 profile modified by the user blocks the combined rollback; a profile
 preparation stage merely marked `profiles-started` also blocks automatic
-removal because its provenance is incomplete. If rollback is interrupted,
-a `rollback-started` marker allows an integrity-checked retry.
+removal because its provenance is incomplete. When the stage is still
+`profiles-pending`, recovery never removes a profile: any unexpected new
+profile blocks rollback, while the independently guarded base changes can
+be reversed. A successful pending-stage recovery records
+`profiles-pending-reverted`, including on safe retry after a partial base
+rollback. For a completed profile stage, an interrupted rollback retains
+`rollback-started` and can be integrity-checked again.
 
 The combined `apply` and `rollback` commands now hold an exclusive
 advisory lock across their **full** environment/DLL/HUD and per-game
@@ -88,9 +101,10 @@ compensating, not fully atomic or guaranteed across power loss, changes
 by external tools, or every possible interruption window.
 Filesystem identity is a conservative replacement guard, not a guarantee
 against deliberately forged ownership or inode reuse. An interruption
-after base apply but before the combined before-state is written may
-require using the base recovery command directly. If the completed
-after-state is missing, profile recovery deliberately fails closed.
+during initial base journal creation, before its first stage is published,
+may still need manual inspection. If profile preparation has started but
+the completed after-state is missing, automated profile removal fails
+closed rather than guessing ownership.
 A failed mid-profile export may leave an incomplete
 profile directory for manual inspection. No Wine/game launch or desktop
 shortcut installation occurs automatically.
