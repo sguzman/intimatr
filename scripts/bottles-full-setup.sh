@@ -197,7 +197,12 @@ before_state_unchanged() {
 stage=base-apply
 apply_args=("${base_args[@]}" --offline-single-player --games-closed --bottles-closed)
 [[ -z "$runtime" ]] || apply_args+=(--runtime "$runtime")
+# The base installer persists this frozen before-state into its own journal
+# before mutating anything, closing the crash window between base completion
+# and the combined wrapper's former post-hoc journal copy.
+apply_args+=(--full-profiles-before "$tmp/profiles-before.json")
 source_unchanged
+before_state_unchanged
 bash "$base" apply "$manifest" "$manager" "${apply_args[@]}" | tee "$tmp/base-output.log"
 journal="$(sed -n 's/^Recovery journal: //p' "$tmp/base-output.log" | tail -n 1)"
 [[ "$journal" == /* && -d "$journal" && ! -L "$journal" &&
@@ -207,17 +212,24 @@ journal="$(sed -n 's/^Recovery journal: //p' "$tmp/base-output.log" | tail -n 1)
   { echo "Missing or invalid completed base setup journal" >&2; exit 1; }
 source_unchanged
 before_state_unchanged
-# Preserve a separate profile before-state in the base journal. The base
-# immutable selection and environment inventory remain intact.
-[[ ! -e "$journal/full-profiles-before.json" &&
-   ! -e "$journal/full-profiles-before.sha256" &&
-   ! -e "$journal/full-profile-stage" ]] ||
-  { echo "Base setup journal already contains a profile recovery record" >&2; exit 1; }
-cp -- "$tmp/profiles-before.json" "$journal/full-profiles-before.json"
+# The base stage already owns a complete profile before-state with a
+# checksum and a "profiles-pending" marker, all written before any base
+# mutation. Never overwrite it with a post-hoc snapshot from this wrapper.
+[[ -f "$journal/full-profiles-before.json" &&
+   -f "$journal/full-profiles-before.sha256" &&
+   -f "$journal/full-profile-stage" &&
+   ! -L "$journal/full-profiles-before.json" &&
+   ! -L "$journal/full-profiles-before.sha256" &&
+   ! -L "$journal/full-profile-stage" &&
+   "$(cat -- "$journal/full-profile-stage")" == profiles-pending ]] ||
+  { echo "Missing pending combined profile inventory in base journal" >&2; exit 1; }
+cmp -s -- "$tmp/profiles-before.json" "$journal/full-profiles-before.json" ||
+  { echo "Base profile before-state differs from reviewed selection" >&2; exit 1; }
 (
   cd -- "$journal"
-  sha256sum -- full-profiles-before.json >full-profiles-before.sha256
-)
+  sha256sum -- full-profiles-before.json |
+    cmp -s - full-profiles-before.sha256
+) || { echo "Base profile before-state checksum is invalid" >&2; exit 1; }
 mark_full_stage() {
   printf '%s\n' "$1" >"$journal/.full-profile-stage-next"
   mv -- "$journal/.full-profile-stage-next" "$journal/full-profile-stage"
