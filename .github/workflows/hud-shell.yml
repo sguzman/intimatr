@@ -13,6 +13,7 @@ on:
       - 'scripts/bottles-launch.sh'
       - 'scripts/test-bottles-launch.sh'
       - 'scripts/bottles-managed-launch.sh'
+      - 'scripts/bottles-qa-preflight.sh'
       - 'scripts/test-bottles-managed-launch.sh'
       - 'scripts/bottles-profiles-batch.sh'
       - 'scripts/test-bottles-profiles-batch.sh'
@@ -35,6 +36,7 @@ on:
       - 'scripts/bottles-launch.sh'
       - 'scripts/test-bottles-launch.sh'
       - 'scripts/bottles-managed-launch.sh'
+      - 'scripts/bottles-qa-preflight.sh'
       - 'scripts/test-bottles-managed-launch.sh'
       - 'scripts/bottles-profiles-batch.sh'
       - 'scripts/test-bottles-profiles-batch.sh'
@@ -79,6 +81,7 @@ jobs:
           bash -n scripts/test-bottles-launch.sh
           bash scripts/test-bottles-launch.sh
           bash -n scripts/bottles-managed-launch.sh
+          bash -n scripts/bottles-qa-preflight.sh
           bash -n scripts/test-bottles-managed-launch.sh
           bash -n scripts/bottles-shortcut.sh
           bash scripts/test-bottles-managed-launch.sh
