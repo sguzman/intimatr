@@ -74,6 +74,26 @@ case "$1" in
       }'
     fi
     ;;
+  profile-launch)
+    if [[ -n "${MOCK_QA_FAIL_EXE:-}" && "$*" == *"$MOCK_QA_FAIL_EXE"* ]]; then
+      echo "Simulated blocked native launch preflight" >&2
+      exit 51
+    fi
+    requested=false
+    if [[ " $* " == *" --experimental-four-timers "* ]]; then requested=true; fi
+    jq -nc --argjson timers "$requested" '{
+      operation:"read_only_registered_bottles_profile_launch_preflight",
+      source_game_policy_verified:true,
+      profile_file_matching_source_verified:true,
+      bottles_environment_policy_preflight_passed:true,
+      registered_program_environment_preflight_passed:true,
+      mangohud_managed_config_checksum_verified:true,
+      mangohud_managed_config_auto_selected:true,
+      experimental_startup_timer_activation_requested:$timers,
+      bottles_run_invoked:false,game_process_started_verified:false,
+      bottle_configuration_modified:false,attachment_attempted:false
+    }'
+    ;;
   *) echo "Unexpected native Intimatr command: $*" >&2; exit 3 ;;
 esac
 EOF
@@ -140,6 +160,39 @@ jq -e '.renderer == "opengl"' "$first/.intimatr-managed-launch/launch.json" >/de
 jq -e '.renderer == "vulkan"' "$second/.intimatr-managed-launch/launch.json" >/dev/null
 bash "$script" status "$manifest" >"$tmp/status.out"
 test "$(grep -c 'owned_unchanged' "$tmp/status.out")" -eq 2
+
+# Batch QA preflight must evaluate every reviewed game even when a later
+# one is blocked, and must never launch Wine or modify either profile.
+qa="scripts/bottles-qa-preflight.sh"
+bash -n "$qa"
+bash "$qa" "$manifest" --offline-single-player >"$tmp/qa-all.out"
+jq -s -e '
+  length == 3 and
+  .[0].game_dir == .[0].game_dir and
+  .[0].renderer == "opengl" and .[0].status == "ready_for_live_qa" and
+  .[1].renderer == "vulkan" and .[1].status == "ready_for_live_qa" and
+  .[2].operation == "live_qa_preflight_summary" and
+  .[2].selected_games == 2 and .[2].ready_for_live_qa == 2 and
+  .[2].blocked_games == 0 and .[2].game_started == false
+' "$tmp/qa-all.out" >/dev/null
+export MOCK_QA_FAIL_EXE='C:\Games\Second\Second.exe'
+if bash "$qa" "$manifest" --offline-single-player \
+  >"$tmp/qa-partial.out" 2>"$tmp/qa-partial.err"; then
+  echo "Batch QA ignored a blocked registered second game" >&2
+  exit 1
+fi
+jq -s -e '
+  length == 3 and
+  .[0].status == "ready_for_live_qa" and
+  .[1].status == "blocked" and
+  .[1].blocker == "launch_preflight_failed" and
+  .[2].selected_games == 2 and
+  .[2].ready_for_live_qa == 1 and .[2].blocked_games == 1
+' "$tmp/qa-partial.out" >/dev/null
+grep -Fq 'Simulated blocked native launch preflight' "$tmp/qa-partial.err"
+unset MOCK_QA_FAIL_EXE
+test -f "$first/.intimatr-managed-launch/speed.toml"
+test -f "$second/.intimatr-managed-launch/speed.toml"
 
 # Repeated preparations do not write either profile.
 first_sha="$(sha256sum <"$first/.intimatr-managed-launch/speed.toml" | cut -d' ' -f1)"
