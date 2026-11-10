@@ -254,6 +254,58 @@ started, a Steam forwarder loaded in-game, four timers activated, MangoHud
 rendered, or speed affected live gameplay. Those require owner QA with
 Eastward and another explicitly selected offline game.
 
+## Controlled single-game live QA (draft)
+
+After full setup and a successful static preflight, use
+`scripts/bottles-qa-session.sh` to test **one** specifically reviewed offline
+game at a time. The `plan` command validates only that selected game:
+another unprepared or blocked registered game will not prevent QA of the
+first. Neither plan nor any other preflight invokes Wine or changes game
+files. The separate `launch` command repeats the full selected-game
+preflight immediately before launching just that registered program.
+
+These are **fish shell** examples. Supply your actual reviewed manifest
+and exact directory from that manifest; do not infer paths from game names:
+
+```fish
+set manifest "/absolute/reviewed-selection.json"
+set game "/absolute/native-bottles-root/BOTTLE/drive_c/Games/GAME"
+
+# Read-only one-game readiness. No game starts.
+bash scripts/bottles-qa-session.sh plan "$manifest" "$game" --offline-single-player
+
+# Explicitly start only the reviewed game after its plan passes.
+bash scripts/bottles-qa-session.sh launch "$manifest" "$game" --offline-single-player
+
+# To test the experimental 4-timer speed path, add this option to BOTH
+# plan and launch after opting into the experimental hooks:
+# --experimental-four-timers
+```
+
+The manifest can contain both Eastward and a second reviewed offline game,
+but the command requires an exact, unique game directory selection and
+never launches or checks every game automatically. If the selected game
+fails the QA preflight, `launch` refuses to invoke Bottles. It also refuses
+an unreviewed game, missing consent or changed registration. The check-only
+report still cannot demonstrate actual DLL load, a responsive game window,
+or visible MangoHud.
+
+During owner QA, verify these separately, for each game:
+
+- Game launched, became responsive, saved/loaded normally, and exited cleanly
+- Generic MangoHud overlay visible on the selected renderer
+- Custom Intimatr HUD layout and live speed/telemetry displayed (not simply
+  a MangoHud library observed in a process)
+- Experimental speed changes visibly affect gameplay when explicitly enabled,
+  and the hotkeys can restore normal 1× timing
+- Any unusual start delay observed in gameplay versus the CLI-reported
+  host preflight and Bottles CLI timings
+
+Record unknown outcomes as **not verified**, not success. This is the
+acceptance boundary separating passing automated tests from actual owner QA.
+The launcher does not create desktop entries, write QA attestations,
+schedule follow-up tests or automatically start a second game.
+
 ## Prepared game profiles and short launches (draft)
 
 `scripts/bottles-managed-launch.sh` uses one reviewed game registration,
