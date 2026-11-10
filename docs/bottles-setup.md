@@ -221,6 +221,39 @@ the integrated `mangohud --dlsym` path; Vulkan uses ordinary MangoHud
 activation. Neither static hints nor successful native CLI exit prove the
 actual overlay rendered.
 
+## Read-only live-QA readiness check
+
+After successful full setup, run one preflight across **all** explicitly
+reviewed game registrations before attempting real gameplay. It uses each
+prepared game's checksum-verified managed profile, current Bottles
+registration, and native Rust `profile-launch --check`, including the
+renderer-specific MangoHud configuration. It never starts Wine or a game.
+
+```fish
+bash scripts/bottles-qa-preflight.sh "/absolute/reviewed-selection.json" --offline-single-player
+
+# Optional: also validate the experimental timer-request launch path.
+# This does NOT arm hooks or modify any game.
+bash scripts/bottles-qa-preflight.sh "/absolute/reviewed-selection.json" --offline-single-player --experimental-four-timers
+```
+
+The file must contain 1–32 distinct reviewed offline games, each with an
+explicit `renderer` field (`auto`, `opengl`, or `vulkan`). For each
+selected game, the command refuses a missing or modified managed profile,
+a selection or renderer that differs from the prepared descriptor, changed
+source policy, stale native registration, missing/modified owned HUD config,
+or any native launch-preflight error. One blocked game does **not** hide
+results for the remaining games.
+
+Machine-readable stdout contains one JSON object per game plus a
+`live_qa_preflight_summary` object with counts. Exit status is zero only
+when every selected game passes. The possible per-game states are
+`ready_for_live_qa` and `blocked` (with a reason). Readiness here means
+only **static launch checks passed**; it does **not** prove that a game
+started, a Steam forwarder loaded in-game, four timers activated, MangoHud
+rendered, or speed affected live gameplay. Those require owner QA with
+Eastward and another explicitly selected offline game.
+
 ## Prepared game profiles and short launches (draft)
 
 `scripts/bottles-managed-launch.sh` uses one reviewed game registration,
