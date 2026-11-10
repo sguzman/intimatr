@@ -61,18 +61,31 @@ case "$1" in
       fi
       requested=false
       if [[ " $* " == *" --experimental-four-timers "* ]]; then requested=true; fi
-      jq -nc --argjson timers "$requested" '{
+      bottle="Alpha"; program="Demo Offline"
+      if [[ "${MOCK_QA_WRONG_ID:-}" == true ]]; then program="Different Program"; fi
+      dlsym=true
+      if [[ "${MOCK_QA_WRONG_RENDERER:-}" == true ]]; then dlsym=false; fi
+      jq -nc --arg bottle "$bottle" --arg program "$program" \
+        --arg windows 'C:\Games\Demo\Demo.exe' \
+        --argjson dlsym "$dlsym" --argjson timers "$requested" '{
         operation:"read_only_registered_bottles_profile_launch_preflight",
+        selected_bottle:$bottle,registered_program:$program,
+        registered_windows_executable:$windows,
         source_game_policy_verified:true,
         profile_file_matching_source_verified:true,
         bottles_environment_policy_preflight_passed:true,
         registered_program_environment_preflight_passed:true,
+        mangohud_vulkan_activation_requested:true,
+        mangohud_telemetry_export_requested:true,
         mangohud_managed_config_checksum_verified:true,
         mangohud_managed_config_auto_selected:true,
+        mangohud_dlsym_wrapper_requested:$dlsym,
         experimental_startup_timer_activation_requested:$timers,
         bottles_run_invoked:false,game_process_started_verified:false,
+        profile_reached_game_verified:false,
+        mangohud_rendering_verified_in_game:false,
         bottle_configuration_modified:false,attachment_attempted:false,
-        custom_hud_rendering_verified:false,gameplay_speed_verified:false
+        gameplay_speed_verified:false
       }'
     else
       printf '{"operation":"fixture_profile_launch","bottles_run_invoked":false}\n'
@@ -203,6 +216,23 @@ jq -s -e '
   .[1].ready_for_live_qa == 0 and .[1].blocked_games == 1
 ' "$tmp/qa-failure.out" >/dev/null
 unset MOCK_QA_FAIL
+
+# A safety-looking report for a DIFFERENT program is not enough to count
+# the reviewed game as ready. Likewise a mismatched OpenGL wrapper path.
+for mode in MOCK_QA_WRONG_ID MOCK_QA_WRONG_RENDERER; do
+  export "$mode=true"
+  if bash "$qa" "$manifest" --offline-single-player \
+    >"$tmp/$mode.out" 2>"$tmp/$mode.err"; then
+    echo "QA accepted a mismatched native report ($mode)" >&2
+    exit 1
+  fi
+  jq -s -e '
+    .[0].status == "blocked" and
+    .[0].blocker == "unexpected_launch_preflight_report" and
+    .[1].blocked_games == 1
+  ' "$tmp/$mode.out" >/dev/null
+  unset "$mode"
+done
 
 # A real app-launcher entry is optional and explicitly selected.
 # No game launches during shortcut plan/install; only Intimatr --check runs.
