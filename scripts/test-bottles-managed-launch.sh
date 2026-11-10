@@ -234,6 +234,58 @@ for mode in MOCK_QA_WRONG_ID MOCK_QA_WRONG_RENDERER; do
   unset "$mode"
 done
 
+# Session QA must require an explicit selected game and never launch the
+# game on plan. The launch action must recheck then invoke only that game.
+session="scripts/bottles-qa-session.sh"
+bash -n "$session"
+calls_before="$(wc -l <"$MOCK_CALLS")"
+bash "$session" plan "$manifest" "$game" --offline-single-player \
+  >"$tmp/session-plan.out"
+jq -e --arg dir "$game" '
+  .operation == "read_only_single_game_qa_plan" and
+  .game_dir == $dir and
+  .selected_game_static_preflight == "ready_for_live_qa" and
+  .experimental_timers_requested_for_future_launch == false and
+  .game_started == false and .gameplay_speed_verified == false
+' "$tmp/session-plan.out" >/dev/null
+test "$(wc -l <"$MOCK_CALLS")" -gt "$calls_before"
+if grep -Fq -- '--launch' "$MOCK_CALLS"; then
+  # The earlier explicit launch test is expected; the PLAN itself must not
+  # have added a new --launch invocation to the recorded tail.
+  tail -n 1 "$MOCK_CALLS" | grep -Fq -- '--check'
+fi
+if bash "$session" launch "$manifest" "$game" \
+  >"$tmp/session-no-consent.out" 2>"$tmp/session-no-consent.err"; then
+  echo "QA session launched without offline single-player consent" >&2
+  exit 1
+fi
+if bash "$session" launch "$manifest" "$tmp/root/Alpha/drive_c/Games" \
+  --offline-single-player >"$tmp/session-not-selected.out" 2>"$tmp/session-not-selected.err"; then
+  echo "QA session allowed a game directory not in reviewed manifest" >&2
+  exit 1
+fi
+if bash "$session" launch "$tmp/qa-changed.json" "$game" \
+  --offline-single-player >"$tmp/session-mismatch.out" 2>"$tmp/session-mismatch.err"; then
+  echo "QA session launched a program that differed from reviewed preparation" >&2
+  exit 1
+fi
+export MOCK_QA_FAIL=true
+if bash "$session" launch "$manifest" "$game" \
+  --offline-single-player >"$tmp/session-blocked.out" 2>"$tmp/session-blocked.err"; then
+  echo "QA session ignored a failed read-only preflight" >&2
+  exit 1
+fi
+grep -Fq 'did not pass all static launch checks' "$tmp/session-blocked.err"
+tail -n 1 "$MOCK_CALLS" | grep -Fq -- '--check'
+unset MOCK_QA_FAIL
+bash "$session" launch "$manifest" "$game" \
+  --offline-single-player --experimental-four-timers \
+  >"$tmp/session-launch.out" 2>"$tmp/session-launch.err"
+grep -Fq '"operation":"fixture_profile_launch"' "$tmp/session-launch.out"
+tail -n 1 "$MOCK_CALLS" | grep -Fq -- '--launch'
+tail -n 1 "$MOCK_CALLS" | grep -Fq -- '--experimental-four-timers'
+grep -Fq 'Invoking only the selected reviewed offline game' "$tmp/session-launch.err"
+
 # A real app-launcher entry is optional and explicitly selected.
 # No game launches during shortcut plan/install; only Intimatr --check runs.
 export XDG_DATA_HOME="$tmp/xdg data"
