@@ -79,18 +79,37 @@ case "$1" in
       echo "Simulated blocked native launch preflight" >&2
       exit 51
     fi
-    requested=false
+    requested=false; dlsym=false; bottle=""; program=""; windows=""
     if [[ " $* " == *" --experimental-four-timers "* ]]; then requested=true; fi
-    jq -nc --argjson timers "$requested" '{
+    if [[ " $* " == *" --mangohud-dlsym "* ]]; then dlsym=true; fi
+    args=("$@")
+    for (( i=1; i<${#args[@]}-1; i++ )); do
+      case "${args[i]}" in
+        --bottle) bottle="${args[i+1]}" ;;
+        --program) program="${args[i+1]}" ;;
+        --exe) windows="${args[i+1]}" ;;
+      esac
+    done
+    jq -nc --arg bottle "$bottle" --arg program "$program" \
+      --arg windows "$windows" --argjson dlsym "$dlsym" \
+      --argjson timers "$requested" '{
       operation:"read_only_registered_bottles_profile_launch_preflight",
+      selected_bottle:$bottle,registered_program:$program,
+      registered_windows_executable:$windows,
       source_game_policy_verified:true,
       profile_file_matching_source_verified:true,
       bottles_environment_policy_preflight_passed:true,
       registered_program_environment_preflight_passed:true,
+      mangohud_vulkan_activation_requested:true,
+      mangohud_telemetry_export_requested:true,
       mangohud_managed_config_checksum_verified:true,
       mangohud_managed_config_auto_selected:true,
+      mangohud_dlsym_wrapper_requested:$dlsym,
       experimental_startup_timer_activation_requested:$timers,
       bottles_run_invoked:false,game_process_started_verified:false,
+      profile_reached_game_verified:false,
+      mangohud_rendering_verified_in_game:false,
+      gameplay_speed_verified:false,
       bottle_configuration_modified:false,attachment_attempted:false
     }'
     ;;
