@@ -166,9 +166,9 @@ test "$(grep -c 'owned_unchanged' "$tmp/status.out")" -eq 2
 qa="scripts/bottles-qa-preflight.sh"
 bash -n "$qa"
 bash "$qa" "$manifest" --offline-single-player >"$tmp/qa-all.out"
-jq -s -e '
+jq -s -e --arg first "$first" --arg second "$second" '
   length == 3 and
-  .[0].game_dir == .[0].game_dir and
+  .[0].game_dir == $first and .[1].game_dir == $second and
   .[0].renderer == "opengl" and .[0].status == "ready_for_live_qa" and
   .[1].renderer == "vulkan" and .[1].status == "ready_for_live_qa" and
   .[2].operation == "live_qa_preflight_summary" and
