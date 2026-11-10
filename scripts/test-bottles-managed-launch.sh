@@ -53,7 +53,29 @@ case "$1" in
     }'
     ;;
   profile-launch)
-    printf '{"operation":"fixture_profile_launch","bottles_run_invoked":false}\n'
+    if [[ "$*" == *" --check"* ]]; then
+      if [[ "${MOCK_QA_FAIL:-}" == true ]]; then
+        echo 'Deliberate native launch preflight failure' >&2
+        exit 41
+      fi
+      requested=false
+      if [[ " $* " == *" --experimental-four-timers "* ]]; then requested=true; fi
+      jq -nc --argjson timers "$requested" '{
+        operation:"read_only_registered_bottles_profile_launch_preflight",
+        source_game_policy_verified:true,
+        profile_file_matching_source_verified:true,
+        bottles_environment_policy_preflight_passed:true,
+        registered_program_environment_preflight_passed:true,
+        mangohud_managed_config_checksum_verified:true,
+        mangohud_managed_config_auto_selected:true,
+        experimental_startup_timer_activation_requested:$timers,
+        bottles_run_invoked:false,game_process_started_verified:false,
+        bottle_configuration_modified:false,attachment_attempted:false,
+        custom_hud_rendering_verified:false,gameplay_speed_verified:false
+      }'
+    else
+      printf '{"operation":"fixture_profile_launch","bottles_run_invoked":false}\n'
+    fi
     ;;
   *) echo "Unexpected Intimatr call: $*" >&2; exit 3 ;;
 esac
@@ -130,6 +152,56 @@ if tail -n 1 "$MOCK_CALLS" | grep -Fq -- '--experimental-four-timers'; then
   echo 'Managed launch armed experimental hooks without opt-in' >&2
   exit 1
 fi
+
+# The batch QA preflight must perform a real managed check for every
+# reviewed entry without starting Wine or implicitly arming speed hooks.
+qa="scripts/bottles-qa-preflight.sh"
+bash -n "$qa"
+bash "$qa" "$manifest" --offline-single-player >"$tmp/qa.out"
+jq -s -e '
+  length == 2 and
+  .[0].operation == "game_live_qa_preflight" and
+  .[0].status == "ready_for_live_qa" and
+  .[0].experimental_timer_preflight_requested == false and
+  .[0].game_started == false and
+  .[1].operation == "live_qa_preflight_summary" and
+  .[1].selected_games == 1 and
+  .[1].ready_for_live_qa == 1 and
+  .[1].blocked_games == 0
+' "$tmp/qa.out" >/dev/null
+bash "$qa" "$manifest" --offline-single-player \
+  --experimental-four-timers >"$tmp/qa-timers.out"
+jq -s -e '.[0].experimental_timer_preflight_requested == true' \
+  "$tmp/qa-timers.out" >/dev/null
+
+# Do not count a different reviewed program as the existing prepared
+# selection. Integrity may be intact but the selected registration differs.
+jq '.games[0].registered_program="Different Registered Game"' "$manifest" \
+  >"$tmp/qa-changed.json"
+if bash "$qa" "$tmp/qa-changed.json" --offline-single-player \
+  >"$tmp/qa-changed.out" 2>"$tmp/qa-changed.err"; then
+  echo "QA preflight accepted changed reviewed selection" >&2
+  exit 1
+fi
+jq -s -e '
+  .[0].status == "blocked" and
+  .[0].blocker == "reviewed_selection_differs_from_prepared_profile" and
+  .[1].blocked_games == 1
+' "$tmp/qa-changed.out" >/dev/null
+
+# Even a checksum-owned game profile is not enough if native launch checks
+# fail. Report a blocked game, never readiness.
+export MOCK_QA_FAIL=true
+if bash "$qa" "$manifest" --offline-single-player \
+  >"$tmp/qa-failure.out" 2>"$tmp/qa-failure.err"; then
+  echo "QA preflight ignored native launch failure" >&2
+  exit 1
+fi
+jq -s -e '
+  .[0].status == "blocked" and .[0].blocker == "launch_preflight_failed" and
+  .[1].ready_for_live_qa == 0 and .[1].blocked_games == 1
+' "$tmp/qa-failure.out" >/dev/null
+unset MOCK_QA_FAIL
 
 # A real app-launcher entry is optional and explicitly selected.
 # No game launches during shortcut plan/install; only Intimatr --check runs.
