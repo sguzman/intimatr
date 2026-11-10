@@ -82,18 +82,33 @@ while IFS= read -r selection; do
     [[ "$timers" == false ]] || args+=(--experimental-four-timers)
     if ! bash "$single" "${args[@]}" >"$tmp/launch-check.json" 2>"$tmp/error"; then
       reason=launch_preflight_failed
-    elif ! jq -e --argjson timers "$timers" '
+    elif ! jq -e --argjson timers "$timers" \
+      --argjson selected "$selection" '
       type == "object" and
       .operation == "read_only_registered_bottles_profile_launch_preflight" and
+      .selected_bottle == $selected.bottle and
+      .registered_program == $selected.registered_program and
+      .registered_windows_executable == $selected.windows_executable and
       .source_game_policy_verified == true and
       .profile_file_matching_source_verified == true and
       .bottles_environment_policy_preflight_passed == true and
       .registered_program_environment_preflight_passed == true and
+      .mangohud_vulkan_activation_requested == true and
+      .mangohud_telemetry_export_requested == true and
       .mangohud_managed_config_checksum_verified == true and
       .mangohud_managed_config_auto_selected == true and
+      (.mangohud_dlsym_wrapper_requested | type == "boolean") and
+      (if $selected.renderer == "opengl" then
+        .mangohud_dlsym_wrapper_requested == true
+       elif $selected.renderer == "vulkan" then
+        .mangohud_dlsym_wrapper_requested == false
+       else true end) and
       .experimental_startup_timer_activation_requested == $timers and
       .bottles_run_invoked == false and
       .game_process_started_verified == false and
+      .profile_reached_game_verified == false and
+      .mangohud_rendering_verified_in_game == false and
+      .gameplay_speed_verified == false and
       .bottle_configuration_modified == false and
       .attachment_attempted == false
     ' "$tmp/launch-check.json" >/dev/null 2>"$tmp/error"; then
