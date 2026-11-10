@@ -16,7 +16,8 @@ jq -n --arg game "$game" '{
   version:1,games:[{
     game_dir:$game,executable:"Demo.exe",bottle:"Alpha",
     registered_program:"Demo Offline",
-    windows_executable:"C:\\Games\\Demo\\Demo.exe"
+    windows_executable:"C:\\Games\\Demo\\Demo.exe",
+    renderer:"opengl"
   }]
 }' >"$tmp/selection.json"
 cat >"$tmp/bin/bottles-cli" <<'EOF'
