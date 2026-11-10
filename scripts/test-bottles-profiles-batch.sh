@@ -209,6 +209,26 @@ jq -s -e '
   .[2].ready_for_live_qa == 1 and .[2].blocked_games == 1
 ' "$tmp/qa-partial.out" >/dev/null
 grep -Fq 'Simulated blocked native launch preflight' "$tmp/qa-partial.err"
+# A second game that fails QA must NOT prevent previewing or explicitly
+# launching the first one. The session extracts exactly one reviewed game.
+session="scripts/bottles-qa-session.sh"
+bash -n "$session"
+bash "$session" plan "$manifest" "$first" --offline-single-player \
+  >"$tmp/session-first-plan.out"
+jq -e --arg dir "$first" '
+  .operation == "read_only_single_game_qa_plan" and
+  .game_dir == $dir and .game_started == false
+' "$tmp/session-first-plan.out" >/dev/null
+export MOCK_QA_FAIL_EXE='C:\Games\Second\Second.exe'
+if bash "$session" launch "$manifest" "$second" --offline-single-player \
+  >"$tmp/session-second-failure.out" 2>"$tmp/session-second-failure.err"; then
+  echo "QA session launched blocked second game" >&2; exit 1
+fi
+grep -Fq 'did not pass all static launch checks' "$tmp/session-second-failure.err"
+bash "$session" launch "$manifest" "$first" --offline-single-player \
+  >"$tmp/session-first-launch.out" 2>"$tmp/session-first-launch.err"
+tail -n 1 "$MOCK_EVENTS" | grep -Fq -- 'C:\Games\First\First.exe'
+tail -n 1 "$MOCK_EVENTS" | grep -Fq -- '--launch'
 unset MOCK_QA_FAIL_EXE
 test -f "$first/.intimatr-managed-launch/speed.toml"
 test -f "$second/.intimatr-managed-launch/speed.toml"
